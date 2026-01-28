@@ -4,6 +4,7 @@
     getSelectedMove,
     getSelectedMoveInput,
     selectMove,
+    saveMove,
   } from "$lib/stores/character.svelte";
   import type { Move } from "$lib/types";
 
@@ -54,6 +55,21 @@
   }
 
   const guardOptions: Move["guard"][] = ["high", "mid", "low", "unblockable"];
+
+  let saveStatus = $state<string | null>(null);
+
+  async function handleSave() {
+    if (!editingMove) return;
+
+    saveStatus = null;
+    try {
+      await saveMove(editingMove);
+      saveStatus = "Saved!";
+      setTimeout(() => { saveStatus = null; }, 2000);
+    } catch (e) {
+      saveStatus = `Error: ${e}`;
+    }
+  }
 </script>
 
 {#if editingMove}
@@ -269,6 +285,15 @@
             </div>
           </div>
         </section>
+
+        <div class="form-actions">
+          <button class="save-btn" onclick={handleSave}>Save Move</button>
+          {#if saveStatus}
+            <span class="save-status" class:error={saveStatus.includes("Error")}>
+              {saveStatus}
+            </span>
+          {/if}
+        </div>
       </div>
 
       <!-- Right Panel: Preview Placeholder -->
@@ -427,5 +452,33 @@
     justify-content: center;
     height: 100%;
     color: var(--text-secondary);
+  }
+
+  .form-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .save-btn {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .save-btn:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+
+  .save-status {
+    font-size: 13px;
+    color: var(--success);
+  }
+
+  .save-status.error {
+    color: var(--accent);
   }
 </style>

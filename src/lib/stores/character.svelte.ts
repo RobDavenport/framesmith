@@ -74,3 +74,30 @@ export function clearSelection(): void {
   currentCharacter = null;
   selectedMoveInput = null;
 }
+
+export async function saveMove(mv: Move): Promise<void> {
+  if (!currentCharacter) {
+    throw new Error("No character selected");
+  }
+
+  loading = true;
+  error = null;
+  try {
+    await invoke("save_move", {
+      charactersDir: CHARACTERS_DIR,
+      characterId: currentCharacter.character.id,
+      mv,
+    });
+
+    // Update local state
+    const index = currentCharacter.moves.findIndex((m) => m.input === mv.input);
+    if (index >= 0) {
+      currentCharacter.moves[index] = mv;
+    }
+  } catch (e) {
+    error = String(e);
+    throw e;
+  } finally {
+    loading = false;
+  }
+}

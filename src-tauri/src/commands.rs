@@ -122,3 +122,21 @@ pub fn load_character(
         cancel_table,
     })
 }
+
+#[tauri::command]
+pub fn save_move(characters_dir: String, character_id: String, mv: Move) -> Result<(), String> {
+    // Validate character_id to prevent path traversal
+    if character_id.contains("..") || character_id.contains('/') || character_id.contains('\\') {
+        return Err("Invalid character ID".to_string());
+    }
+
+    let move_path = Path::new(&characters_dir)
+        .join(&character_id)
+        .join("moves")
+        .join(format!("{}.json", mv.input));
+
+    let content = serde_json::to_string_pretty(&mv).map_err(|e| format!("Failed to serialize move: {}", e))?;
+    fs::write(&move_path, content).map_err(|e| format!("Failed to write move file: {}", e))?;
+
+    Ok(())
+}
