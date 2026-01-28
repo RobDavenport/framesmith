@@ -4,6 +4,7 @@
   import Sidebar from "$lib/components/Sidebar.svelte";
   import CharacterOverview from "$lib/views/CharacterOverview.svelte";
   import FrameDataTable from "$lib/views/FrameDataTable.svelte";
+  import MoveEditor from "$lib/views/MoveEditor.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
 
   let currentView = $state("overview");
@@ -32,7 +33,7 @@
     {:else if currentView === "frame-data"}
       <FrameDataTable onEditMove={handleEditMove} />
     {:else if currentView === "move-editor"}
-      <p>Move Editor view coming soon...</p>
+      <MoveEditor />
     {:else if currentView === "cancel-graph"}
       <p>Cancel Graph view coming soon...</p>
     {/if}
