@@ -236,6 +236,28 @@ impl FramesmithMcp {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(description = "Get the cancel table showing all cancel relationships (chains, special cancels, super cancels, jump cancels)")]
+    async fn get_cancel_table(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+
+        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let json = serde_json::to_string_pretty(&data.cancel_table).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
 }
 
 #[tool_handler]
