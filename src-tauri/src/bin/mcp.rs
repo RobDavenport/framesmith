@@ -31,6 +31,22 @@ pub struct UpdateMoveParam {
     pub move_data: d_developmentnethercore_projectframesmith_lib::schema::Move,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct FrameDataRow {
+    pub input: String,
+    pub name: String,
+    pub startup: u8,
+    pub active: u8,
+    pub recovery: u8,
+    pub total: u16,
+    pub damage: u16,
+    pub hitstun: u8,
+    pub blockstun: u8,
+    pub advantage_on_hit: i16,
+    pub advantage_on_block: i16,
+    pub guard: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct FramesmithMcp {
     #[allow(dead_code)] // Will be used by future tools
@@ -140,6 +156,48 @@ impl FramesmithMcp {
             "Successfully updated move '{}' for character '{}'",
             params.move_data.input, params.character_id
         ))]))
+    }
+
+    #[tool(description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all moves")]
+    async fn get_frame_data_table(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+
+        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let rows: Vec<FrameDataRow> = data.moves.iter().map(|m| {
+            let total = m.startup as u16 + m.active as u16 + m.recovery as u16;
+            let advantage_on_hit = m.hitstun as i16 - m.recovery as i16;
+            let advantage_on_block = m.blockstun as i16 - m.recovery as i16;
+            FrameDataRow {
+                input: m.input.clone(),
+                name: m.name.clone(),
+                startup: m.startup,
+                active: m.active,
+                recovery: m.recovery,
+                total,
+                damage: m.damage,
+                hitstun: m.hitstun,
+                blockstun: m.blockstun,
+                advantage_on_hit,
+                advantage_on_block,
+                guard: format!("{:?}", m.guard).to_lowercase(),
+            }
+        }).collect();
+
+        let json = serde_json::to_string_pretty(&rows).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 }
 
