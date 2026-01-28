@@ -150,6 +150,20 @@ impl FramesmithMcp {
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
     ) -> Result<CallToolResult, McpError> {
         use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+        use d_developmentnethercore_projectframesmith_lib::mcp::validation::validate_move;
+
+        // Validate move data
+        if let Err(errors) = validate_move(&params.move_data) {
+            let error_messages: Vec<String> = errors
+                .iter()
+                .map(|e| format!("{}: {}", e.field, e.message))
+                .collect();
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Validation errors: {}", error_messages.join("; "))),
+                data: None,
+            });
+        }
 
         save_move(self.characters_dir.clone(), params.character_id.clone(), params.move_data.clone()).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -169,7 +183,21 @@ impl FramesmithMcp {
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
     ) -> Result<CallToolResult, McpError> {
         use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+        use d_developmentnethercore_projectframesmith_lib::mcp::validation::validate_move;
         use std::path::Path;
+
+        // Validate move data before checking existence
+        if let Err(errors) = validate_move(&params.move_data) {
+            let error_messages: Vec<String> = errors
+                .iter()
+                .map(|e| format!("{}: {}", e.field, e.message))
+                .collect();
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Validation errors: {}", error_messages.join("; "))),
+                data: None,
+            });
+        }
 
         // Check if move already exists
         let move_path = Path::new(&self.characters_dir)
