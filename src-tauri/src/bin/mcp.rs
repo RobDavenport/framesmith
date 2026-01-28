@@ -23,6 +23,14 @@ pub struct MoveIdParam {
     pub move_input: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UpdateMoveParam {
+    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    pub character_id: String,
+    #[schemars(description = "Complete move data as JSON object")]
+    pub move_data: d_developmentnethercore_projectframesmith_lib::schema::Move,
+}
+
 #[derive(Debug, Clone)]
 pub struct FramesmithMcp {
     #[allow(dead_code)] // Will be used by future tools
@@ -113,6 +121,25 @@ impl FramesmithMcp {
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "Update a move's data. Provide complete move object - it will overwrite the existing move file.")]
+    async fn update_move(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+
+        save_move(self.characters_dir.clone(), params.character_id.clone(), params.move_data.clone()).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Successfully updated move '{}' for character '{}'",
+            params.move_data.input, params.character_id
+        ))]))
     }
 }
 

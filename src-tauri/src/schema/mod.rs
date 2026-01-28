@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Complete character definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Character {
     pub id: String,
     pub name: String,
@@ -16,7 +16,7 @@ pub struct Character {
 }
 
 /// Single move definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Move {
     pub input: String,
     pub name: String,
@@ -35,7 +35,7 @@ pub struct Move {
     pub animation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum GuardType {
     High,
@@ -44,13 +44,13 @@ pub enum GuardType {
     Unblockable,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FrameHitbox {
     pub frames: (u8, u8),
     pub r#box: Rect,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -58,20 +58,20 @@ pub struct Rect {
     pub h: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Pushback {
     pub hit: i32,
     pub block: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MeterGain {
     pub hit: u16,
     pub whiff: u16,
 }
 
 /// Cancel table defining all move relationships
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CancelTable {
     pub chains: std::collections::HashMap<String, Vec<String>>,
     pub special_cancels: Vec<String>,
