@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node:*)",
+      "Bash(npm run check:*)",
+      "Bash(git -C D:/Development/nethercore-project/framesmith diff)",
+      "Bash(git -C D:/Development/nethercore-project/framesmith log --oneline -5)",
+      "Bash(git show:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(python -c:*)"
+    ]
+  }
+}
