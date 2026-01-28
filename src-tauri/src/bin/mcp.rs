@@ -1,12 +1,19 @@
 use std::borrow::Cow;
 
 use anyhow::Result;
+use serde::Deserialize;
 use rmcp::{
     handler::server::tool::ToolRouter,
     model::{CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
     transport::stdio,
 };
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CharacterIdParam {
+    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    pub character_id: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct FramesmithMcp {
@@ -42,6 +49,28 @@ impl FramesmithMcp {
         })?;
 
         let json = serde_json::to_string_pretty(&summaries).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "Get complete character data including properties, all moves, and cancel table")]
+    async fn get_character(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+
+        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let json = serde_json::to_string_pretty(&data).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
             message: Cow::from(format!("Serialization error: {}", e)),
             data: None,
