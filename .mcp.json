@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "framesmith": {
+      "command": "target/debug/mcp",
+      "cwd": "./src-tauri",
+      "env": {
+        "FRAMESMITH_CHARACTERS_DIR": "../characters"
+      }
+    }
+  }
+}

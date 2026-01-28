@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::Result;
 use rmcp::{
     handler::server::tool::ToolRouter,
@@ -27,6 +29,25 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(
             "Framesmith MCP server is running!",
         )]))
+    }
+
+    #[tool(description = "List all available characters with their IDs, names, and move counts")]
+    async fn list_characters(&self) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::list_characters as list_chars;
+
+        let summaries = list_chars(self.characters_dir.clone()).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let json = serde_json::to_string_pretty(&summaries).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 }
 
