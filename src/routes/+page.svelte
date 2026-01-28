@@ -2,6 +2,7 @@
   import "$lib/../app.css";
   import Header from "$lib/components/Header.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
+  import CharacterOverview from "$lib/views/CharacterOverview.svelte";
   import FrameDataTable from "$lib/views/FrameDataTable.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
 
@@ -27,8 +28,7 @@
         <p>Select a character from the sidebar to begin editing.</p>
       </div>
     {:else if currentView === "overview"}
-      <h2>{currentCharacter.character.name}</h2>
-      <p>Overview view coming soon...</p>
+      <CharacterOverview />
     {:else if currentView === "frame-data"}
       <FrameDataTable onEditMove={handleEditMove} />
     {:else if currentView === "move-editor"}
