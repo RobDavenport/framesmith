@@ -1,0 +1,22 @@
+{
+  "input": "5L",
+  "name": "Standing Light",
+  "startup": 7,
+  "active": 3,
+  "recovery": 8,
+  "damage": 30,
+  "hitstun": 17,
+  "blockstun": 11,
+  "hitstop": 6,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [7, 9], "box": { "x": 0, "y": -40, "w": 30, "h": 16 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 6], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } },
+    { "frames": [7, 17], "box": { "x": 0, "y": -55, "w": 35, "h": 55 } }
+  ],
+  "pushback": { "hit": 2, "block": 2 },
+  "meter_gain": { "hit": 5, "whiff": 2 },
+  "animation": "stand_light"
+}

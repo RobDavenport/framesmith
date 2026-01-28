@@ -1,0 +1,21 @@
+{
+  "input": "5H",
+  "name": "Standing Heavy",
+  "startup": 14,
+  "active": 5,
+  "recovery": 20,
+  "damage": 90,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 10,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [14, 18], "box": { "x": 10, "y": -55, "w": 50, "h": 25 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 38], "box": { "x": -12, "y": -65, "w": 40, "h": 65 } }
+  ],
+  "pushback": { "hit": 6, "block": 5 },
+  "meter_gain": { "hit": 12, "whiff": 6 },
+  "animation": "stand_heavy"
+}
