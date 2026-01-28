@@ -4,7 +4,12 @@ use anyhow::Result;
 use serde::Deserialize;
 use rmcp::{
     handler::server::tool::ToolRouter,
-    model::{CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
+    model::{
+        AnnotateAble, CallToolResult, Content, Implementation, ListResourcesResult,
+        PaginatedRequestParams, ProtocolVersion, RawResource, ReadResourceRequestParams,
+        ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo,
+    },
+    service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
     transport::stdio,
 };
@@ -355,14 +360,97 @@ impl ServerHandler for FramesmithMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Framesmith MCP server for reading and modifying fighting game character data. \
                  Use list_characters to see available characters, then get_character or get_move \
-                 to read data, and update_move to make changes.".to_string(),
+                 to read data, and update_move to make changes. \
+                 The notation_guide resource explains numpad notation.".to_string(),
             ),
         }
+    }
+
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListResourcesResult {
+            meta: None,
+            next_cursor: None,
+            resources: vec![
+                RawResource {
+                    uri: "framesmith://notation_guide".to_string(),
+                    name: "Numpad Notation Guide".to_string(),
+                    title: None,
+                    description: Some("Reference for fighting game numpad notation (236 = QCF, etc.)".to_string()),
+                    mime_type: Some("text/markdown".to_string()),
+                    size: None,
+                    icons: None,
+                    meta: None,
+                }.no_annotation()
+            ],
+        }))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+        std::future::ready(if request.uri == "framesmith://notation_guide" {
+            let guide = r#"# Fighting Game Numpad Notation
+
+## Directional Inputs (Numpad Layout)
+```
+7 8 9    ↖ ↑ ↗
+4 5 6    ← N →
+1 2 3    ↙ ↓ ↘
+```
+
+## Common Motions
+- **236** = Quarter Circle Forward (QCF) = ↓↘→
+- **214** = Quarter Circle Back (QCB) = ↓↙←
+- **623** = Dragon Punch (DP) = →↓↘
+- **421** = Reverse DP = ←↓↙
+- **41236** = Half Circle Forward (HCF) = ←↙↓↘→
+- **63214** = Half Circle Back (HCB) = →↘↓↙←
+- **360** = Full Circle = 63214789 or similar
+- **22** = Double Down = ↓↓
+
+## Button Notation
+- **L** = Light attack
+- **M** = Medium attack
+- **H** = Heavy attack
+- **P** = Punch (for games with P/K distinction)
+- **K** = Kick
+
+## Standing/Crouching/Jumping
+- **5X** = Standing (neutral) attack (e.g., 5L = standing light)
+- **2X** = Crouching attack (e.g., 2M = crouching medium)
+- **j.X** = Jumping attack (e.g., j.H = jumping heavy)
+
+## Examples
+- **5L** = Standing light attack
+- **2M** = Crouching medium attack
+- **236P** = Quarter circle forward + punch (fireball motion)
+- **623H** = Dragon punch motion + heavy (uppercut)
+- **j.236K** = Air quarter circle forward + kick
+"#;
+            Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(guide, &request.uri)],
+            })
+        } else {
+            Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Unknown resource: {}", request.uri)),
+                data: None,
+            })
+        })
     }
 }
 
