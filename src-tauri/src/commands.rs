@@ -1,3 +1,4 @@
+use crate::codegen::{export_json_blob, export_json_blob_pretty};
 use crate::schema::{CancelTable, Character, Move};
 use std::collections::HashMap;
 use std::fs;
@@ -138,5 +139,38 @@ pub fn save_move(characters_dir: String, character_id: String, mv: Move) -> Resu
     let content = serde_json::to_string_pretty(&mv).map_err(|e| format!("Failed to serialize move: {}", e))?;
     fs::write(&move_path, content).map_err(|e| format!("Failed to write move file: {}", e))?;
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn export_character(
+    characters_dir: String,
+    character_id: String,
+    adapter: String,
+    output_path: String,
+    pretty: bool,
+) -> Result<(), String> {
+    // Validate character_id
+    if character_id.contains("..") || character_id.contains('/') || character_id.contains('\\') {
+        return Err("Invalid character ID".to_string());
+    }
+
+    let char_data = load_character(characters_dir, character_id)?;
+
+    let output = match adapter.as_str() {
+        "json-blob" => {
+            if pretty {
+                export_json_blob_pretty(&char_data)?
+            } else {
+                export_json_blob(&char_data)?
+            }
+        }
+        "breakpoint-rust" => {
+            return Err("Breakpoint adapter not yet implemented".to_string());
+        }
+        _ => return Err(format!("Unknown adapter: {}", adapter)),
+    };
+
+    fs::write(&output_path, output).map_err(|e| format!("Failed to write export file: {}", e))?;
     Ok(())
 }
