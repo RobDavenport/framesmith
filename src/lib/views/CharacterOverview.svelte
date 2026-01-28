@@ -1,6 +1,10 @@
 <script lang="ts">
-  import { getCurrentCharacter } from "$lib/stores/character.svelte";
+  import { getCurrentCharacter, exportCharacter } from "$lib/stores/character.svelte";
   import type { Move, CancelTable } from "$lib/types";
+
+  let exportAdapter = $state("json-blob");
+  let exportPretty = $state(true);
+  let exportStatus = $state<string | null>(null);
 
   const characterData = $derived(getCurrentCharacter());
   const character = $derived(characterData?.character);
@@ -45,6 +49,22 @@
   // Format speed values
   function formatSpeed(value: number): string {
     return value.toFixed(1);
+  }
+
+  async function handleExport() {
+    if (!character) return;
+
+    exportStatus = null;
+    const filename = `${character.id}.${exportAdapter === "json-blob" ? "json" : "rs"}`;
+    const outputPath = `exports/${filename}`;
+
+    try {
+      await exportCharacter(exportAdapter, outputPath, exportPretty);
+      exportStatus = `Exported to ${outputPath}`;
+      setTimeout(() => { exportStatus = null; }, 3000);
+    } catch (e) {
+      exportStatus = `Error: ${e}`;
+    }
   }
 </script>
 
@@ -142,6 +162,26 @@
         </div>
       </div>
     </div>
+
+    <div class="export-section">
+      <h3>Export</h3>
+      <div class="export-controls">
+        <select bind:value={exportAdapter}>
+          <option value="json-blob">JSON Blob</option>
+          <option value="breakpoint-rust" disabled>Breakpoint Rust (coming soon)</option>
+        </select>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={exportPretty} />
+          Pretty print
+        </label>
+        <button onclick={handleExport}>Export Character</button>
+        {#if exportStatus}
+          <span class="export-status" class:error={exportStatus.includes("Error")}>
+            {exportStatus}
+          </span>
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -227,5 +267,43 @@
   .stat-value.highlight {
     color: var(--accent);
     font-size: 16px;
+  }
+
+  .export-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .export-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .export-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .export-status {
+    font-size: 13px;
+    color: var(--success);
+  }
+
+  .export-status.error {
+    color: var(--accent);
   }
 </style>

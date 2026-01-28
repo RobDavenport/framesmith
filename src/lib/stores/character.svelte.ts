@@ -101,3 +101,21 @@ export async function saveMove(mv: Move): Promise<void> {
     loading = false;
   }
 }
+
+export async function exportCharacter(
+  adapter: string,
+  outputPath: string,
+  pretty: boolean = false
+): Promise<void> {
+  if (!currentCharacter) {
+    throw new Error("No character selected");
+  }
+
+  await invoke("export_character", {
+    charactersDir: CHARACTERS_DIR,
+    characterId: currentCharacter.character.id,
+    adapter,
+    outputPath,
+    pretty,
+  });
+}
