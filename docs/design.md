@@ -1,8 +1,8 @@
 # Framesmith Design
 
-**Date:** 2026-01-28
 **Status:** Draft
-**Project Location:** `nethercore-project/framesmith/` (sibling to breakpoint)
+**Last reviewed:** 2026-01-28
+**Scope:** Full design spec covering data model, editor UI, and export pipeline
 
 ## Overview
 

@@ -1,5 +1,8 @@
 # Claude Guidelines for Framesmith
 
+**Status:** Active
+**Last reviewed:** 2026-01-29
+
 ## Project Context
 
 Framesmith is an engine-agnostic fighting game character authoring tool. It allows defining complete, portable fighting game characters (frame data, hitboxes, moves, properties, state machines, animations) in a format that can be exported to any game engine.
@@ -10,37 +13,6 @@ Framesmith is an engine-agnostic fighting game character authoring tool. It allo
 - **Frontend:** Svelte + TypeScript
 - **3D rendering:** Threlte (Three.js wrapper for Svelte)
 - **Data format:** JSON (directory-based, one file per move)
-
-## Quick Commands
-
-```bash
-npm install              # Install dependencies
-npm run tauri dev        # Development mode
-npm run tauri build      # Production build
-```
-
-## Project Structure
-
-```
-framesmith/
-  src-tauri/             # Rust backend
-    src/
-      main.rs
-      codegen/           # Export adapters
-        breakpoint.rs    # Breakpoint adapter (Rust constants)
-        json_blob.rs     # JSON blob adapter
-      schema/            # Character data types
-  src/                   # Svelte frontend
-    lib/
-      views/             # Main editor views
-      components/        # Reusable UI components
-      stores/            # Svelte stores
-    App.svelte
-    main.ts
-  characters/            # Working directory for character data
-  docs/
-    design.md            # Full design document
-```
 
 ## Character Data Format
 
@@ -80,5 +52,3 @@ characters/glitch/
 2. **Frame Data Table** - Spreadsheet view, multi-character comparison
 3. **Move Editor** - Frame data form, animation preview, hitbox overlay
 4. **Cancel Graph** - Visual node graph of cancel relationships
-
-See `docs/design.md` for the complete design document.
