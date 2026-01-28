@@ -158,6 +158,43 @@ impl FramesmithMcp {
         ))]))
     }
 
+    #[tool(description = "Create a new move for a character. Provide complete move data.")]
+    async fn create_move(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+        use std::path::Path;
+
+        // Check if move already exists
+        let move_path = Path::new(&self.characters_dir)
+            .join(&params.character_id)
+            .join("moves")
+            .join(format!("{}.json", params.move_data.input));
+
+        if move_path.exists() {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!(
+                    "Move '{}' already exists for character '{}'. Use update_move instead.",
+                    params.move_data.input, params.character_id
+                )),
+                data: None,
+            });
+        }
+
+        save_move(self.characters_dir.clone(), params.character_id.clone(), params.move_data.clone()).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Successfully created move '{}' for character '{}'",
+            params.move_data.input, params.character_id
+        ))]))
+    }
+
     #[tool(description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all moves")]
     async fn get_frame_data_table(
         &self,
