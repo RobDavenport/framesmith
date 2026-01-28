@@ -2,12 +2,17 @@
   import "$lib/../app.css";
   import Header from "$lib/components/Header.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
+  import FrameDataTable from "$lib/views/FrameDataTable.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
 
   let currentView = $state("overview");
 
   function handleViewChange(view: string) {
     currentView = view;
+  }
+
+  function handleEditMove(input: string) {
+    currentView = "move-editor";
   }
 
   const currentCharacter = $derived(getCurrentCharacter());
@@ -25,7 +30,7 @@
       <h2>{currentCharacter.character.name}</h2>
       <p>Overview view coming soon...</p>
     {:else if currentView === "frame-data"}
-      <p>Frame Data view coming soon...</p>
+      <FrameDataTable onEditMove={handleEditMove} />
     {:else if currentView === "move-editor"}
       <p>Move Editor view coming soon...</p>
     {:else if currentView === "cancel-graph"}
