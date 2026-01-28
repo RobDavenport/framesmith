@@ -199,6 +199,43 @@ impl FramesmithMcp {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(description = "List all moves for a character with basic stats (input, name, startup, damage)")]
+    async fn list_moves(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+
+        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        #[derive(serde::Serialize)]
+        struct MoveSummary {
+            input: String,
+            name: String,
+            startup: u8,
+            damage: u16,
+        }
+
+        let summaries: Vec<MoveSummary> = data.moves.iter().map(|m| MoveSummary {
+            input: m.input.clone(),
+            name: m.name.clone(),
+            startup: m.startup,
+            damage: m.damage,
+        }).collect();
+
+        let json = serde_json::to_string_pretty(&summaries).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
 }
 
 #[tool_handler]
