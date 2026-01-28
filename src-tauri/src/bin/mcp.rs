@@ -15,6 +15,14 @@ pub struct CharacterIdParam {
     pub character_id: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MoveIdParam {
+    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    pub character_id: String,
+    #[schemars(description = "The move input notation (e.g., '5L', '236P')")]
+    pub move_input: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct FramesmithMcp {
     #[allow(dead_code)] // Will be used by future tools
@@ -71,6 +79,34 @@ impl FramesmithMcp {
         })?;
 
         let json = serde_json::to_string_pretty(&data).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "Get a single move's complete data including hitboxes and frame data")]
+    async fn get_move(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<MoveIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+
+        let data = load_character(self.characters_dir.clone(), params.character_id.clone()).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let mv = data.moves.iter().find(|m| m.input == params.move_input).ok_or_else(|| McpError {
+            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+            message: Cow::from(format!("Move '{}' not found for character '{}'", params.move_input, params.character_id)),
+            data: None,
+        })?;
+
+        let json = serde_json::to_string_pretty(&mv).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
             message: Cow::from(format!("Serialization error: {}", e)),
             data: None,
