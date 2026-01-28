@@ -295,6 +295,59 @@ impl FramesmithMcp {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(description = "Delete a move from a character")]
+    async fn delete_move(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<MoveIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use std::path::Path;
+
+        // Validate character_id
+        if params.character_id.contains("..") || params.character_id.contains('/') || params.character_id.contains('\\') {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from("Invalid character ID"),
+                data: None,
+            });
+        }
+
+        // Validate move_input
+        if params.move_input.contains("..") || params.move_input.contains('/') || params.move_input.contains('\\') {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from("Invalid move input"),
+                data: None,
+            });
+        }
+
+        let move_path = Path::new(&self.characters_dir)
+            .join(&params.character_id)
+            .join("moves")
+            .join(format!("{}.json", params.move_input));
+
+        if !move_path.exists() {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!(
+                    "Move '{}' not found for character '{}'",
+                    params.move_input, params.character_id
+                )),
+                data: None,
+            });
+        }
+
+        std::fs::remove_file(&move_path).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to delete move: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Successfully deleted move '{}' from character '{}'",
+            params.move_input, params.character_id
+        ))]))
+    }
 }
 
 #[tool_handler]
