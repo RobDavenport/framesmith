@@ -14,6 +14,9 @@ use rmcp::{
     transport::stdio,
 };
 
+/// The rules specification documentation (SSOT).
+const RULES_SPEC_MD: &str = include_str!("../../../docs/rules-spec.md");
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CharacterIdParam {
     #[schemars(description = "The character ID (e.g., 'glitch')")]
@@ -381,6 +384,34 @@ impl FramesmithMcp {
             params.move_input, params.character_id
         ))]))
     }
+
+    #[tool(description = "Get the JSON Schema for rules files. Use this schema for IDE autocomplete when editing framesmith.rules.json files.")]
+    async fn get_rules_schema(&self) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::rules::generate_rules_schema;
+
+        let schema = generate_rules_schema();
+        let json = serde_json::to_string_pretty(&schema).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "Get the list of built-in validation rules that always run on moves. These cannot be disabled.")]
+    async fn get_builtin_validations(&self) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::rules::get_builtin_validations;
+
+        let validations = get_builtin_validations();
+        let json = serde_json::to_string_pretty(&validations).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
 }
 
 #[tool_handler]
@@ -397,7 +428,8 @@ impl ServerHandler for FramesmithMcp {
                 "Framesmith MCP server for reading and modifying fighting game character data. \
                  Use list_characters to see available characters, then get_character or get_move \
                  to read data, and update_move to make changes. \
-                 The notation_guide resource explains numpad notation.".to_string(),
+                 Resources: notation_guide explains numpad notation, rules_guide documents the validation rules system. \
+                 Tools: get_rules_schema returns JSON Schema for rules files, get_builtin_validations lists always-enforced validations.".to_string(),
             ),
         }
     }
@@ -420,7 +452,17 @@ impl ServerHandler for FramesmithMcp {
                     size: None,
                     icons: None,
                     meta: None,
-                }.no_annotation()
+                }.no_annotation(),
+                RawResource {
+                    uri: "framesmith://rules_guide".to_string(),
+                    name: "Rules Specification".to_string(),
+                    title: None,
+                    description: Some("Complete documentation for Framesmith's validation rules system (apply rules, validate rules, match criteria, constraints)".to_string()),
+                    mime_type: Some("text/markdown".to_string()),
+                    size: None,
+                    icons: None,
+                    meta: None,
+                }.no_annotation(),
             ],
         }))
     }
@@ -430,8 +472,9 @@ impl ServerHandler for FramesmithMcp {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
-        std::future::ready(if request.uri == "framesmith://notation_guide" {
-            let guide = r#"# Fighting Game Numpad Notation
+        std::future::ready(match request.uri.as_str() {
+            "framesmith://notation_guide" => {
+                let guide = r#"# Fighting Game Numpad Notation
 
 ## Directional Inputs (Numpad Layout)
 ```
@@ -469,11 +512,16 @@ impl ServerHandler for FramesmithMcp {
 - **623H** = Dragon punch motion + heavy (uppercut)
 - **j.236K** = Air quarter circle forward + kick
 "#;
-            Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(guide, &request.uri)],
-            })
-        } else {
-            Err(McpError {
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(guide, &request.uri)],
+                })
+            }
+            "framesmith://rules_guide" => {
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(RULES_SPEC_MD, &request.uri)],
+                })
+            }
+            _ => Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!("Unknown resource: {}", request.uri)),
                 data: None,

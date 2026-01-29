@@ -39,3 +39,8 @@ tempfile = "3.24.0"
 name = "mcp"
 path = "src/bin/mcp.rs"
 test = false
+
+[[bin]]
+name = "generate_schema"
+path = "src/bin/generate_schema.rs"
+test = false

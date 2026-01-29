@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RulesFile",
+  "description": "Root structure for a Framesmith rules file.\nRules files define default values (apply) and validation constraints (validate) for moves.",
+  "type": "object",
+  "properties": {
+    "apply": {
+      "description": "Rules that set default values on matching moves.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ApplyRule"
+      }
+    },
+    "validate": {
+      "description": "Rules that enforce constraints on matching moves.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ValidateRule"
+      }
+    },
+    "version": {
+      "description": "Schema version. Must be 1.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "$defs": {
+    "ApplyRule": {
+      "description": "A rule that sets default values on moves matching certain criteria.\nOnly fills in values that are unset (null, empty, or zero).",
+      "type": "object",
+      "properties": {
+        "match": {
+          "description": "Criteria for which moves this rule applies to.",
+          "$ref": "#/$defs/MatchSpec"
+        },
+        "set": {
+          "description": "Key-value pairs to set on matching moves. Nested paths supported.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "match",
+        "set"
+      ]
+    },
+    "MatchSpec": {
+      "description": "Specifies which moves a rule applies to. All specified fields must match (AND logic).\nWithin a single field, multiple values use OR logic.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Button extracted from input (e.g., \"236P\" -> \"P\").",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StringOrVec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guard": {
+          "description": "Guard type: high, mid, low, unblockable.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StringOrVec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input": {
+          "description": "Input notation with glob pattern support (* matches any, ? matches one char).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StringOrVec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "description": "Tags that must ALL be present on the move (AND logic).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "description": "Move type: normal, command_normal, special, super, movement, throw.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StringOrVec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Severity": {
+      "description": "Severity level for validation rule violations.",
+      "oneOf": [
+        {
+          "description": "Errors indicate invalid data that must be fixed.",
+          "type": "string",
+          "const": "error"
+        },
+        {
+          "description": "Warnings indicate potential issues but don't block saving.",
+          "type": "string",
+          "const": "warning"
+        }
+      ]
+    },
+    "StringOrVec": {
+      "description": "A value that can be either a single string or an array of strings.\nUsed for match criteria where OR logic is needed.",
+      "anyOf": [
+        {
+          "description": "A single value to match.",
+          "type": "string"
+        },
+        {
+          "description": "Multiple values where any match satisfies the condition (OR logic).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "ValidateRule": {
+      "description": "A rule that enforces constraints on moves, producing errors or warnings.",
+      "type": "object",
+      "properties": {
+        "match": {
+          "description": "Criteria for which moves this rule applies to.",
+          "$ref": "#/$defs/MatchSpec"
+        },
+        "message": {
+          "description": "Custom message for violations. If not provided, a default message is generated.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "require": {
+          "description": "Constraint definitions using exists, min, max, equals, or in.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "severity": {
+          "description": "How to report violations: \"error\" or \"warning\".",
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "match",
+        "require",
+        "severity"
+      ]
+    }
+  }
+}

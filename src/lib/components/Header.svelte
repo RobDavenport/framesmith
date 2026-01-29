@@ -8,6 +8,7 @@
     isProjectOpen,
   } from "$lib/stores/project.svelte";
   import { showError } from "$lib/stores/toast.svelte";
+  import HelpPanel from "./HelpPanel.svelte";
 
   interface Props {
     currentView: string;
@@ -15,6 +16,8 @@
   }
 
   let { currentView, onViewChange }: Props = $props();
+
+  let helpOpen = $state(false);
 
   const views = [
     { id: "overview", label: "Overview" },
@@ -71,7 +74,12 @@
       {/each}
     </nav>
   {/if}
+  <button class="help-btn" onclick={() => (helpOpen = true)} title="Rules Documentation">
+    ?
+  </button>
 </header>
+
+<HelpPanel open={helpOpen} onClose={() => (helpOpen = false)} />
 
 <style>
   .project-controls {
@@ -129,5 +137,27 @@
     color: var(--accent);
     border-bottom: 2px solid var(--accent);
     border-radius: 0;
+  }
+
+  .help-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    padding: 0;
+  }
+
+  .help-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: transparent;
   }
 </style>

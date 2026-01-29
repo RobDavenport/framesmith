@@ -1,56 +1,87 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 const RULES_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Root structure for a Framesmith rules file.
+/// Rules files define default values (apply) and validation constraints (validate) for moves.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RulesFile {
+    /// Schema version. Must be 1.
     pub version: u32,
+    /// Rules that set default values on matching moves.
     #[serde(default)]
     pub apply: Vec<ApplyRule>,
+    /// Rules that enforce constraints on matching moves.
     #[serde(default)]
     pub validate: Vec<ValidateRule>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A rule that sets default values on moves matching certain criteria.
+/// Only fills in values that are unset (null, empty, or zero).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ApplyRule {
+    /// Criteria for which moves this rule applies to.
     #[serde(rename = "match")]
     pub match_spec: MatchSpec,
+    /// Key-value pairs to set on matching moves. Nested paths supported.
     #[serde(deserialize_with = "deserialize_object_value")]
+    #[schemars(with = "std::collections::HashMap<String, serde_json::Value>")]
     pub set: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A rule that enforces constraints on moves, producing errors or warnings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ValidateRule {
+    /// Criteria for which moves this rule applies to.
     #[serde(rename = "match")]
     pub match_spec: MatchSpec,
+    /// Constraint definitions using exists, min, max, equals, or in.
     #[serde(rename = "require")]
     #[serde(deserialize_with = "deserialize_object_value")]
+    #[schemars(with = "std::collections::HashMap<String, serde_json::Value>")]
     pub require: serde_json::Value,
+    /// How to report violations: "error" or "warning".
     pub severity: Severity,
+    /// Custom message for violations. If not provided, a default message is generated.
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Specifies which moves a rule applies to. All specified fields must match (AND logic).
+/// Within a single field, multiple values use OR logic.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct MatchSpec {
+    /// Move type: normal, command_normal, special, super, movement, throw.
     #[serde(rename = "type")]
     pub r#type: Option<StringOrVec>,
+    /// Button extracted from input (e.g., "236P" -> "P").
     pub button: Option<StringOrVec>,
+    /// Guard type: high, mid, low, unblockable.
     pub guard: Option<StringOrVec>,
+    /// Tags that must ALL be present on the move (AND logic).
     pub tags: Option<Vec<String>>,
+    /// Input notation with glob pattern support (* matches any, ? matches one char).
     pub input: Option<StringOrVec>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A value that can be either a single string or an array of strings.
+/// Used for match criteria where OR logic is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum StringOrVec {
+    /// A single value to match.
     One(String),
+    /// Multiple values where any match satisfies the condition (OR logic).
     Many(Vec<String>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Severity level for validation rule violations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
+    /// Errors indicate invalid data that must be fixed.
     Error,
+    /// Warnings indicate potential issues but don't block saving.
     Warning,
 }
 
@@ -531,6 +562,153 @@ pub fn validate_move_with_rules(
     }
 
     Ok(issues)
+}
+
+/// Generates the JSON Schema for RulesFile.
+pub fn generate_rules_schema() -> schemars::Schema {
+    schemars::schema_for!(RulesFile)
+}
+
+/// Description of a built-in validation rule.
+#[derive(Debug, Clone, Serialize)]
+pub struct BuiltinValidation {
+    /// The field or path being validated.
+    pub field: String,
+    /// Description of the constraint.
+    pub constraint: String,
+    /// Error message shown when validation fails.
+    pub error_message: String,
+}
+
+/// Returns descriptions of all built-in validation rules.
+/// These validations always run and cannot be disabled.
+pub fn get_builtin_validations() -> Vec<BuiltinValidation> {
+    vec![
+        // Frame Data
+        BuiltinValidation {
+            field: "startup".to_string(),
+            constraint: "must be >= 1".to_string(),
+            error_message: "startup must be at least 1 frame".to_string(),
+        },
+        BuiltinValidation {
+            field: "active".to_string(),
+            constraint: "must be >= 1".to_string(),
+            error_message: "active must be at least 1 frame".to_string(),
+        },
+        BuiltinValidation {
+            field: "input".to_string(),
+            constraint: "must be non-empty".to_string(),
+            error_message: "input cannot be empty".to_string(),
+        },
+        // Hitboxes (Legacy)
+        BuiltinValidation {
+            field: "hitboxes[i].frames".to_string(),
+            constraint: "start <= end".to_string(),
+            error_message: "start frame cannot be after end frame".to_string(),
+        },
+        BuiltinValidation {
+            field: "hitboxes[i].frames".to_string(),
+            constraint: "end <= total frames".to_string(),
+            error_message: "end frame exceeds total frames".to_string(),
+        },
+        // Hits (v2 Schema)
+        BuiltinValidation {
+            field: "hits[i].frames".to_string(),
+            constraint: "start <= end".to_string(),
+            error_message: "start frame cannot be after end frame".to_string(),
+        },
+        BuiltinValidation {
+            field: "hits[i].hitboxes[j].w".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "width must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "hits[i].hitboxes[j].h".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "height must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "hits[i].hitboxes[j].r".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "radius must be greater than 0".to_string(),
+        },
+        // Preconditions
+        BuiltinValidation {
+            field: "preconditions[i] (Meter)".to_string(),
+            constraint: "min <= max".to_string(),
+            error_message: "meter min cannot be greater than max".to_string(),
+        },
+        BuiltinValidation {
+            field: "preconditions[i] (Charge)".to_string(),
+            constraint: "min_frames > 0".to_string(),
+            error_message: "charge min_frames must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "preconditions[i] (Health)".to_string(),
+            constraint: "percent <= 100".to_string(),
+            error_message: "health min/max_percent cannot exceed 100".to_string(),
+        },
+        BuiltinValidation {
+            field: "preconditions[i] (Health)".to_string(),
+            constraint: "min <= max".to_string(),
+            error_message: "health min_percent cannot be greater than max_percent".to_string(),
+        },
+        // Costs
+        BuiltinValidation {
+            field: "costs[i].amount".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "cost amount must be greater than 0".to_string(),
+        },
+        // Movement
+        BuiltinValidation {
+            field: "movement".to_string(),
+            constraint: "distance or velocity required".to_string(),
+            error_message: "movement must have either distance or velocity defined".to_string(),
+        },
+        BuiltinValidation {
+            field: "movement.distance".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "movement distance must be greater than 0".to_string(),
+        },
+        // Super Freeze
+        BuiltinValidation {
+            field: "super_freeze.frames".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "super_freeze frames must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "super_freeze.zoom".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "super_freeze zoom must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "super_freeze.darken".to_string(),
+            constraint: "0.0 to 1.0".to_string(),
+            error_message: "super_freeze darken must be between 0.0 and 1.0".to_string(),
+        },
+        // Status Effects
+        BuiltinValidation {
+            field: "on_hit.status[i].duration".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "duration must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "on_hit.status[i].damage_per_frame".to_string(),
+            constraint: "must be > 0".to_string(),
+            error_message: "damage_per_frame must be greater than 0".to_string(),
+        },
+        BuiltinValidation {
+            field: "on_hit.status[i].multiplier (Slow)".to_string(),
+            constraint: "0.0 to 1.0".to_string(),
+            error_message: "slow multiplier must be between 0.0 and 1.0".to_string(),
+        },
+        // Advanced Hurtboxes
+        BuiltinValidation {
+            field: "advanced_hurtboxes[i].frames".to_string(),
+            constraint: "start <= end".to_string(),
+            error_message: "start frame cannot be after end frame".to_string(),
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -1102,5 +1280,28 @@ mod tests {
 
         let resolved = apply_rules_to_move(Some(&project), Some(&character), &mv).unwrap();
         assert_eq!(resolved.hitstop, 9);
+    }
+
+    #[test]
+    fn test_generate_rules_schema() {
+        let schema = generate_rules_schema();
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        // Schema should contain key type names
+        assert!(json.contains("RulesFile"));
+        assert!(json.contains("ApplyRule"));
+        assert!(json.contains("ValidateRule"));
+        assert!(json.contains("MatchSpec"));
+        assert!(json.contains("Severity"));
+    }
+
+    #[test]
+    fn test_get_builtin_validations() {
+        let validations = get_builtin_validations();
+        // Should have multiple validations
+        assert!(validations.len() >= 10);
+        // Should include key validations
+        assert!(validations.iter().any(|v| v.field == "startup"));
+        assert!(validations.iter().any(|v| v.field == "active"));
+        assert!(validations.iter().any(|v| v.field == "input"));
     }
 }
