@@ -1,0 +1,13 @@
+[package]
+name = "framesmith-fspack"
+version = "0.1.0"
+edition = "2021"
+description = "no_std reader for Framesmith FSPK binary packs"
+
+[features]
+default = []
+alloc = []
+std = ["alloc"]
+
+[dev-dependencies]
+# For tests only
