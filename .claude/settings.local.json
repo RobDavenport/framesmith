@@ -10,7 +10,9 @@
       "Bash(git show:*)",
       "Bash(cargo doc:*)",
       "Bash(cargo metadata:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(git reset:*)",
+      "Bash(git push:*)"
     ]
   },
   "disabledMcpjsonServers": [
