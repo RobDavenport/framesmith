@@ -1,4 +1,14 @@
 <script lang="ts">
+  import {
+    openProject,
+    createProject,
+    getProjectName,
+    getProjectError,
+    clearProjectError,
+    isProjectOpen,
+  } from "$lib/stores/project.svelte";
+  import { showError } from "$lib/stores/toast.svelte";
+
   interface Props {
     currentView: string;
     onViewChange: (view: string) => void;
@@ -12,28 +22,89 @@
     { id: "move-editor", label: "Move Editor" },
     { id: "cancel-graph", label: "Cancel Graph" },
   ];
+
+  const projectName = $derived(getProjectName());
+  const projectOpen = $derived(isProjectOpen());
+
+  async function handleOpenProject() {
+    const success = await openProject();
+    if (!success) {
+      const error = getProjectError();
+      if (error) {
+        showError(error);
+        clearProjectError();
+      }
+    }
+  }
+
+  async function handleCreateProject() {
+    const success = await createProject();
+    if (!success) {
+      const error = getProjectError();
+      if (error) {
+        showError(error);
+        clearProjectError();
+      }
+    }
+  }
 </script>
 
 <header class="header">
+  <div class="project-controls">
+    <button class="project-btn" onclick={handleOpenProject}>Open...</button>
+    <button class="project-btn" onclick={handleCreateProject}>New...</button>
+  </div>
+  {#if projectName}
+    <span class="project-name">{projectName}</span>
+  {/if}
   <h1 class="title">Framesmith</h1>
-  <nav class="nav">
-    {#each views as view}
-      <button
-        class="nav-btn"
-        class:active={currentView === view.id}
-        onclick={() => onViewChange(view.id)}
-      >
-        {view.label}
-      </button>
-    {/each}
-  </nav>
+  {#if projectOpen}
+    <nav class="nav">
+      {#each views as view}
+        <button
+          class="nav-btn"
+          class:active={currentView === view.id}
+          onclick={() => onViewChange(view.id)}
+        >
+          {view.label}
+        </button>
+      {/each}
+    </nav>
+  {/if}
 </header>
 
 <style>
+  .project-controls {
+    display: flex;
+    gap: 4px;
+  }
+
+  .project-btn {
+    background: transparent;
+    border: none;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .project-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+  }
+
+  .project-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+  }
+
   .title {
     font-size: 18px;
     font-weight: 600;
     color: var(--accent);
+    margin-left: auto;
   }
 
   .nav {

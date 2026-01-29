@@ -13,7 +13,8 @@
       "Bash(python -c:*)",
       "Bash(git reset:*)",
       "Bash(git push:*)",
-      "Bash(npm run tauri:*)"
+      "Bash(npm run tauri:*)",
+      "Bash(cargo add:*)"
     ]
   },
   "disabledMcpjsonServers": [
