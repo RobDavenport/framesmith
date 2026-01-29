@@ -17,6 +17,7 @@ Rules are defined in JSON files named `framesmith.rules.json`. They can exist at
 ```json
 {
   "version": 1,
+  "registry": { ... },
   "apply": [...],
   "validate": [...]
 }
@@ -25,8 +26,54 @@ Rules are defined in JSON files named `framesmith.rules.json`. They can exist at
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `version` | `number` | Yes | Schema version. Currently must be `1`. |
+| `registry` | `Registry` | No | Optional registry of known resources and events. |
 | `apply` | `ApplyRule[]` | No | Rules that set default values on moves. |
 | `validate` | `ValidateRule[]` | No | Rules that enforce constraints on moves. |
+
+## Registry
+
+The optional `registry` block declares project/character-level IDs for resources and events. This is used for consistent naming, tooling autocomplete, and can be used for registry-aware validation.
+
+```json
+{
+  "registry": {
+    "resources": ["heat", "ammo"],
+    "events": {
+      "gain_heat": {
+        "contexts": ["on_hit", "notify"],
+        "args": {
+          "amount": { "type": "i64" }
+        }
+      }
+    }
+  }
+}
+```
+
+### `registry.resources`
+
+An array of string IDs.
+
+### `registry.events`
+
+An object mapping `event_id` -> event definition.
+
+Event definition fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `contexts` | `string[]` | Yes | Allowed contexts for this event: `on_use`, `on_hit`, `on_block`, `notify` |
+| `args` | `object` | No | Flat arg list (no nested objects/arrays). Values are `ArgSpec`. |
+
+Arg spec variants:
+
+```json
+{ "type": "bool" }
+{ "type": "i64" }
+{ "type": "f32", "min": 0, "max": 1 }
+{ "type": "string" }
+{ "type": "enum", "values": ["a", "b"] }
+```
 
 ## Apply Rules
 
@@ -339,6 +386,11 @@ Character: characters/{id}/framesmith.rules.json
 2. Character rules are loaded second
 3. If a character rule has the **same match spec** as a project rule, the character rule **replaces** it entirely
 4. Different match specs coexist (both apply)
+
+For `registry`:
+
+- `resources`: union + deduplicate (project first, then character)
+- `events`: merge by key; character overrides event definitions with the same `event_id`
 
 ### Example
 

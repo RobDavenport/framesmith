@@ -1,17 +1,22 @@
 //! Zero-copy view into an FSPK pack.
 
-use crate::bytes::{read_u8, read_u16_le, read_u32_le};
+use crate::bytes::{
+    read_f32_le, read_i32_le, read_i64_le, read_u16_le, read_u32_le, read_u64_le, read_u8,
+};
 use crate::error::Error;
 
 /// Magic bytes identifying an FSPK file.
 pub const MAGIC: [u8; 4] = [b'F', b'S', b'P', b'K'];
 
-/// Current supported version.
-pub const VERSION: u16 = 1;
-
 /// Size of the main header in bytes.
-/// Layout: magic(4) + version(2) + flags(2) + total_len(4) + section_count(4)
+/// Layout: magic(4) + flags(4) + total_len(4) + section_count(4)
 pub const HEADER_SIZE: usize = 16;
+
+/// Header field offsets.
+pub const HEADER_MAGIC_OFF: usize = 0;
+pub const HEADER_FLAGS_OFF: usize = 4;
+pub const HEADER_TOTAL_LEN_OFF: usize = 8;
+pub const HEADER_SECTION_COUNT_OFF: usize = 12;
 
 /// Size of each section header in bytes.
 /// Layout: kind(4) + offset(4) + len(4) + align(4)
@@ -48,6 +53,30 @@ pub const SECTION_SHAPES: u32 = 7;
 /// Array of u16 move IDs for cancel targets
 pub const SECTION_CANCELS_U16: u32 = 8;
 
+/// Array of ResourceDef12 structs
+pub const SECTION_RESOURCE_DEFS: u32 = 9;
+
+/// Array of MoveExtras56 structs (parallel to MOVES)
+pub const SECTION_MOVE_EXTRAS: u32 = 10;
+
+/// Array of EventEmit16 structs
+pub const SECTION_EVENT_EMITS: u32 = 11;
+
+/// Array of EventArg20 structs
+pub const SECTION_EVENT_ARGS: u32 = 12;
+
+/// Array of MoveNotify12 structs
+pub const SECTION_MOVE_NOTIFIES: u32 = 13;
+
+/// Array of MoveResourceCost12 structs
+pub const SECTION_MOVE_RESOURCE_COSTS: u32 = 14;
+
+/// Array of MoveResourcePrecondition12 structs
+pub const SECTION_MOVE_RESOURCE_PRECONDITIONS: u32 = 15;
+
+/// Array of MoveResourceDelta16 structs
+pub const SECTION_MOVE_RESOURCE_DELTAS: u32 = 16;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
@@ -58,12 +87,56 @@ pub const STRREF_SIZE: usize = 8;
 /// Move record size (see MoveRecord in module docs)
 pub const MOVE_RECORD_SIZE: usize = 32;
 
+/// ResourceDef record size
+pub const RESOURCE_DEF_SIZE: usize = 12;
+
+/// MoveExtras record size
+pub const MOVE_EXTRAS_SIZE: usize = 56;
+
+/// EventEmit record size
+pub const EVENT_EMIT_SIZE: usize = 16;
+
+/// EventArg record size
+pub const EVENT_ARG_SIZE: usize = 20;
+
+/// MoveNotify record size
+pub const MOVE_NOTIFY_SIZE: usize = 12;
+
+/// MoveResourceCost record size
+pub const MOVE_RESOURCE_COST_SIZE: usize = 12;
+
+/// MoveResourcePrecondition record size
+pub const MOVE_RESOURCE_PRECONDITION_SIZE: usize = 12;
+
+/// MoveResourceDelta record size
+pub const MOVE_RESOURCE_DELTA_SIZE: usize = 16;
+
 // =============================================================================
 // Sentinel Values
 // =============================================================================
 
 /// Sentinel value for "no mesh" or "no keyframes" (u16::MAX)
 pub const KEY_NONE: u16 = 0xFFFF;
+
+/// Sentinel value for an absent optional u16.
+pub const OPT_U16_NONE: u16 = 0xFFFF;
+
+// =============================================================================
+// Event Arg Tags
+// =============================================================================
+
+pub const EVENT_ARG_TAG_BOOL: u8 = 0;
+pub const EVENT_ARG_TAG_I64: u8 = 1;
+pub const EVENT_ARG_TAG_F32: u8 = 2;
+pub const EVENT_ARG_TAG_STRING: u8 = 3;
+
+// =============================================================================
+// Resource Delta Trigger Tags
+// =============================================================================
+
+pub const RESOURCE_DELTA_TRIGGER_ON_USE: u8 = 0;
+pub const RESOURCE_DELTA_TRIGGER_ON_HIT: u8 = 1;
+pub const RESOURCE_DELTA_TRIGGER_ON_BLOCK: u8 = 2;
 
 /// Information about a single section in the pack.
 #[derive(Debug, Clone, Copy, Default)]
@@ -95,7 +168,6 @@ impl<'a> PackView<'a> {
     /// Returns an error if:
     /// - The data is too short to contain a valid header (`TooShort`)
     /// - The magic bytes are incorrect (`InvalidMagic`)
-    /// - The version is not supported (`UnsupportedVersion`)
     /// - Section headers or data are out of bounds (`OutOfBounds`)
     pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
         // Check minimum length for header
@@ -104,20 +176,17 @@ impl<'a> PackView<'a> {
         }
 
         // Validate magic bytes
-        if bytes[0..4] != MAGIC {
+        if bytes[HEADER_MAGIC_OFF..HEADER_MAGIC_OFF + 4] != MAGIC {
             return Err(Error::InvalidMagic);
         }
 
-        // Check version
-        let version = read_u16_le(bytes, 4).ok_or(Error::TooShort)?;
-        if version != VERSION {
-            return Err(Error::UnsupportedVersion);
-        }
-
         // Read header fields
-        // flags at offset 6 (2 bytes) - currently unused
-        let total_len = read_u32_le(bytes, 8).ok_or(Error::TooShort)? as usize;
-        let section_count = read_u32_le(bytes, 12).ok_or(Error::TooShort)? as usize;
+        // flags at offset 4 (u32) - currently unused
+        let _flags = read_u32_le(bytes, HEADER_FLAGS_OFF).ok_or(Error::TooShort)?;
+
+        let total_len = read_u32_le(bytes, HEADER_TOTAL_LEN_OFF).ok_or(Error::TooShort)? as usize;
+        let section_count =
+            read_u32_le(bytes, HEADER_SECTION_COUNT_OFF).ok_or(Error::TooShort)? as usize;
 
         // Validate total_len matches actual data length
         if total_len > bytes.len() {
@@ -136,6 +205,11 @@ impl<'a> PackView<'a> {
         let section_table_end = HEADER_SIZE
             .checked_add(section_table_size)
             .ok_or(Error::OutOfBounds)?;
+
+        // Validate section table fits within declared total_len.
+        if section_table_end > total_len {
+            return Err(Error::OutOfBounds);
+        }
 
         // Validate section table fits within data
         if section_table_end > bytes.len() {
@@ -232,6 +306,54 @@ impl<'a> PackView<'a> {
     pub fn moves(&self) -> Option<MovesView<'a>> {
         let data = self.get_section(SECTION_MOVES)?;
         Some(MovesView { data })
+    }
+
+    /// Get resource definitions as a typed view.
+    pub fn resource_defs(&self) -> Option<ResourceDefsView<'a>> {
+        let data = self.get_section(SECTION_RESOURCE_DEFS)?;
+        Some(ResourceDefsView { data })
+    }
+
+    /// Get per-move extras as a typed view.
+    pub fn move_extras(&self) -> Option<MoveExtrasView<'a>> {
+        let data = self.get_section(SECTION_MOVE_EXTRAS)?;
+        Some(MoveExtrasView { data })
+    }
+
+    /// Get event emits as a typed view.
+    pub fn event_emits(&self) -> Option<EventEmitsView<'a>> {
+        let data = self.get_section(SECTION_EVENT_EMITS)?;
+        Some(EventEmitsView { data })
+    }
+
+    /// Get event args as a typed view.
+    pub fn event_args(&self) -> Option<EventArgsView<'a>> {
+        let data = self.get_section(SECTION_EVENT_ARGS)?;
+        Some(EventArgsView { data })
+    }
+
+    /// Get move notifies as a typed view.
+    pub fn move_notifies(&self) -> Option<MoveNotifiesView<'a>> {
+        let data = self.get_section(SECTION_MOVE_NOTIFIES)?;
+        Some(MoveNotifiesView { data })
+    }
+
+    /// Get move resource costs as a typed view.
+    pub fn move_resource_costs(&self) -> Option<MoveResourceCostsView<'a>> {
+        let data = self.get_section(SECTION_MOVE_RESOURCE_COSTS)?;
+        Some(MoveResourceCostsView { data })
+    }
+
+    /// Get move resource preconditions as a typed view.
+    pub fn move_resource_preconditions(&self) -> Option<MoveResourcePreconditionsView<'a>> {
+        let data = self.get_section(SECTION_MOVE_RESOURCE_PRECONDITIONS)?;
+        Some(MoveResourcePreconditionsView { data })
+    }
+
+    /// Get move resource deltas as a typed view.
+    pub fn move_resource_deltas(&self) -> Option<MoveResourceDeltasView<'a>> {
+        let data = self.get_section(SECTION_MOVE_RESOURCE_DELTAS)?;
+        Some(MoveResourceDeltasView { data })
     }
 }
 
@@ -444,7 +566,7 @@ impl<'a> MoveView<'a> {
         read_u8(self.data, 20).unwrap_or(0)
     }
 
-    /// Returns the hit windows offset into the HIT_WINDOWS section.
+    /// Returns the byte offset within the HIT_WINDOWS section.
     pub fn hit_windows_off(&self) -> u32 {
         read_u32_le(self.data, 22).unwrap_or(0)
     }
@@ -454,7 +576,9 @@ impl<'a> MoveView<'a> {
         read_u16_le(self.data, 26).unwrap_or(0)
     }
 
-    /// Returns the hurt windows offset (as u16 for compact layout).
+    /// Returns the byte offset within the HURT_WINDOWS section.
+    ///
+    /// Note: stored as u16 for compact layout.
     pub fn hurt_windows_off(&self) -> u16 {
         read_u16_le(self.data, 28).unwrap_or(0)
     }
@@ -465,16 +589,542 @@ impl<'a> MoveView<'a> {
     }
 }
 
+// =============================================================================
+// Optional Sections Typed Views
+// =============================================================================
+
+#[inline]
+fn read_range(data: &[u8], base: usize) -> Option<(u32, u16)> {
+    let off = read_u32_le(data, base)?;
+    let len = read_u16_le(data, base + 4)?;
+    Some((off, len))
+}
+
+/// Zero-copy view over resource definitions.
+#[derive(Clone, Copy)]
+pub struct ResourceDefsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> ResourceDefsView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / RESOURCE_DEF_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<ResourceDefView<'a>> {
+        let base = index.checked_mul(RESOURCE_DEF_SIZE)?;
+        let end = base.checked_add(RESOURCE_DEF_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(ResourceDefView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ResourceDefView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> ResourceDefView<'a> {
+    pub fn name_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn name_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn start(&self) -> u16 {
+        read_u16_le(self.data, 8).unwrap_or(0)
+    }
+
+    pub fn max(&self) -> u16 {
+        read_u16_le(self.data, 10).unwrap_or(0)
+    }
+}
+
+/// Zero-copy view over per-move extras (parallel to MOVES).
+#[derive(Clone, Copy)]
+pub struct MoveExtrasView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveExtrasView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / MOVE_EXTRAS_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<MoveExtrasRecordView<'a>> {
+        let base = index.checked_mul(MOVE_EXTRAS_SIZE)?;
+        let end = base.checked_add(MOVE_EXTRAS_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveExtrasRecordView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MoveExtrasRecordView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveExtrasRecordView<'a> {
+    pub fn on_use_emits(&self) -> (u32, u16) {
+        read_range(self.data, 0).unwrap_or((0, 0))
+    }
+
+    pub fn on_hit_emits(&self) -> (u32, u16) {
+        read_range(self.data, 8).unwrap_or((0, 0))
+    }
+
+    pub fn on_block_emits(&self) -> (u32, u16) {
+        read_range(self.data, 16).unwrap_or((0, 0))
+    }
+
+    pub fn notifies(&self) -> (u32, u16) {
+        read_range(self.data, 24).unwrap_or((0, 0))
+    }
+
+    pub fn resource_costs(&self) -> (u32, u16) {
+        read_range(self.data, 32).unwrap_or((0, 0))
+    }
+
+    pub fn resource_preconditions(&self) -> (u32, u16) {
+        read_range(self.data, 40).unwrap_or((0, 0))
+    }
+
+    pub fn resource_deltas(&self) -> (u32, u16) {
+        read_range(self.data, 48).unwrap_or((0, 0))
+    }
+}
+
+/// Zero-copy view over event emits.
+#[derive(Clone, Copy)]
+pub struct EventEmitsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> EventEmitsView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / EVENT_EMIT_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<EventEmitView<'a>> {
+        let base = index.checked_mul(EVENT_EMIT_SIZE)?;
+        let end = base.checked_add(EVENT_EMIT_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(EventEmitView {
+            data: &self.data[base..end],
+        })
+    }
+
+    /// Get the event emit at `offset_bytes + index * EVENT_EMIT_SIZE`.
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<EventEmitView<'a>> {
+        let base = (offset_bytes as usize).checked_add(index.checked_mul(EVENT_EMIT_SIZE)?)?;
+        let end = base.checked_add(EVENT_EMIT_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(EventEmitView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EventEmitView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> EventEmitView<'a> {
+    pub fn id_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn id_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn args(&self) -> (u32, u16) {
+        read_range(self.data, 8).unwrap_or((0, 0))
+    }
+}
+
+/// Zero-copy view over event args.
+#[derive(Clone, Copy)]
+pub struct EventArgsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> EventArgsView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / EVENT_ARG_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<EventArgView<'a>> {
+        let base = index.checked_mul(EVENT_ARG_SIZE)?;
+        let end = base.checked_add(EVENT_ARG_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(EventArgView {
+            data: &self.data[base..end],
+        })
+    }
+
+    /// Get the event arg at `offset_bytes + index * EVENT_ARG_SIZE`.
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<EventArgView<'a>> {
+        let base = (offset_bytes as usize).checked_add(index.checked_mul(EVENT_ARG_SIZE)?)?;
+        let end = base.checked_add(EVENT_ARG_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(EventArgView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EventArgView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> EventArgView<'a> {
+    pub fn key_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn key_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn tag(&self) -> u8 {
+        read_u8(self.data, 8).unwrap_or(0)
+    }
+
+    pub fn value_bool(&self) -> Option<bool> {
+        if self.tag() != EVENT_ARG_TAG_BOOL {
+            return None;
+        }
+        Some(read_u64_le(self.data, 12)? != 0)
+    }
+
+    pub fn value_i64(&self) -> Option<i64> {
+        if self.tag() != EVENT_ARG_TAG_I64 {
+            return None;
+        }
+        Some(read_i64_le(self.data, 12)?)
+    }
+
+    pub fn value_f32(&self) -> Option<f32> {
+        if self.tag() != EVENT_ARG_TAG_F32 {
+            return None;
+        }
+        read_f32_le(self.data, 12)
+    }
+
+    pub fn value_string(&self) -> Option<(u32, u16)> {
+        if self.tag() != EVENT_ARG_TAG_STRING {
+            return None;
+        }
+        let off = read_u32_le(self.data, 12)?;
+        let len = read_u16_le(self.data, 16)?;
+        Some((off, len))
+    }
+}
+
+/// Zero-copy view over move notify records.
+#[derive(Clone, Copy)]
+pub struct MoveNotifiesView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveNotifiesView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / MOVE_NOTIFY_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<MoveNotifyView<'a>> {
+        let base = index.checked_mul(MOVE_NOTIFY_SIZE)?;
+        let end = base.checked_add(MOVE_NOTIFY_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveNotifyView {
+            data: &self.data[base..end],
+        })
+    }
+
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<MoveNotifyView<'a>> {
+        let base = (offset_bytes as usize).checked_add(index.checked_mul(MOVE_NOTIFY_SIZE)?)?;
+        let end = base.checked_add(MOVE_NOTIFY_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveNotifyView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MoveNotifyView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveNotifyView<'a> {
+    pub fn frame(&self) -> u16 {
+        read_u16_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn emits(&self) -> (u32, u16) {
+        // frame(u16) + pad(u16) => emits at offset 4
+        read_range(self.data, 4).unwrap_or((0, 0))
+    }
+}
+
+/// Zero-copy view over move resource cost records.
+#[derive(Clone, Copy)]
+pub struct MoveResourceCostsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourceCostsView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / MOVE_RESOURCE_COST_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<MoveResourceCostView<'a>> {
+        let base = index.checked_mul(MOVE_RESOURCE_COST_SIZE)?;
+        let end = base.checked_add(MOVE_RESOURCE_COST_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourceCostView {
+            data: &self.data[base..end],
+        })
+    }
+
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<MoveResourceCostView<'a>> {
+        let base =
+            (offset_bytes as usize).checked_add(index.checked_mul(MOVE_RESOURCE_COST_SIZE)?)?;
+        let end = base.checked_add(MOVE_RESOURCE_COST_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourceCostView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MoveResourceCostView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourceCostView<'a> {
+    pub fn name_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn name_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn amount(&self) -> u16 {
+        read_u16_le(self.data, 8).unwrap_or(0)
+    }
+}
+
+/// Zero-copy view over move resource precondition records.
+#[derive(Clone, Copy)]
+pub struct MoveResourcePreconditionsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourcePreconditionsView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / MOVE_RESOURCE_PRECONDITION_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<MoveResourcePreconditionView<'a>> {
+        let base = index.checked_mul(MOVE_RESOURCE_PRECONDITION_SIZE)?;
+        let end = base.checked_add(MOVE_RESOURCE_PRECONDITION_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourcePreconditionView {
+            data: &self.data[base..end],
+        })
+    }
+
+    pub fn get_at(
+        &self,
+        offset_bytes: u32,
+        index: usize,
+    ) -> Option<MoveResourcePreconditionView<'a>> {
+        let base = (offset_bytes as usize)
+            .checked_add(index.checked_mul(MOVE_RESOURCE_PRECONDITION_SIZE)?)?;
+        let end = base.checked_add(MOVE_RESOURCE_PRECONDITION_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourcePreconditionView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MoveResourcePreconditionView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourcePreconditionView<'a> {
+    pub fn name_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn name_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn min_raw(&self) -> u16 {
+        read_u16_le(self.data, 8).unwrap_or(OPT_U16_NONE)
+    }
+
+    pub fn max_raw(&self) -> u16 {
+        read_u16_le(self.data, 10).unwrap_or(OPT_U16_NONE)
+    }
+
+    pub fn min(&self) -> Option<u16> {
+        let v = self.min_raw();
+        if v == OPT_U16_NONE {
+            None
+        } else {
+            Some(v)
+        }
+    }
+
+    pub fn max(&self) -> Option<u16> {
+        let v = self.max_raw();
+        if v == OPT_U16_NONE {
+            None
+        } else {
+            Some(v)
+        }
+    }
+}
+
+/// Zero-copy view over move resource delta records.
+#[derive(Clone, Copy)]
+pub struct MoveResourceDeltasView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourceDeltasView<'a> {
+    pub fn len(&self) -> usize {
+        self.data.len() / MOVE_RESOURCE_DELTA_SIZE
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<MoveResourceDeltaView<'a>> {
+        let base = index.checked_mul(MOVE_RESOURCE_DELTA_SIZE)?;
+        let end = base.checked_add(MOVE_RESOURCE_DELTA_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourceDeltaView {
+            data: &self.data[base..end],
+        })
+    }
+
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<MoveResourceDeltaView<'a>> {
+        let base =
+            (offset_bytes as usize).checked_add(index.checked_mul(MOVE_RESOURCE_DELTA_SIZE)?)?;
+        let end = base.checked_add(MOVE_RESOURCE_DELTA_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(MoveResourceDeltaView {
+            data: &self.data[base..end],
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MoveResourceDeltaView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> MoveResourceDeltaView<'a> {
+    pub fn name_off(&self) -> u32 {
+        read_u32_le(self.data, 0).unwrap_or(0)
+    }
+
+    pub fn name_len(&self) -> u16 {
+        read_u16_le(self.data, 4).unwrap_or(0)
+    }
+
+    pub fn delta(&self) -> i32 {
+        read_i32_le(self.data, 8).unwrap_or(0)
+    }
+
+    pub fn trigger(&self) -> u8 {
+        read_u8(self.data, 12).unwrap_or(RESOURCE_DELTA_TRIGGER_ON_USE)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// Helper to build a valid FSPK header.
-    fn build_header(version: u16, flags: u16, total_len: u32, section_count: u32) -> [u8; 16] {
+    fn build_header(flags: u32, total_len: u32, section_count: u32) -> [u8; 16] {
         let mut header = [0u8; 16];
         header[0..4].copy_from_slice(&MAGIC);
-        header[4..6].copy_from_slice(&version.to_le_bytes());
-        header[6..8].copy_from_slice(&flags.to_le_bytes());
+        header[4..8].copy_from_slice(&flags.to_le_bytes());
         header[8..12].copy_from_slice(&total_len.to_le_bytes());
         header[12..16].copy_from_slice(&section_count.to_le_bytes());
         header
@@ -498,28 +1148,35 @@ mod tests {
 
     #[test]
     fn parse_wrong_magic() {
-        let mut data = [0u8; 16];
+        let mut data = build_header(0, 16, 0);
         data[0..4].copy_from_slice(b"XXXX");
-        data[4..6].copy_from_slice(&1u16.to_le_bytes());
-        data[8..12].copy_from_slice(&16u32.to_le_bytes());
-        data[12..16].copy_from_slice(&0u32.to_le_bytes());
 
         let result = PackView::parse(&data);
         assert!(matches!(result, Err(Error::InvalidMagic)));
     }
 
     #[test]
-    fn parse_unsupported_version() {
-        let header = build_header(99, 0, 16, 0);
+    fn parse_section_table_out_of_bounds() {
+        // Header claims 2 sections but data only has room for header
+        let header = build_header(0, 16, 2);
         let result = PackView::parse(&header);
-        assert!(matches!(result, Err(Error::UnsupportedVersion)));
+        assert!(matches!(result, Err(Error::OutOfBounds)));
     }
 
     #[test]
-    fn parse_section_table_out_of_bounds() {
-        // Header claims 2 sections but data only has room for header
-        let header = build_header(1, 0, 16, 2);
-        let result = PackView::parse(&header);
+    fn parse_section_table_end_exceeds_total_len() {
+        // total_len is smaller than HEADER_SIZE + section_count * SECTION_HEADER_SIZE,
+        // but the backing buffer is long enough to contain the section header table.
+        let total_len = 32u32;
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, 2));
+        // Two zero-length sections that (incorrectly) appear to fit within total_len.
+        data.extend_from_slice(&build_section_header(1, 16, 0, 1));
+        data.extend_from_slice(&build_section_header(2, 16, 0, 1));
+        // Ensure bytes.len() is large enough that the old check (against bytes.len()) passes.
+        data.resize((HEADER_SIZE + 2 * SECTION_HEADER_SIZE) as usize, 0);
+
+        let result = PackView::parse(&data);
         assert!(matches!(result, Err(Error::OutOfBounds)));
     }
 
@@ -527,7 +1184,7 @@ mod tests {
     fn parse_section_data_out_of_bounds() {
         // Header + 1 section header
         let mut data = std::vec::Vec::new();
-        data.extend_from_slice(&build_header(1, 0, 32, 1));
+        data.extend_from_slice(&build_header(0, 32, 1));
         // Section at offset 32 with len 100 - way beyond total_len
         data.extend_from_slice(&build_section_header(1, 32, 100, 1));
 
@@ -539,7 +1196,7 @@ mod tests {
     fn parse_section_offset_overflow() {
         // Header + 1 section header
         let mut data = std::vec::Vec::new();
-        data.extend_from_slice(&build_header(1, 0, 48, 1));
+        data.extend_from_slice(&build_header(0, 48, 1));
         // Section with offset + len that would overflow
         data.extend_from_slice(&build_section_header(1, u32::MAX, 1, 1));
         // Add some padding to reach total_len
@@ -552,7 +1209,7 @@ mod tests {
     #[test]
     fn parse_total_len_exceeds_data() {
         // Header claims total_len is 1000 but we only have 16 bytes
-        let header = build_header(1, 0, 1000, 0);
+        let header = build_header(0, 1000, 0);
         let result = PackView::parse(&header);
         assert!(matches!(result, Err(Error::OutOfBounds)));
     }
@@ -560,14 +1217,14 @@ mod tests {
     #[test]
     fn parse_too_many_sections() {
         // Claim more than MAX_SECTIONS
-        let header = build_header(1, 0, 16, 100);
+        let header = build_header(0, 16, 100);
         let result = PackView::parse(&header);
         assert!(matches!(result, Err(Error::OutOfBounds)));
     }
 
     #[test]
     fn parse_valid_empty_pack() {
-        let header = build_header(1, 0, 16, 0);
+        let header = build_header(0, 16, 0);
         let view = PackView::parse(&header).expect("should parse valid empty pack");
         assert_eq!(view.section_count(), 0);
     }
@@ -576,7 +1233,7 @@ mod tests {
     fn parse_valid_with_one_section() {
         let mut data = std::vec::Vec::new();
         // Header: total_len = 16 (header) + 16 (section header) + 8 (section data) = 40
-        data.extend_from_slice(&build_header(1, 0, 40, 1));
+        data.extend_from_slice(&build_header(0, 40, 1));
         // Section header: kind=0x1234, offset=32, len=8, align=4
         data.extend_from_slice(&build_section_header(0x1234, 32, 8, 4));
         // Section data
@@ -593,7 +1250,7 @@ mod tests {
     fn parse_valid_with_multiple_sections() {
         let mut data = std::vec::Vec::new();
         // Header: total_len = 16 + 32 (2 section headers) + 12 (section data) = 60
-        data.extend_from_slice(&build_header(1, 0, 60, 2));
+        data.extend_from_slice(&build_header(0, 60, 2));
         // Section 1: kind=1, offset=48, len=4, align=4
         data.extend_from_slice(&build_section_header(1, 48, 4, 4));
         // Section 2: kind=2, offset=52, len=8, align=4
@@ -615,7 +1272,7 @@ mod tests {
 
     #[test]
     fn get_section_not_found() {
-        let header = build_header(1, 0, 16, 0);
+        let header = build_header(0, 16, 0);
         let view = PackView::parse(&header).expect("should parse valid empty pack");
         assert!(view.get_section(0x9999).is_none());
     }
@@ -712,7 +1369,7 @@ mod tests {
         let total_len: u32 = 116; // 84 + 32
 
         // Build header: 3 sections
-        data.extend_from_slice(&build_header(1, 0, total_len, 3));
+        data.extend_from_slice(&build_header(0, total_len, 3));
 
         // Section headers
         data.extend_from_slice(&build_section_header(
@@ -721,7 +1378,12 @@ mod tests {
             string_len,
             1,
         ));
-        data.extend_from_slice(&build_section_header(SECTION_MESH_KEYS, mesh_keys_off, 8, 4));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MESH_KEYS,
+            mesh_keys_off,
+            8,
+            4,
+        ));
         data.extend_from_slice(&build_section_header(SECTION_MOVES, moves_off, 32, 4));
 
         // String table data
@@ -735,25 +1397,25 @@ mod tests {
 
         // Move record: mesh_key=0, keyframes_key=0xFFFF (none)
         data.extend_from_slice(&build_move_record(
-            0,      // move_id
-            0,      // mesh_key (index 0 in MESH_KEYS)
+            0,        // move_id
+            0,        // mesh_key (index 0 in MESH_KEYS)
             KEY_NONE, // keyframes_key (none)
-            1,      // move_type
-            2,      // trigger
-            3,      // guard
-            4,      // flags
-            5,      // startup
-            3,      // active
-            7,      // recovery
-            15,     // total
-            100,    // damage
-            12,     // hitstun
-            8,      // blockstun
-            6,      // hitstop
-            0,      // hit_windows_off
-            0,      // hit_windows_len
-            0,      // hurt_windows_off
-            0,      // hurt_windows_len
+            1,        // move_type
+            2,        // trigger
+            3,        // guard
+            4,        // flags
+            5,        // startup
+            3,        // active
+            7,        // recovery
+            15,       // total
+            100,      // damage
+            12,       // hitstun
+            8,        // blockstun
+            6,        // hitstop
+            0,        // hit_windows_off
+            0,        // hit_windows_len
+            0,        // hurt_windows_off
+            0,        // hurt_windows_len
         ));
 
         assert_eq!(data.len(), total_len as usize);
@@ -816,8 +1478,12 @@ mod tests {
 
         // Look up the mesh key string
         let mesh_keys = pack.mesh_keys().expect("should have mesh keys section");
-        let (off, len) = mesh_keys.get(mesh_key_idx as usize).expect("should get mesh key");
-        let mesh_key_str = pack.string(off, len).expect("should resolve mesh key string");
+        let (off, len) = mesh_keys
+            .get(mesh_key_idx as usize)
+            .expect("should get mesh key");
+        let mesh_key_str = pack
+            .string(off, len)
+            .expect("should resolve mesh key string");
         assert_eq!(mesh_key_str, "glitch.5h");
     }
 
@@ -846,7 +1512,7 @@ mod tests {
         let string_table_off: u32 = 64;
         let total_len: u32 = 68; // 64 + 4
 
-        data.extend_from_slice(&build_header(1, 0, total_len, 3));
+        data.extend_from_slice(&build_header(0, total_len, 3));
         data.extend_from_slice(&build_section_header(
             SECTION_STRING_TABLE,
             string_table_off,
@@ -880,25 +1546,400 @@ mod tests {
         let keyframes_keys_off: u32 = 60; // 48 + 9 = 57, round to 60
         let total_len: u32 = 68; // 60 + 8
 
-        data.extend_from_slice(&build_header(1, 0, total_len, 2));
+        data.extend_from_slice(&build_header(0, total_len, 2));
         data.extend_from_slice(&build_section_header(
             SECTION_STRING_TABLE,
             string_table_off,
             9,
             1,
         ));
-        data.extend_from_slice(&build_section_header(SECTION_KEYFRAMES_KEYS, keyframes_keys_off, 8, 4));
+        data.extend_from_slice(&build_section_header(
+            SECTION_KEYFRAMES_KEYS,
+            keyframes_keys_off,
+            8,
+            4,
+        ));
         data.extend_from_slice(string_data);
         data.extend_from_slice(&[0, 0, 0]); // padding
         data.extend_from_slice(&build_strref(0, 9));
 
         let pack = PackView::parse(&data).expect("should parse pack with keyframes keys");
 
-        let keyframes_keys = pack.keyframes_keys().expect("should have keyframes keys section");
+        let keyframes_keys = pack
+            .keyframes_keys()
+            .expect("should have keyframes keys section");
         assert_eq!(keyframes_keys.len(), 1);
 
         let (off, len) = keyframes_keys.get(0).expect("should get keyframes key 0");
         let key_str = pack.string(off, len).expect("should resolve string");
         assert_eq!(key_str, "anim.idle");
+    }
+
+    fn build_move_extras_record(
+        on_use_emits: (u32, u16),
+        on_hit_emits: (u32, u16),
+        on_block_emits: (u32, u16),
+        notifies: (u32, u16),
+        resource_costs: (u32, u16),
+        resource_preconditions: (u32, u16),
+        resource_deltas: (u32, u16),
+    ) -> [u8; 56] {
+        fn write_range(dst: &mut [u8], base: usize, r: (u32, u16)) {
+            dst[base..base + 4].copy_from_slice(&r.0.to_le_bytes());
+            dst[base + 4..base + 6].copy_from_slice(&r.1.to_le_bytes());
+            dst[base + 6..base + 8].copy_from_slice(&0u16.to_le_bytes());
+        }
+
+        let mut data = [0u8; 56];
+        write_range(&mut data, 0, on_use_emits);
+        write_range(&mut data, 8, on_hit_emits);
+        write_range(&mut data, 16, on_block_emits);
+        write_range(&mut data, 24, notifies);
+        write_range(&mut data, 32, resource_costs);
+        write_range(&mut data, 40, resource_preconditions);
+        write_range(&mut data, 48, resource_deltas);
+        data
+    }
+
+    fn build_resource_def(name: (u32, u16), start: u16, max: u16) -> [u8; 12] {
+        let mut data = [0u8; 12];
+        data[0..4].copy_from_slice(&name.0.to_le_bytes());
+        data[4..6].copy_from_slice(&name.1.to_le_bytes());
+        data[8..10].copy_from_slice(&start.to_le_bytes());
+        data[10..12].copy_from_slice(&max.to_le_bytes());
+        data
+    }
+
+    fn build_event_emit(id: (u32, u16), args: (u32, u16)) -> [u8; 16] {
+        let mut data = [0u8; 16];
+        data[0..4].copy_from_slice(&id.0.to_le_bytes());
+        data[4..6].copy_from_slice(&id.1.to_le_bytes());
+        data[8..12].copy_from_slice(&args.0.to_le_bytes());
+        data[12..14].copy_from_slice(&args.1.to_le_bytes());
+        data
+    }
+
+    fn build_event_arg_string(key: (u32, u16), value: (u32, u16)) -> [u8; 20] {
+        let mut data = [0u8; 20];
+        data[0..4].copy_from_slice(&key.0.to_le_bytes());
+        data[4..6].copy_from_slice(&key.1.to_le_bytes());
+        data[8] = EVENT_ARG_TAG_STRING;
+
+        // value u64 stores StrRef: off(u32) + len(u16) + pad(u16)
+        data[12..16].copy_from_slice(&value.0.to_le_bytes());
+        data[16..18].copy_from_slice(&value.1.to_le_bytes());
+        data
+    }
+
+    fn build_move_notify(frame: u16, emits: (u32, u16)) -> [u8; 12] {
+        let mut data = [0u8; 12];
+        data[0..2].copy_from_slice(&frame.to_le_bytes());
+        data[4..8].copy_from_slice(&emits.0.to_le_bytes());
+        data[8..10].copy_from_slice(&emits.1.to_le_bytes());
+        data
+    }
+
+    fn build_move_resource_cost(name: (u32, u16), amount: u16) -> [u8; 12] {
+        let mut data = [0u8; 12];
+        data[0..4].copy_from_slice(&name.0.to_le_bytes());
+        data[4..6].copy_from_slice(&name.1.to_le_bytes());
+        data[8..10].copy_from_slice(&amount.to_le_bytes());
+        data
+    }
+
+    fn build_move_resource_precondition(name: (u32, u16), min: u16, max: u16) -> [u8; 12] {
+        let mut data = [0u8; 12];
+        data[0..4].copy_from_slice(&name.0.to_le_bytes());
+        data[4..6].copy_from_slice(&name.1.to_le_bytes());
+        data[8..10].copy_from_slice(&min.to_le_bytes());
+        data[10..12].copy_from_slice(&max.to_le_bytes());
+        data
+    }
+
+    fn build_move_resource_delta(name: (u32, u16), delta: i32, trigger: u8) -> [u8; 16] {
+        let mut data = [0u8; 16];
+        data[0..4].copy_from_slice(&name.0.to_le_bytes());
+        data[4..6].copy_from_slice(&name.1.to_le_bytes());
+        data[8..12].copy_from_slice(&delta.to_le_bytes());
+        data[12] = trigger;
+        data
+    }
+
+    #[test]
+    fn typed_views_optional_sections_roundtrip_minimal_pack() {
+        fn align_up(v: u32, align: u32) -> u32 {
+            if align <= 1 {
+                return v;
+            }
+            let mask = align - 1;
+            (v + mask) & !mask
+        }
+
+        fn pad_to(data: &mut std::vec::Vec<u8>, off: u32) {
+            assert!(data.len() <= off as usize);
+            data.resize(off as usize, 0);
+        }
+
+        // String table layout:
+        // 0: "heat" (4)
+        // 4: "vfx.hit_sparks" (14)
+        // 18: "strength" (8)
+        // 26: "light" (5)
+        let string_data = b"heatvfx.hit_sparksstrengthlight";
+        assert_eq!(string_data.len(), 31);
+
+        let heat = (0u32, 4u16);
+        let hit_sparks = (4u32, 14u16);
+        let strength = (18u32, 8u16);
+        let light = (26u32, 5u16);
+
+        // Section order (10 sections) for this test:
+        // STRING_TABLE, MOVES, MOVE_EXTRAS, RESOURCE_DEFS, EVENT_EMITS, EVENT_ARGS,
+        // MOVE_NOTIFIES, MOVE_RESOURCE_COSTS, MOVE_RESOURCE_PRECONDITIONS, MOVE_RESOURCE_DELTAS
+        let section_count = 10u32;
+        let section_headers_bytes = section_count as usize * SECTION_HEADER_SIZE;
+        let data_start = (HEADER_SIZE + section_headers_bytes) as u32;
+
+        let string_off = data_start;
+        let string_len = string_data.len() as u32;
+
+        let moves_off = align_up(string_off + string_len, 4);
+        let moves_len = 32u32;
+
+        let extras_off = align_up(moves_off + moves_len, 4);
+        let extras_len = 56u32;
+
+        let res_off = align_up(extras_off + extras_len, 4);
+        let res_len = 12u32;
+
+        let emits_off = align_up(res_off + res_len, 4);
+        let emits_len = 16u32;
+
+        let args_off = align_up(emits_off + emits_len, 4);
+        let args_len = 20u32;
+
+        let notifies_off = align_up(args_off + args_len, 4);
+        let notifies_len = 12u32;
+
+        let costs_off = align_up(notifies_off + notifies_len, 4);
+        let costs_len = 12u32;
+
+        let pre_off = align_up(costs_off + costs_len, 4);
+        let pre_len = 12u32;
+
+        let deltas_off = align_up(pre_off + pre_len, 4);
+        let deltas_len = 16u32;
+
+        let total_len = deltas_off + deltas_len;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+
+        data.extend_from_slice(&build_section_header(
+            SECTION_STRING_TABLE,
+            string_off,
+            string_len,
+            1,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVES,
+            moves_off,
+            moves_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_EXTRAS,
+            extras_off,
+            extras_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_RESOURCE_DEFS,
+            res_off,
+            res_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_EVENT_EMITS,
+            emits_off,
+            emits_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_EVENT_ARGS,
+            args_off,
+            args_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_NOTIFIES,
+            notifies_off,
+            notifies_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_RESOURCE_COSTS,
+            costs_off,
+            costs_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_RESOURCE_PRECONDITIONS,
+            pre_off,
+            pre_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_RESOURCE_DELTAS,
+            deltas_off,
+            deltas_len,
+            4,
+        ));
+
+        // STRING_TABLE
+        pad_to(&mut data, string_off);
+        data.extend_from_slice(string_data);
+
+        // MOVES (one placeholder move)
+        pad_to(&mut data, moves_off);
+        data.extend_from_slice(&build_move_record(
+            0,        // move_id
+            KEY_NONE, // mesh_key
+            KEY_NONE, // keyframes_key
+            0,        // move_type
+            0,        // trigger
+            0,        // guard
+            0,        // flags
+            0,        // startup
+            0,        // active
+            0,        // recovery
+            0,        // total
+            0,        // damage
+            0,        // hitstun
+            0,        // blockstun
+            0,        // hitstop
+            0,        // hit_windows_off
+            0,        // hit_windows_len
+            0,        // hurt_windows_off
+            0,        // hurt_windows_len
+        ));
+
+        // MOVE_EXTRAS (one record)
+        pad_to(&mut data, extras_off);
+        data.extend_from_slice(&build_move_extras_record(
+            (0, 0), // on_use emits
+            (0, 1), // on_hit emits -> EVENT_EMITS[0]
+            (0, 0), // on_block emits
+            (0, 1), // notifies -> MOVE_NOTIFIES[0]
+            (0, 1), // costs -> MOVE_RESOURCE_COSTS[0]
+            (0, 1), // preconditions -> MOVE_RESOURCE_PRECONDITIONS[0]
+            (0, 1), // deltas -> MOVE_RESOURCE_DELTAS[0]
+        ));
+
+        // RESOURCE_DEFS
+        pad_to(&mut data, res_off);
+        data.extend_from_slice(&build_resource_def(heat, 0, 10));
+
+        // EVENT_EMITS (one)
+        pad_to(&mut data, emits_off);
+        data.extend_from_slice(&build_event_emit(hit_sparks, (0, 1)));
+
+        // EVENT_ARGS (one)
+        pad_to(&mut data, args_off);
+        data.extend_from_slice(&build_event_arg_string(strength, light));
+
+        // MOVE_NOTIFIES (one) -> re-emit the same emit for simplicity
+        pad_to(&mut data, notifies_off);
+        data.extend_from_slice(&build_move_notify(7, (0, 1)));
+
+        // MOVE_RESOURCE_COSTS
+        pad_to(&mut data, costs_off);
+        data.extend_from_slice(&build_move_resource_cost(heat, 1));
+
+        // MOVE_RESOURCE_PRECONDITIONS (min=1, max=none)
+        pad_to(&mut data, pre_off);
+        data.extend_from_slice(&build_move_resource_precondition(heat, 1, OPT_U16_NONE));
+
+        // MOVE_RESOURCE_DELTAS
+        pad_to(&mut data, deltas_off);
+        data.extend_from_slice(&build_move_resource_delta(
+            heat,
+            -1,
+            RESOURCE_DELTA_TRIGGER_ON_USE,
+        ));
+
+        assert_eq!(data.len(), total_len as usize);
+
+        let pack = PackView::parse(&data).expect("should parse pack with optional sections");
+
+        let resources = pack.resource_defs().expect("resource defs view");
+        assert_eq!(resources.len(), 1);
+        let r0 = resources.get(0).expect("resource 0");
+        assert_eq!(pack.string(r0.name_off(), r0.name_len()), Some("heat"));
+        assert_eq!(r0.start(), 0);
+        assert_eq!(r0.max(), 10);
+
+        let extras = pack.move_extras().expect("move extras view");
+        let ex0 = extras.get(0).expect("extras 0");
+        let (hit_off, hit_len) = ex0.on_hit_emits();
+        assert_eq!(hit_off, 0);
+        assert_eq!(hit_len, 1);
+
+        let emits = pack.event_emits().expect("event emits view");
+        let emit0 = emits.get_at(hit_off, 0).expect("emit 0");
+        assert_eq!(
+            pack.string(emit0.id_off(), emit0.id_len()),
+            Some("vfx.hit_sparks")
+        );
+
+        let args = pack.event_args().expect("event args view");
+        let (emit_args_off, emit_args_len) = emit0.args();
+        assert_eq!(emit_args_off, 0);
+        assert_eq!(emit_args_len, 1);
+        let arg0 = args.get_at(emit_args_off, 0).expect("arg 0");
+        assert_eq!(
+            pack.string(arg0.key_off(), arg0.key_len()),
+            Some("strength")
+        );
+        let (val_off, val_len) = arg0.value_string().expect("string value");
+        assert_eq!(pack.string(val_off, val_len), Some("light"));
+
+        let notifies = pack.move_notifies().expect("move notifies view");
+        let (notify_off, notify_len) = ex0.notifies();
+        assert_eq!(notify_len, 1);
+        let n0 = notifies.get_at(notify_off, 0).expect("notify 0");
+        assert_eq!(n0.frame(), 7);
+        let (n_emit_off, n_emit_len) = n0.emits();
+        assert_eq!(n_emit_len, 1);
+        let n_emit0 = emits.get_at(n_emit_off, 0).expect("notify emit 0");
+        assert_eq!(
+            pack.string(n_emit0.id_off(), n_emit0.id_len()),
+            Some("vfx.hit_sparks")
+        );
+
+        let costs = pack.move_resource_costs().expect("resource costs view");
+        let (cost_off, cost_len) = ex0.resource_costs();
+        assert_eq!(cost_len, 1);
+        let c0 = costs.get_at(cost_off, 0).expect("cost 0");
+        assert_eq!(pack.string(c0.name_off(), c0.name_len()), Some("heat"));
+        assert_eq!(c0.amount(), 1);
+
+        let pre = pack
+            .move_resource_preconditions()
+            .expect("resource preconditions view");
+        let (pre_off2, pre_len2) = ex0.resource_preconditions();
+        assert_eq!(pre_len2, 1);
+        let p0 = pre.get_at(pre_off2, 0).expect("pre 0");
+        assert_eq!(pack.string(p0.name_off(), p0.name_len()), Some("heat"));
+        assert_eq!(p0.min(), Some(1));
+        assert_eq!(p0.max(), None);
+
+        let deltas = pack.move_resource_deltas().expect("resource deltas view");
+        let (d_off, d_len) = ex0.resource_deltas();
+        assert_eq!(d_len, 1);
+        let d0 = deltas.get_at(d_off, 0).expect("delta 0");
+        assert_eq!(pack.string(d0.name_off(), d0.name_len()), Some("heat"));
+        assert_eq!(d0.delta(), -1);
+        assert_eq!(d0.trigger(), RESOURCE_DELTA_TRIGGER_ON_USE);
     }
 }

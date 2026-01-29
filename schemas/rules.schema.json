@@ -12,6 +12,17 @@
         "$ref": "#/$defs/ApplyRule"
       }
     },
+    "registry": {
+      "description": "Optional registry of resources and events used by this project/character.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RulesRegistry"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "validate": {
       "description": "Rules that enforce constraints on matching moves.",
       "type": "array",
@@ -48,6 +59,126 @@
       "required": [
         "match",
         "set"
+      ]
+    },
+    "EventArgSpec": {
+      "description": "Schema for a single event argument.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "bool"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "i64"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            },
+            "min": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            },
+            "type": {
+              "type": "string",
+              "const": "f32"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "string"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "enum"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "values"
+          ]
+        }
+      ]
+    },
+    "EventContext": {
+      "description": "Allowed contexts for event usage.",
+      "type": "string",
+      "enum": [
+        "on_use",
+        "on_hit",
+        "on_block",
+        "notify"
+      ]
+    },
+    "EventDefinition": {
+      "description": "Definition for a registered event.",
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Flat argument list (no nested objects/arrays).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EventArgSpec"
+          },
+          "default": {}
+        },
+        "contexts": {
+          "description": "Contexts this event may appear in.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EventContext"
+          }
+        }
+      },
+      "required": [
+        "contexts"
       ]
     },
     "MatchSpec": {
@@ -107,6 +238,28 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "RulesRegistry": {
+      "description": "Registry of resource IDs and event definitions.",
+      "type": "object",
+      "properties": {
+        "events": {
+          "description": "Known event definitions keyed by event ID.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EventDefinition"
+          },
+          "default": {}
+        },
+        "resources": {
+          "description": "Known resource IDs (e.g. \"heat\", \"ammo\").",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

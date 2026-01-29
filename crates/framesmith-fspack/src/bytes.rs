@@ -32,6 +32,25 @@ pub fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
     ]))
 }
 
+/// Read a little-endian u64 from `data` at `offset`.
+/// Returns `None` if `offset + 8 > data.len()`.
+#[inline]
+pub fn read_u64_le(data: &[u8], offset: usize) -> Option<u64> {
+    if offset.checked_add(8)? > data.len() {
+        return None;
+    }
+    Some(u64::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+        data[offset + 4],
+        data[offset + 5],
+        data[offset + 6],
+        data[offset + 7],
+    ]))
+}
+
 /// Read a little-endian i16 from `data` at `offset`.
 /// Returns `None` if `offset + 2 > data.len()`.
 #[inline]
@@ -40,6 +59,36 @@ pub fn read_i16_le(data: &[u8], offset: usize) -> Option<i16> {
         return None;
     }
     Some(i16::from_le_bytes([data[offset], data[offset + 1]]))
+}
+
+/// Read a little-endian i32 from `data` at `offset`.
+/// Returns `None` if `offset + 4 > data.len()`.
+#[inline]
+pub fn read_i32_le(data: &[u8], offset: usize) -> Option<i32> {
+    if offset.checked_add(4)? > data.len() {
+        return None;
+    }
+    Some(i32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ]))
+}
+
+/// Read a little-endian i64 from `data` at `offset`.
+/// Returns `None` if `offset + 8 > data.len()`.
+#[inline]
+pub fn read_i64_le(data: &[u8], offset: usize) -> Option<i64> {
+    Some(read_u64_le(data, offset)? as i64)
+}
+
+/// Read a little-endian f32 from `data` at `offset`.
+/// Returns `None` if `offset + 4 > data.len()`.
+#[inline]
+pub fn read_f32_le(data: &[u8], offset: usize) -> Option<f32> {
+    let bits = read_u32_le(data, offset)?;
+    Some(f32::from_bits(bits))
 }
 
 #[cfg(test)]

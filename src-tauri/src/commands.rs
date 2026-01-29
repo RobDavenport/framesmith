@@ -186,8 +186,59 @@ pub fn save_move(characters_dir: String, character_id: String, mv: Move) -> Resu
         return Err("Invalid move input".to_string());
     }
 
-    let move_path = Path::new(&characters_dir)
-        .join(&character_id)
+    let char_path = Path::new(&characters_dir).join(&character_id);
+
+    // Load rules for registry-aware validation.
+    let project_rules_path = project_rules_path(&characters_dir);
+    let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
+        format!(
+            "Failed to load project rules file {}: {}",
+            project_rules_path.display(),
+            e
+        )
+    })?;
+
+    let character_rules_path = char_path.join("rules.json");
+    let character_rules = crate::rules::load_rules_file(&character_rules_path).map_err(|e| {
+        format!(
+            "Failed to load character rules file {}: {}",
+            character_rules_path.display(),
+            e
+        )
+    })?;
+
+    // Load character.json for resource validation.
+    let char_file = char_path.join("character.json");
+    let char_content = fs::read_to_string(&char_file)
+        .map_err(|e| format!("Failed to read {}: {}", char_file.display(), e))?;
+    let character: Character = serde_json::from_str(&char_content)
+        .map_err(|e| format!("Invalid {}: {}", char_file.display(), e))?;
+
+    let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
+    let mut issues = crate::rules::validate_character_resources_with_registry(&character, &registry);
+    for issue in issues.iter_mut() {
+        issue.field = format!("character.{}", issue.field);
+    }
+
+    let move_issues = crate::rules::validate_move_with_rules(
+        project_rules.as_ref(),
+        character_rules.as_ref(),
+        &mv,
+    )
+    .map_err(|e| format!("Failed to validate move '{}': {}", mv.input, e))?;
+    issues.extend(move_issues);
+
+    let errors: Vec<String> = issues
+        .into_iter()
+        .filter(|i| i.severity == crate::rules::Severity::Error)
+        .map(|i| format!("{}: {}", i.field, i.message))
+        .collect();
+
+    if !errors.is_empty() {
+        return Err(format!("Validation errors: {}", errors.join("; ")));
+    }
+
+    let move_path = char_path
         .join("moves")
         .join(format!("{}.json", mv.input));
 
@@ -228,6 +279,16 @@ pub fn export_character(
     })?;
 
     let mut error_messages = Vec::new();
+
+    let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
+    let char_issues = crate::rules::validate_character_resources_with_registry(&character, &registry);
+    error_messages.extend(
+        char_issues
+            .into_iter()
+            .filter(|i| i.severity == crate::rules::Severity::Error)
+            .map(|i| format!("character {}: {}", i.field, i.message)),
+    );
+
     let mut resolved_moves = Vec::with_capacity(base_moves.len());
     for mv in base_moves {
         let issues = crate::rules::validate_move_with_rules(
@@ -424,6 +485,7 @@ pub fn create_character(
         jump_duration: 45,
         dash_distance: 80,
         dash_duration: 18,
+        resources: vec![],
     };
 
     let char_json = serde_json::to_string_pretty(&character)
@@ -623,6 +685,7 @@ pub fn create_move(
         on_use: None,
         on_hit: None,
         on_block: None,
+        notifies: vec![],
         advanced_hurtboxes: None,
     };
 

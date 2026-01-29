@@ -7,12 +7,42 @@ use crate::schema::{FrameHitbox, GuardType, Move, Rect};
 use std::collections::HashMap;
 
 use super::zx_fspack_format::{
-    to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, FLAGS_RESERVED, HEADER_SIZE,
+    to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
     HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_RECORD_SIZE, SECTION_CANCELS_U16,
-    SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
-    SECTION_MESH_KEYS, SECTION_MOVES, SECTION_SHAPES, SECTION_STRING_TABLE, SHAPE12_SIZE,
-    SHAPE_KIND_AABB, STRREF_SIZE, VERSION,
+    SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS,
+    SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVES,
+    SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
+    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
+    SECTION_SHAPES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
 };
+
+fn checked_u16(value: usize, what: &str) -> Result<u16, String> {
+    u16::try_from(value).map_err(|_| format!("{} overflows u16: {}", what, value))
+}
+
+fn checked_u32(value: usize, what: &str) -> Result<u32, String> {
+    u32::try_from(value).map_err(|_| format!("{} overflows u32: {}", what, value))
+}
+
+fn align_up(value: usize, align: u32) -> Result<usize, String> {
+    if align == 0 {
+        return Err("alignment must be non-zero".to_string());
+    }
+    if !align.is_power_of_two() {
+        return Err(format!("alignment must be power of two, got {}", align));
+    }
+
+    let align = align as usize;
+    if align == 1 {
+        return Ok(value);
+    }
+
+    let mask = align - 1;
+    let v = value
+        .checked_add(mask)
+        .ok_or_else(|| "align_up overflow".to_string())?;
+    Ok(v & !mask)
+}
 
 // =============================================================================
 // String Table
@@ -41,16 +71,16 @@ impl StringTable {
     ///
     /// If the string was already interned, returns the existing location.
     /// Otherwise, appends the string to the data and records its location.
-    pub fn intern(&mut self, s: &str) -> (u32, u16) {
+    pub fn intern(&mut self, s: &str) -> Result<(u32, u16), String> {
         if let Some(&loc) = self.index.get(s) {
-            return loc;
+            return Ok(loc);
         }
 
-        let offset = self.data.len() as u32;
-        let len = s.len() as u16;
+        let offset = checked_u32(self.data.len(), "string table offset")?;
+        let len = checked_u16(s.len(), "string table string length")?;
         self.data.extend_from_slice(s.as_bytes());
         self.index.insert(s.to_string(), (offset, len));
-        (offset, len)
+        Ok((offset, len))
     }
 
     /// Consume the string table and return the raw byte data.
@@ -153,7 +183,7 @@ fn pack_hit_window(
     buf[11] = blockstun; // blockstun
     buf[12] = hitstop; // hitstop
     buf[13] = guard; // guard
-    // bytes 14-23 are reserved/padding (already zeroed)
+                     // bytes 14-23 are reserved/padding (already zeroed)
 
     buf
 }
@@ -175,7 +205,7 @@ fn pack_hurt_window(hb: &FrameHitbox, shapes_off: u32) -> [u8; HURT_WINDOW12_SIZ
     buf[2..6].copy_from_slice(&shapes_off.to_le_bytes()); // shape_off
     buf[6..8].copy_from_slice(&1u16.to_le_bytes()); // shape_count = 1
     buf[8..10].copy_from_slice(&0u16.to_le_bytes()); // flags = 0 for v1
-    // bytes 10-11 are reserved/padding (already zeroed)
+                                                     // bytes 10-11 are reserved/padding (already zeroed)
 
     buf
 }
@@ -252,9 +282,10 @@ fn pack_move_record(
     buf[11] = mv.active; // active
     buf[12] = mv.recovery; // recovery
     buf[13] = 0; // reserved
-    let total = mv.total.map(|t| t as u16).unwrap_or_else(|| {
-        (mv.startup as u16) + (mv.active as u16) + (mv.recovery as u16)
-    });
+    let total = mv
+        .total
+        .map(|t| t as u16)
+        .unwrap_or_else(|| (mv.startup as u16) + (mv.active as u16) + (mv.recovery as u16));
     buf[14..16].copy_from_slice(&total.to_le_bytes()); // total
     buf[16..18].copy_from_slice(&mv.damage.to_le_bytes()); // damage
     buf[18] = mv.hitstun; // hitstun
@@ -289,7 +320,10 @@ pub struct PackedMoveData {
 ///
 /// The `anim_to_index` map provides indices into the MESH_KEYS/KEYFRAMES_KEYS arrays
 /// for each animation name. If None, all moves use KEY_NONE for asset references.
-pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) -> PackedMoveData {
+pub fn pack_moves(
+    moves: &[Move],
+    anim_to_index: Option<&HashMap<String, u16>>,
+) -> Result<PackedMoveData, String> {
     let mut packed = PackedMoveData {
         moves: Vec::new(),
         shapes: Vec::new(),
@@ -299,7 +333,7 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
     };
 
     for (idx, mv) in moves.iter().enumerate() {
-        let move_id = idx as u16;
+        let move_id = checked_u16(idx, "move_id")?;
 
         // Look up animation index if map is provided
         let anim_index = anim_to_index
@@ -313,12 +347,12 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
             .unwrap_or(KEY_NONE);
 
         // Track offsets before adding this move's data
-        let hit_windows_off = packed.hit_windows.len() as u32;
-        let hurt_windows_off = packed.hurt_windows.len() as u16; // u16 for compact layout
+        let hit_windows_off = checked_u32(packed.hit_windows.len(), "hit_windows_off")?;
+        let hurt_windows_off = checked_u16(packed.hurt_windows.len(), "hurt_windows_off")?; // u16 for compact layout
 
         // Pack hitboxes -> shapes + hit_windows
         for hb in &mv.hitboxes {
-            let shape_off = packed.shapes.len() as u32;
+            let shape_off = checked_u32(packed.shapes.len(), "shape_off")?;
             packed.shapes.extend_from_slice(&pack_shape(&hb.r#box));
             packed.hit_windows.extend_from_slice(&pack_hit_window(
                 hb,
@@ -333,7 +367,7 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
 
         // Pack hurtboxes -> shapes + hurt_windows
         for hb in &mv.hurtboxes {
-            let shape_off = packed.shapes.len() as u32;
+            let shape_off = checked_u32(packed.shapes.len(), "shape_off")?;
             packed.shapes.extend_from_slice(&pack_shape(&hb.r#box));
             packed
                 .hurt_windows
@@ -341,8 +375,8 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
         }
 
         // Calculate lengths
-        let hit_windows_len = mv.hitboxes.len() as u16;
-        let hurt_windows_len = mv.hurtboxes.len() as u16;
+        let hit_windows_len = checked_u16(mv.hitboxes.len(), "hit_windows_len")?;
+        let hurt_windows_len = checked_u16(mv.hurtboxes.len(), "hurt_windows_len")?;
 
         // Pack move record - mesh_key and keyframes_key both use the same animation index
         packed.moves.extend_from_slice(&pack_move_record(
@@ -357,7 +391,7 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
         ));
     }
 
-    packed
+    Ok(packed)
 }
 
 // =============================================================================
@@ -378,7 +412,7 @@ pub type StrRef = (u32, u16);
 pub fn build_asset_keys(
     char_data: &CharacterData,
     strings: &mut StringTable,
-) -> (Vec<StrRef>, Vec<StrRef>) {
+) -> Result<(Vec<StrRef>, Vec<StrRef>), String> {
     // Collect unique animation names
     let mut animations: Vec<&str> = char_data
         .moves
@@ -400,19 +434,16 @@ pub fn build_asset_keys(
             let mesh_key = format!("{}.{}", character_id, anim);
             strings.intern(&mesh_key)
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Build keyframes keys: just the animation name
     let keyframes_keys: Vec<StrRef> = animations
         .iter()
         .map(|anim| strings.intern(anim))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
-    (mesh_keys, keyframes_keys)
+    Ok((mesh_keys, keyframes_keys))
 }
-
-/// Number of sections in the FSPK format (v1)
-const SECTION_COUNT: u32 = 8;
 
 /// Write a string reference (StrRef) to the buffer.
 ///
@@ -421,6 +452,24 @@ fn write_strref(buf: &mut Vec<u8>, strref: StrRef) {
     write_u32_le(buf, strref.0); // offset
     write_u16_le(buf, strref.1); // length
     write_u16_le(buf, 0); // padding
+}
+
+fn write_range(buf: &mut Vec<u8>, off: u32, len: u16) {
+    write_u32_le(buf, off);
+    write_u16_le(buf, len);
+    write_u16_le(buf, 0);
+}
+
+fn write_i32_le(buf: &mut Vec<u8>, value: i32) {
+    buf.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_i64_le(buf: &mut Vec<u8>, value: i64) {
+    buf.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_u64_le(buf: &mut Vec<u8>, value: u64) {
+    buf.extend_from_slice(&value.to_le_bytes());
 }
 
 /// Write a section header to the buffer.
@@ -439,7 +488,7 @@ fn write_section_header(buf: &mut Vec<u8>, kind: u32, offset: u32, length: u32, 
 pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     // Step 1: Build string table and asset keys
     let mut strings = StringTable::new();
-    let (mesh_keys, keyframes_keys) = build_asset_keys(char_data, &mut strings);
+    let (mesh_keys, keyframes_keys) = build_asset_keys(char_data, &mut strings)?;
 
     // Build animation-to-index map for pack_moves
     // The keys are sorted alphabetically, so we can create the map from the sorted animations
@@ -452,18 +501,364 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     animations.sort();
     animations.dedup();
 
-    let anim_to_index: HashMap<String, u16> = animations
-        .iter()
-        .enumerate()
-        .map(|(i, anim)| (anim.to_string(), i as u16))
-        .collect();
+    let mut anim_to_index: HashMap<String, u16> = HashMap::new();
+    for (i, anim) in animations.iter().enumerate() {
+        let idx = checked_u16(i, "animation index")?;
+        anim_to_index.insert((*anim).to_string(), idx);
+    }
 
     // Step 2: Pack moves with animation indices
-    let packed = pack_moves(&char_data.moves, Some(&anim_to_index));
+    let packed = pack_moves(&char_data.moves, Some(&anim_to_index))?;
 
-    // Step 3: Build section data
-    let string_table_data = strings.into_bytes();
+    // Step 3: Pack optional sections (resources, events, notifies)
+    const OPT_U16_NONE: u16 = u16::MAX;
+    const EVENT_ARG_TAG_BOOL: u8 = 0;
+    const EVENT_ARG_TAG_I64: u8 = 1;
+    const EVENT_ARG_TAG_F32: u8 = 2;
+    const EVENT_ARG_TAG_STRING: u8 = 3;
+    const RESOURCE_DELTA_TRIGGER_ON_USE: u8 = 0;
+    const RESOURCE_DELTA_TRIGGER_ON_HIT: u8 = 1;
+    const RESOURCE_DELTA_TRIGGER_ON_BLOCK: u8 = 2;
 
+    let mut resource_defs_data: Vec<u8> = Vec::new();
+    if !char_data.character.resources.is_empty() {
+        for res in &char_data.character.resources {
+            let name = strings.intern(&res.name)?;
+            write_strref(&mut resource_defs_data, name);
+            write_u16_le(&mut resource_defs_data, res.start);
+            write_u16_le(&mut resource_defs_data, res.max);
+        }
+    }
+
+    let mut event_emits_data: Vec<u8> = Vec::new();
+    let mut event_args_data: Vec<u8> = Vec::new();
+    let mut move_notifies_data: Vec<u8> = Vec::new();
+    let mut move_resource_costs_data: Vec<u8> = Vec::new();
+    let mut move_resource_preconditions_data: Vec<u8> = Vec::new();
+    let mut move_resource_deltas_data: Vec<u8> = Vec::new();
+
+    // MOVE_EXTRAS is always parallel to MOVES when present.
+    let mut move_extras_records: Vec<[(u32, u16); 7]> = Vec::with_capacity(char_data.moves.len());
+
+    let mut any_move_extras = false;
+
+    for mv in &char_data.moves {
+        let on_use_events = mv
+            .on_use
+            .as_ref()
+            .map(|x| x.events.as_slice())
+            .unwrap_or(&[]);
+        let on_hit_events = mv
+            .on_hit
+            .as_ref()
+            .map(|x| x.events.as_slice())
+            .unwrap_or(&[]);
+        let on_block_events = mv
+            .on_block
+            .as_ref()
+            .map(|x| x.events.as_slice())
+            .unwrap_or(&[]);
+
+        let on_use_emits_off = checked_u32(event_emits_data.len(), "on_use_emits_off")?;
+        let on_use_emits_len = checked_u16(on_use_events.len(), "on_use_emits_len")?;
+        for emit in on_use_events {
+            let args_off = checked_u32(event_args_data.len(), "event_args_off")?;
+            let args_len = checked_u16(emit.args.len(), "event_args_len")?;
+
+            for (k, v) in &emit.args {
+                let key = strings.intern(k)?;
+                write_strref(&mut event_args_data, key);
+
+                match v {
+                    crate::schema::EventArgValue::Bool(b) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_BOOL);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, if *b { 1 } else { 0 });
+                    }
+                    crate::schema::EventArgValue::I64(i) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_I64);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_i64_le(&mut event_args_data, *i);
+                    }
+                    crate::schema::EventArgValue::F32(f) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_F32);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, f.to_bits() as u64);
+                    }
+                    crate::schema::EventArgValue::String(s) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_STRING);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        let vref = strings.intern(s)?;
+                        write_u32_le(&mut event_args_data, vref.0);
+                        write_u16_le(&mut event_args_data, vref.1);
+                        write_u16_le(&mut event_args_data, 0);
+                    }
+                }
+            }
+
+            let id = strings.intern(&emit.id)?;
+            write_strref(&mut event_emits_data, id);
+            write_range(&mut event_emits_data, args_off, args_len);
+        }
+
+        let on_hit_emits_off = checked_u32(event_emits_data.len(), "on_hit_emits_off")?;
+        let on_hit_emits_len = checked_u16(on_hit_events.len(), "on_hit_emits_len")?;
+        for emit in on_hit_events {
+            let args_off = checked_u32(event_args_data.len(), "event_args_off")?;
+            let args_len = checked_u16(emit.args.len(), "event_args_len")?;
+
+            for (k, v) in &emit.args {
+                let key = strings.intern(k)?;
+                write_strref(&mut event_args_data, key);
+
+                match v {
+                    crate::schema::EventArgValue::Bool(b) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_BOOL);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, if *b { 1 } else { 0 });
+                    }
+                    crate::schema::EventArgValue::I64(i) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_I64);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_i64_le(&mut event_args_data, *i);
+                    }
+                    crate::schema::EventArgValue::F32(f) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_F32);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, f.to_bits() as u64);
+                    }
+                    crate::schema::EventArgValue::String(s) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_STRING);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        let vref = strings.intern(s)?;
+                        write_u32_le(&mut event_args_data, vref.0);
+                        write_u16_le(&mut event_args_data, vref.1);
+                        write_u16_le(&mut event_args_data, 0);
+                    }
+                }
+            }
+
+            let id = strings.intern(&emit.id)?;
+            write_strref(&mut event_emits_data, id);
+            write_range(&mut event_emits_data, args_off, args_len);
+        }
+
+        let on_block_emits_off = checked_u32(event_emits_data.len(), "on_block_emits_off")?;
+        let on_block_emits_len = checked_u16(on_block_events.len(), "on_block_emits_len")?;
+        for emit in on_block_events {
+            let args_off = checked_u32(event_args_data.len(), "event_args_off")?;
+            let args_len = checked_u16(emit.args.len(), "event_args_len")?;
+
+            for (k, v) in &emit.args {
+                let key = strings.intern(k)?;
+                write_strref(&mut event_args_data, key);
+
+                match v {
+                    crate::schema::EventArgValue::Bool(b) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_BOOL);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, if *b { 1 } else { 0 });
+                    }
+                    crate::schema::EventArgValue::I64(i) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_I64);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_i64_le(&mut event_args_data, *i);
+                    }
+                    crate::schema::EventArgValue::F32(f) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_F32);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        write_u64_le(&mut event_args_data, f.to_bits() as u64);
+                    }
+                    crate::schema::EventArgValue::String(s) => {
+                        write_u8(&mut event_args_data, EVENT_ARG_TAG_STRING);
+                        write_u8(&mut event_args_data, 0);
+                        write_u16_le(&mut event_args_data, 0);
+                        let vref = strings.intern(s)?;
+                        write_u32_le(&mut event_args_data, vref.0);
+                        write_u16_le(&mut event_args_data, vref.1);
+                        write_u16_le(&mut event_args_data, 0);
+                    }
+                }
+            }
+
+            let id = strings.intern(&emit.id)?;
+            write_strref(&mut event_emits_data, id);
+            write_range(&mut event_emits_data, args_off, args_len);
+        }
+
+        // Move notifies
+        let notifies_off = checked_u32(move_notifies_data.len(), "notifies_off")?;
+        let notifies_len = checked_u16(mv.notifies.len(), "notifies_len")?;
+        for notify in &mv.notifies {
+            let notify_emits_off = checked_u32(event_emits_data.len(), "notify_emits_off")?;
+            let notify_emits_len = checked_u16(notify.events.len(), "notify_emits_len")?;
+
+            for emit in &notify.events {
+                let args_off = checked_u32(event_args_data.len(), "event_args_off")?;
+                let args_len = checked_u16(emit.args.len(), "event_args_len")?;
+
+                for (k, v) in &emit.args {
+                    let key = strings.intern(k)?;
+                    write_strref(&mut event_args_data, key);
+
+                    match v {
+                        crate::schema::EventArgValue::Bool(b) => {
+                            write_u8(&mut event_args_data, EVENT_ARG_TAG_BOOL);
+                            write_u8(&mut event_args_data, 0);
+                            write_u16_le(&mut event_args_data, 0);
+                            write_u64_le(&mut event_args_data, if *b { 1 } else { 0 });
+                        }
+                        crate::schema::EventArgValue::I64(i) => {
+                            write_u8(&mut event_args_data, EVENT_ARG_TAG_I64);
+                            write_u8(&mut event_args_data, 0);
+                            write_u16_le(&mut event_args_data, 0);
+                            write_i64_le(&mut event_args_data, *i);
+                        }
+                        crate::schema::EventArgValue::F32(f) => {
+                            write_u8(&mut event_args_data, EVENT_ARG_TAG_F32);
+                            write_u8(&mut event_args_data, 0);
+                            write_u16_le(&mut event_args_data, 0);
+                            write_u64_le(&mut event_args_data, f.to_bits() as u64);
+                        }
+                        crate::schema::EventArgValue::String(s) => {
+                            write_u8(&mut event_args_data, EVENT_ARG_TAG_STRING);
+                            write_u8(&mut event_args_data, 0);
+                            write_u16_le(&mut event_args_data, 0);
+                            let vref = strings.intern(s)?;
+                            write_u32_le(&mut event_args_data, vref.0);
+                            write_u16_le(&mut event_args_data, vref.1);
+                            write_u16_le(&mut event_args_data, 0);
+                        }
+                    }
+                }
+
+                let id = strings.intern(&emit.id)?;
+                write_strref(&mut event_emits_data, id);
+                write_range(&mut event_emits_data, args_off, args_len);
+            }
+
+            // MoveNotify12: frame(u16) + pad(u16) + emits_off(u32) + emits_len(u16) + pad(u16)
+            write_u16_le(&mut move_notifies_data, notify.frame);
+            write_u16_le(&mut move_notifies_data, 0);
+            write_range(&mut move_notifies_data, notify_emits_off, notify_emits_len);
+        }
+
+        // Move resource costs (Cost::Resource only)
+        let costs_off = checked_u32(move_resource_costs_data.len(), "costs_off")?;
+        let mut costs_len: u16 = 0;
+        if let Some(costs) = &mv.costs {
+            for cost in costs {
+                if let crate::schema::Cost::Resource { name, amount } = cost {
+                    let rname = strings.intern(name)?;
+                    write_strref(&mut move_resource_costs_data, rname);
+                    write_u16_le(&mut move_resource_costs_data, *amount);
+                    write_u16_le(&mut move_resource_costs_data, 0);
+                    costs_len = costs_len
+                        .checked_add(1)
+                        .ok_or_else(|| "move resource costs count overflows u16".to_string())?;
+                }
+            }
+        }
+
+        // Move resource preconditions (Precondition::Resource only)
+        let pre_off = checked_u32(move_resource_preconditions_data.len(), "pre_off")?;
+        let mut pre_len: u16 = 0;
+        if let Some(preconditions) = &mv.preconditions {
+            for pre in preconditions {
+                if let crate::schema::Precondition::Resource { name, min, max } = pre {
+                    let rname = strings.intern(name)?;
+                    write_strref(&mut move_resource_preconditions_data, rname);
+                    write_u16_le(
+                        &mut move_resource_preconditions_data,
+                        min.unwrap_or(OPT_U16_NONE),
+                    );
+                    write_u16_le(
+                        &mut move_resource_preconditions_data,
+                        max.unwrap_or(OPT_U16_NONE),
+                    );
+                    pre_len = pre_len.checked_add(1).ok_or_else(|| {
+                        "move resource preconditions count overflows u16".to_string()
+                    })?;
+                }
+            }
+        }
+
+        // Move resource deltas (on_use/on_hit/on_block)
+        let deltas_off = checked_u32(move_resource_deltas_data.len(), "deltas_off")?;
+        let mut deltas_len: u16 = 0;
+        if let Some(on_use) = &mv.on_use {
+            for d in &on_use.resource_deltas {
+                let rname = strings.intern(&d.name)?;
+                write_strref(&mut move_resource_deltas_data, rname);
+                write_i32_le(&mut move_resource_deltas_data, d.delta);
+                write_u8(
+                    &mut move_resource_deltas_data,
+                    RESOURCE_DELTA_TRIGGER_ON_USE,
+                );
+                move_resource_deltas_data.extend_from_slice(&[0, 0, 0]);
+                deltas_len = deltas_len
+                    .checked_add(1)
+                    .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
+            }
+        }
+        if let Some(on_hit) = &mv.on_hit {
+            for d in &on_hit.resource_deltas {
+                let rname = strings.intern(&d.name)?;
+                write_strref(&mut move_resource_deltas_data, rname);
+                write_i32_le(&mut move_resource_deltas_data, d.delta);
+                write_u8(
+                    &mut move_resource_deltas_data,
+                    RESOURCE_DELTA_TRIGGER_ON_HIT,
+                );
+                move_resource_deltas_data.extend_from_slice(&[0, 0, 0]);
+                deltas_len = deltas_len
+                    .checked_add(1)
+                    .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
+            }
+        }
+        if let Some(on_block) = &mv.on_block {
+            for d in &on_block.resource_deltas {
+                let rname = strings.intern(&d.name)?;
+                write_strref(&mut move_resource_deltas_data, rname);
+                write_i32_le(&mut move_resource_deltas_data, d.delta);
+                write_u8(
+                    &mut move_resource_deltas_data,
+                    RESOURCE_DELTA_TRIGGER_ON_BLOCK,
+                );
+                move_resource_deltas_data.extend_from_slice(&[0, 0, 0]);
+                deltas_len = deltas_len
+                    .checked_add(1)
+                    .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
+            }
+        }
+
+        let record = [
+            (on_use_emits_off, on_use_emits_len),
+            (on_hit_emits_off, on_hit_emits_len),
+            (on_block_emits_off, on_block_emits_len),
+            (notifies_off, notifies_len),
+            (costs_off, costs_len),
+            (pre_off, pre_len),
+            (deltas_off, deltas_len),
+        ];
+        if record.iter().any(|r| r.1 != 0) {
+            any_move_extras = true;
+        }
+        move_extras_records.push(record);
+    }
+
+    // Step 4: Build section data
     // Mesh keys section: array of StrRef
     let mut mesh_keys_data = Vec::with_capacity(mesh_keys.len() * STRREF_SIZE);
     for strref in &mesh_keys {
@@ -476,111 +871,199 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         write_strref(&mut keyframes_keys_data, *strref);
     }
 
-    // Step 4: Calculate section offsets
-    // Layout: Header + Section Headers + Section Data
-    let header_and_sections_size = HEADER_SIZE + (SECTION_COUNT as usize * SECTION_HEADER_SIZE);
+    let mut move_extras_data: Vec<u8> = Vec::new();
+    if any_move_extras {
+        move_extras_data.reserve(move_extras_records.len() * 56);
+        for rec in &move_extras_records {
+            for (off, len) in rec {
+                write_range(&mut move_extras_data, *off, *len);
+            }
+        }
+    }
 
-    let mut current_offset = header_and_sections_size;
+    // Omit backing sections if they have no data.
+    if event_emits_data.is_empty() {
+        // If no emits, args are unreachable; omit for cleanliness.
+        event_args_data.clear();
+    }
+    if event_args_data.is_empty() {
+        // Keep empty args data.
+    }
+    if move_notifies_data.is_empty() {
+        // no-op
+    }
 
-    let string_table_off = current_offset as u32;
-    let string_table_len = string_table_data.len() as u32;
-    current_offset += string_table_data.len();
+    let string_table_data = strings.into_bytes();
 
-    let mesh_keys_off = current_offset as u32;
-    let mesh_keys_len = mesh_keys_data.len() as u32;
-    current_offset += mesh_keys_data.len();
+    struct SectionData {
+        kind: u32,
+        align: u32,
+        bytes: Vec<u8>,
+    }
 
-    let keyframes_keys_off = current_offset as u32;
-    let keyframes_keys_len = keyframes_keys_data.len() as u32;
-    current_offset += keyframes_keys_data.len();
+    let mut sections: Vec<SectionData> = Vec::new();
 
-    let moves_off = current_offset as u32;
-    let moves_len = packed.moves.len() as u32;
-    current_offset += packed.moves.len();
+    // Base v1 sections (always present, same order)
+    sections.push(SectionData {
+        kind: SECTION_STRING_TABLE,
+        align: 1,
+        bytes: string_table_data,
+    });
+    sections.push(SectionData {
+        kind: SECTION_MESH_KEYS,
+        align: 4,
+        bytes: mesh_keys_data,
+    });
+    sections.push(SectionData {
+        kind: SECTION_KEYFRAMES_KEYS,
+        align: 4,
+        bytes: keyframes_keys_data,
+    });
+    sections.push(SectionData {
+        kind: SECTION_MOVES,
+        align: 4,
+        bytes: packed.moves,
+    });
+    sections.push(SectionData {
+        kind: SECTION_HIT_WINDOWS,
+        align: 4,
+        bytes: packed.hit_windows,
+    });
+    sections.push(SectionData {
+        kind: SECTION_HURT_WINDOWS,
+        align: 4,
+        bytes: packed.hurt_windows,
+    });
+    sections.push(SectionData {
+        kind: SECTION_SHAPES,
+        align: 4,
+        bytes: packed.shapes,
+    });
+    sections.push(SectionData {
+        kind: SECTION_CANCELS_U16,
+        align: 2,
+        bytes: packed.cancels,
+    });
 
-    let hit_windows_off = current_offset as u32;
-    let hit_windows_len = packed.hit_windows.len() as u32;
-    current_offset += packed.hit_windows.len();
+    // Optional sections (only present if data)
+    if !resource_defs_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_RESOURCE_DEFS,
+            align: 4,
+            bytes: resource_defs_data,
+        });
+    }
+    if any_move_extras {
+        sections.push(SectionData {
+            kind: SECTION_MOVE_EXTRAS,
+            align: 4,
+            bytes: move_extras_data,
+        });
+    }
+    if !event_emits_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_EVENT_EMITS,
+            align: 4,
+            bytes: event_emits_data,
+        });
+    }
+    if !event_args_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_EVENT_ARGS,
+            align: 4,
+            bytes: event_args_data,
+        });
+    }
+    if !move_notifies_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_MOVE_NOTIFIES,
+            align: 4,
+            bytes: move_notifies_data,
+        });
+    }
+    if !move_resource_costs_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_MOVE_RESOURCE_COSTS,
+            align: 4,
+            bytes: move_resource_costs_data,
+        });
+    }
+    if !move_resource_preconditions_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_MOVE_RESOURCE_PRECONDITIONS,
+            align: 4,
+            bytes: move_resource_preconditions_data,
+        });
+    }
+    if !move_resource_deltas_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_MOVE_RESOURCE_DELTAS,
+            align: 4,
+            bytes: move_resource_deltas_data,
+        });
+    }
 
-    let hurt_windows_off = current_offset as u32;
-    let hurt_windows_len = packed.hurt_windows.len() as u32;
-    current_offset += packed.hurt_windows.len();
+    if sections.len() > 16 {
+        return Err(format!(
+            "Too many sections ({}), MAX_SECTIONS is 16",
+            sections.len()
+        ));
+    }
 
-    let shapes_off = current_offset as u32;
-    let shapes_len = packed.shapes.len() as u32;
-    current_offset += packed.shapes.len();
+    // Step 5: Calculate section offsets (honor per-section alignment)
+    let section_count = checked_u32(sections.len(), "section_count")?;
+    let header_and_sections_size = HEADER_SIZE + (sections.len() * SECTION_HEADER_SIZE);
+    let mut current_offset: usize = header_and_sections_size;
 
-    let cancels_off = current_offset as u32;
-    let cancels_len = packed.cancels.len() as u32;
-    current_offset += packed.cancels.len();
+    #[derive(Clone, Copy)]
+    struct SectionHeader {
+        kind: u32,
+        off: u32,
+        len: u32,
+        align: u32,
+    }
 
-    let total_len = current_offset as u32;
+    let mut section_headers: Vec<SectionHeader> = Vec::with_capacity(sections.len());
+    for s in &sections {
+        current_offset = align_up(current_offset, s.align)?;
+        let off = checked_u32(current_offset, "section offset")?;
+        let len = checked_u32(s.bytes.len(), "section length")?;
+        section_headers.push(SectionHeader {
+            kind: s.kind,
+            off,
+            len,
+            align: s.align,
+        });
+        current_offset = current_offset
+            .checked_add(s.bytes.len())
+            .ok_or_else(|| "section offset overflow".to_string())?;
+    }
 
-    // Step 5: Build the final binary
-    let mut output = Vec::with_capacity(total_len as usize);
+    let total_len = checked_u32(current_offset, "total_len")?;
 
-    // Write header
+    // Step 6: Build the final binary
+    let mut output = Vec::with_capacity(current_offset);
     output.extend_from_slice(&MAGIC);
-    write_u16_le(&mut output, VERSION);
-    write_u16_le(&mut output, FLAGS_RESERVED);
+    write_u32_le(&mut output, FLAGS_RESERVED);
     write_u32_le(&mut output, total_len);
-    write_u32_le(&mut output, SECTION_COUNT);
+    write_u32_le(&mut output, section_count);
 
-    // Write section headers (8 sections)
-    write_section_header(
-        &mut output,
-        SECTION_STRING_TABLE,
-        string_table_off,
-        string_table_len,
-        1,
-    );
-    write_section_header(
-        &mut output,
-        SECTION_MESH_KEYS,
-        mesh_keys_off,
-        mesh_keys_len,
-        4,
-    );
-    write_section_header(
-        &mut output,
-        SECTION_KEYFRAMES_KEYS,
-        keyframes_keys_off,
-        keyframes_keys_len,
-        4,
-    );
-    write_section_header(&mut output, SECTION_MOVES, moves_off, moves_len, 4);
-    write_section_header(
-        &mut output,
-        SECTION_HIT_WINDOWS,
-        hit_windows_off,
-        hit_windows_len,
-        4,
-    );
-    write_section_header(
-        &mut output,
-        SECTION_HURT_WINDOWS,
-        hurt_windows_off,
-        hurt_windows_len,
-        4,
-    );
-    write_section_header(&mut output, SECTION_SHAPES, shapes_off, shapes_len, 4);
-    write_section_header(
-        &mut output,
-        SECTION_CANCELS_U16,
-        cancels_off,
-        cancels_len,
-        2,
-    );
+    for h in &section_headers {
+        write_section_header(&mut output, h.kind, h.off, h.len, h.align);
+    }
 
-    // Write section data
-    output.extend_from_slice(&string_table_data);
-    output.extend_from_slice(&mesh_keys_data);
-    output.extend_from_slice(&keyframes_keys_data);
-    output.extend_from_slice(&packed.moves);
-    output.extend_from_slice(&packed.hit_windows);
-    output.extend_from_slice(&packed.hurt_windows);
-    output.extend_from_slice(&packed.shapes);
-    output.extend_from_slice(&packed.cancels);
+    for (i, s) in sections.into_iter().enumerate() {
+        let h = section_headers[i];
+        let target = h.off as usize;
+        if output.len() > target {
+            return Err(format!(
+                "section {} starts before current output (off={} len={})",
+                i, h.off, h.len
+            ));
+        }
+        output.resize(target, 0);
+        output.extend_from_slice(&s.bytes);
+    }
 
     debug_assert_eq!(
         output.len(),
@@ -597,9 +1080,14 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use crate::schema::{
-        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Move, Pushback, Rect,
+        CancelTable, Character, CharacterResource, FrameHitbox, GuardType, MeterGain, Move,
+        Pushback, Rect,
     };
     use std::collections::HashMap;
+
+    fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
+        u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
+    }
 
     /// Create a minimal test character.
     fn make_test_character(id: &str) -> Character {
@@ -614,6 +1102,7 @@ mod tests {
             jump_duration: 40,
             dash_distance: 80,
             dash_duration: 20,
+            resources: vec![],
         }
     }
 
@@ -648,6 +1137,7 @@ mod tests {
             on_use: None,
             on_hit: None,
             on_block: None,
+            notifies: vec![],
             advanced_hurtboxes: None,
         }
     }
@@ -666,8 +1156,8 @@ mod tests {
     fn test_string_table_intern_returns_same_location_for_same_string() {
         let mut table = StringTable::new();
 
-        let loc1 = table.intern("hello");
-        let loc2 = table.intern("hello");
+        let loc1 = table.intern("hello").unwrap();
+        let loc2 = table.intern("hello").unwrap();
 
         assert_eq!(loc1, loc2, "Same string should return same location");
     }
@@ -676,8 +1166,8 @@ mod tests {
     fn test_string_table_intern_different_strings() {
         let mut table = StringTable::new();
 
-        let loc1 = table.intern("hello");
-        let loc2 = table.intern("world");
+        let loc1 = table.intern("hello").unwrap();
+        let loc2 = table.intern("world").unwrap();
 
         assert_ne!(
             loc1.0, loc2.0,
@@ -692,8 +1182,8 @@ mod tests {
     #[test]
     fn test_string_table_into_bytes() {
         let mut table = StringTable::new();
-        table.intern("abc");
-        table.intern("def");
+        table.intern("abc").unwrap();
+        table.intern("def").unwrap();
 
         let bytes = table.into_bytes();
         assert_eq!(bytes, b"abcdef");
@@ -713,7 +1203,7 @@ mod tests {
         };
 
         let mut strings1 = StringTable::new();
-        let (mesh_keys1, kf_keys1) = build_asset_keys(&char_data, &mut strings1);
+        let (mesh_keys1, kf_keys1) = build_asset_keys(&char_data, &mut strings1).unwrap();
 
         // Create the same data but with moves in different order
         let char_data2 = CharacterData {
@@ -727,7 +1217,7 @@ mod tests {
         };
 
         let mut strings2 = StringTable::new();
-        let (mesh_keys2, kf_keys2) = build_asset_keys(&char_data2, &mut strings2);
+        let (mesh_keys2, kf_keys2) = build_asset_keys(&char_data2, &mut strings2).unwrap();
 
         // Keys should be identical regardless of input order
         assert_eq!(mesh_keys1.len(), mesh_keys2.len());
@@ -751,7 +1241,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
 
         // Should have only 2 unique animations, not 3
         assert_eq!(
@@ -779,7 +1269,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (mesh_keys, _kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (mesh_keys, _kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
         let bytes = strings.into_bytes();
 
         // Verify that strings appear in sorted order: alpha_anim, beta_anim, zebra_anim
@@ -789,8 +1279,8 @@ mod tests {
         // Extract the first mesh key string
         let first_key_start = mesh_keys[0].0 as usize;
         let first_key_len = mesh_keys[0].1 as usize;
-        let first_key = std::str::from_utf8(&bytes[first_key_start..first_key_start + first_key_len])
-            .unwrap();
+        let first_key =
+            std::str::from_utf8(&bytes[first_key_start..first_key_start + first_key_len]).unwrap();
         assert_eq!(first_key, "test.alpha_anim");
     }
 
@@ -803,7 +1293,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (mesh_keys, _kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (mesh_keys, _kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
         let bytes = strings.into_bytes();
 
         // Extract mesh key string
@@ -824,7 +1314,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (_mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (_mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
         let bytes = strings.into_bytes();
 
         // Extract keyframes key string
@@ -845,7 +1335,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
 
         assert!(mesh_keys.is_empty());
         assert!(kf_keys.is_empty());
@@ -864,7 +1354,7 @@ mod tests {
         };
 
         let mut strings = StringTable::new();
-        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings);
+        let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
 
         assert_eq!(mesh_keys.len(), 1, "Should skip moves with empty animation");
         assert_eq!(kf_keys.len(), 1, "Should skip moves with empty animation");
@@ -888,12 +1378,8 @@ mod tests {
         assert!(bytes.len() >= 16, "Output should have at least header size");
         assert_eq!(&bytes[0..4], b"FSPK", "Magic should be FSPK");
 
-        // Verify version
-        let version = u16::from_le_bytes([bytes[4], bytes[5]]);
-        assert_eq!(version, 1, "Version should be 1");
-
         // Verify flags
-        let flags = u16::from_le_bytes([bytes[6], bytes[7]]);
+        let flags = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         assert_eq!(flags, 0, "Flags should be 0");
 
         // Verify total length matches actual output
@@ -919,7 +1405,10 @@ mod tests {
         };
 
         let result = export_zx_fspack(&char_data);
-        assert!(result.is_ok(), "export_zx_fspack should succeed with no moves");
+        assert!(
+            result.is_ok(),
+            "export_zx_fspack should succeed with no moves"
+        );
 
         let bytes = result.unwrap();
 
@@ -964,6 +1453,97 @@ mod tests {
                 i, expected_kind
             );
         }
+    }
+
+    #[test]
+    fn test_export_zx_fspack_section_offsets_aligned_and_non_overlapping() {
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![make_test_move("5L", "stand_light")],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let bytes = export_zx_fspack(&char_data).unwrap();
+        let section_count = read_u32_le(&bytes, 12) as usize;
+        let header_end = HEADER_SIZE + section_count * SECTION_HEADER_SIZE;
+
+        let mut prev_end = header_end as u32;
+        for i in 0..section_count {
+            let base = HEADER_SIZE + i * SECTION_HEADER_SIZE;
+            let off = read_u32_le(&bytes, base + 4);
+            let len = read_u32_le(&bytes, base + 8);
+            let align = read_u32_le(&bytes, base + 12);
+
+            assert!(align != 0, "section {} has zero alignment", i);
+            assert_eq!(
+                off % align,
+                0,
+                "section {} offset {} must be aligned to {}",
+                i,
+                off,
+                align
+            );
+            assert!(
+                off >= prev_end,
+                "section {} overlaps previous: off={} prev_end={}",
+                i,
+                off,
+                prev_end
+            );
+
+            prev_end = off + len;
+        }
+    }
+
+    #[test]
+    fn test_export_zx_fspack_rejects_string_len_overflow() {
+        let mut character = make_test_character("test");
+        character.resources = vec![CharacterResource {
+            name: "a".repeat(u16::MAX as usize + 1),
+            start: 0,
+            max: 1,
+        }];
+
+        let char_data = CharacterData {
+            character,
+            moves: vec![make_test_move("5L", "stand_light")],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let result = export_zx_fspack(&char_data);
+        assert!(result.is_err(), "expected overflow to return Err");
+    }
+
+    #[test]
+    fn test_export_zx_fspack_rejects_hurt_windows_off_overflow() {
+        fn hb() -> FrameHitbox {
+            FrameHitbox {
+                frames: (0, 0),
+                r#box: Rect {
+                    x: 0,
+                    y: 0,
+                    w: 1,
+                    h: 1,
+                },
+            }
+        }
+
+        // Ensure the second move's hurt_windows_off (u16 byte offset) overflows.
+        let hurtbox_count = (u16::MAX as usize / HURT_WINDOW12_SIZE) + 1;
+        let hurtboxes: Vec<FrameHitbox> = (0..hurtbox_count).map(|_| hb()).collect();
+
+        let mut mv1 = make_test_move("5L", "stand_light");
+        mv1.hurtboxes = hurtboxes;
+        let mv2 = make_test_move("5M", "stand_medium");
+
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![mv1, mv2],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let result = export_zx_fspack(&char_data);
+        assert!(result.is_err(), "expected overflow to return Err");
     }
 
     #[test]
@@ -1048,6 +1628,7 @@ mod tests {
             on_use: None,
             on_hit: None,
             on_block: None,
+            notifies: vec![],
             advanced_hurtboxes: None,
         }
     }
@@ -1195,7 +1776,7 @@ mod tests {
     #[test]
     fn test_pack_moves_count_matches() {
         let moves = vec![make_move_with_hitboxes(), make_move_with_hitboxes()];
-        let packed = pack_moves(&moves, None);
+        let packed = pack_moves(&moves, None).unwrap();
 
         // Move count matches input
         let move_count = packed.moves.len() / MOVE_RECORD_SIZE;
@@ -1209,7 +1790,7 @@ mod tests {
     fn test_pack_moves_section_sizes() {
         let mv = make_move_with_hitboxes();
         let moves = vec![mv];
-        let packed = pack_moves(&moves, None);
+        let packed = pack_moves(&moves, None).unwrap();
 
         // 1 move with 1 hitbox and 1 hurtbox
         assert_eq!(packed.moves.len(), 1 * MOVE_RECORD_SIZE);
@@ -1222,7 +1803,7 @@ mod tests {
     #[test]
     fn test_pack_moves_references_valid() {
         let moves = vec![make_move_with_hitboxes(), make_move_with_hitboxes()];
-        let packed = pack_moves(&moves, None);
+        let packed = pack_moves(&moves, None).unwrap();
 
         // Verify each move record has valid references
         for i in 0..2 {
@@ -1264,7 +1845,7 @@ mod tests {
     #[test]
     fn test_pack_moves_shape_references_valid() {
         let mv = make_move_with_hitboxes();
-        let packed = pack_moves(&[mv], None);
+        let packed = pack_moves(&[mv], None).unwrap();
 
         // Verify hit window shape reference
         let hit_window = &packed.hit_windows[0..HIT_WINDOW24_SIZE];
@@ -1280,8 +1861,12 @@ mod tests {
 
         // Verify hurt window shape reference
         let hurt_window = &packed.hurt_windows[0..HURT_WINDOW12_SIZE];
-        let shape_off =
-            u32::from_le_bytes([hurt_window[2], hurt_window[3], hurt_window[4], hurt_window[5]]);
+        let shape_off = u32::from_le_bytes([
+            hurt_window[2],
+            hurt_window[3],
+            hurt_window[4],
+            hurt_window[5],
+        ]);
         let shape_count = u16::from_le_bytes([hurt_window[6], hurt_window[7]]) as u32;
 
         let shape_end = shape_off + shape_count * SHAPE12_SIZE as u32;
@@ -1293,7 +1878,7 @@ mod tests {
 
     #[test]
     fn test_pack_moves_empty() {
-        let packed = pack_moves(&[], None);
+        let packed = pack_moves(&[], None).unwrap();
 
         assert_eq!(packed.moves.len(), 0);
         assert_eq!(packed.shapes.len(), 0);
@@ -1315,12 +1900,12 @@ mod tests {
             blockstun: 8,
             hitstop: 10,
             guard: GuardType::Mid,
-            hitboxes: vec![], // No hitboxes
+            hitboxes: vec![],  // No hitboxes
             hurtboxes: vec![], // No hurtboxes
             ..Default::default()
         };
 
-        let packed = pack_moves(&[mv], None);
+        let packed = pack_moves(&[mv], None).unwrap();
 
         assert_eq!(packed.moves.len(), MOVE_RECORD_SIZE);
         assert_eq!(packed.shapes.len(), 0);
@@ -1400,7 +1985,9 @@ mod tests {
         assert_eq!(moves.len(), 3, "move count should match");
 
         // Verify keyframes keys exist (since all moves have animations)
-        let kf_keys = pack.keyframes_keys().expect("should have KEYFRAMES_KEYS section");
+        let kf_keys = pack
+            .keyframes_keys()
+            .expect("should have KEYFRAMES_KEYS section");
         assert_eq!(
             kf_keys.len(),
             3,
@@ -1414,12 +2001,16 @@ mod tests {
         // Verify we can resolve a string from the string table
         // First mesh key should be "glitch.stand_heavy" (sorted alphabetically)
         let (off, len) = mesh_keys.get(0).expect("should get mesh key 0");
-        let mesh_key_str = pack.string(off, len).expect("should resolve mesh key string");
+        let mesh_key_str = pack
+            .string(off, len)
+            .expect("should resolve mesh key string");
         assert_eq!(mesh_key_str, "glitch.stand_heavy");
 
         // First keyframes key should be "stand_heavy" (sorted alphabetically)
         let (kf_off, kf_len) = kf_keys.get(0).expect("should get keyframes key 0");
-        let kf_key_str = pack.string(kf_off, kf_len).expect("should resolve keyframes key string");
+        let kf_key_str = pack
+            .string(kf_off, kf_len)
+            .expect("should resolve keyframes key string");
         assert_eq!(kf_key_str, "stand_heavy");
     }
 
@@ -1508,7 +2099,9 @@ mod tests {
         assert!(moves.is_empty());
 
         // Verify keyframes keys section is empty
-        let kf_keys = pack.keyframes_keys().expect("should have KEYFRAMES_KEYS section");
+        let kf_keys = pack
+            .keyframes_keys()
+            .expect("should have KEYFRAMES_KEYS section");
         assert!(kf_keys.is_empty());
     }
 
@@ -1538,7 +2131,9 @@ mod tests {
         assert_eq!(moves.len(), 4);
 
         // But only 2 unique animations (stand_light, stand_medium)
-        let kf_keys = pack.keyframes_keys().expect("should have KEYFRAMES_KEYS section");
+        let kf_keys = pack
+            .keyframes_keys()
+            .expect("should have KEYFRAMES_KEYS section");
         assert_eq!(kf_keys.len(), 2, "should have only 2 unique keyframes keys");
 
         // Verify both keyframes keys can be resolved
@@ -1576,7 +2171,9 @@ mod tests {
         assert_eq!(moves.len(), 2);
 
         // But only 1 keyframes key (stand_light)
-        let kf_keys = pack.keyframes_keys().expect("should have KEYFRAMES_KEYS section");
+        let kf_keys = pack
+            .keyframes_keys()
+            .expect("should have KEYFRAMES_KEYS section");
         assert_eq!(kf_keys.len(), 1);
 
         // First move (5L) should have a valid key

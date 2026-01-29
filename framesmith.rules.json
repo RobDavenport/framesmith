@@ -1,5 +1,23 @@
 {
   "version": 1,
+  "registry": {
+    "resources": ["heat", "ammo"],
+    "events": {
+      "gain_heat": {
+        "contexts": ["on_hit", "notify"],
+        "args": {
+          "amount": { "type": "i64" }
+        }
+      },
+      "spend_ammo": {
+        "contexts": ["on_use"],
+        "args": {
+          "weapon": { "type": "enum", "values": ["pistol", "rifle"] },
+          "count": { "type": "i64" }
+        }
+      }
+    }
+  },
   "apply": [
     {
       "match": {},

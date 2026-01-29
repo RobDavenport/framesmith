@@ -138,8 +138,7 @@ if let Some(moves) = pack.moves() {
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 4 | magic | `"FSPK"` (bytes: 0x46, 0x53, 0x50, 0x4B) |
-| 4 | 2 | version | Format version (currently `1`) |
-| 6 | 2 | flags | Reserved (currently `0`) |
+| 4 | 4 | flags | Reserved (currently `0`) |
 | 8 | 4 | total_len | Total size of the pack in bytes |
 | 12 | 4 | section_count | Number of sections following the header |
 
@@ -164,6 +163,14 @@ if let Some(moves) = pack.moves() {
 | HURT_WINDOWS | 6 | Array of HurtWindow12 structs (hurtbox frames) |
 | SHAPES | 7 | Array of Shape12 structs (hitbox/hurtbox geometry) |
 | CANCELS_U16 | 8 | Array of u16 move IDs for cancel targets (v1: empty) |
+| RESOURCE_DEFS | 9 | Array of ResourceDef12 structs (character resource pools) |
+| MOVE_EXTRAS | 10 | Array of MoveExtras56 structs (parallel to MOVES) |
+| EVENT_EMITS | 11 | Array of EventEmit16 structs |
+| EVENT_ARGS | 12 | Array of EventArg20 structs |
+| MOVE_NOTIFIES | 13 | Array of MoveNotify12 structs |
+| MOVE_RESOURCE_COSTS | 14 | Array of MoveResourceCost12 structs |
+| MOVE_RESOURCE_PRECONDITIONS | 15 | Array of MoveResourcePrecondition12 structs |
+| MOVE_RESOURCE_DELTAS | 16 | Array of MoveResourceDelta16 structs |
 
 ### Data Structures
 
@@ -198,10 +205,104 @@ String references point into the STRING_TABLE section:
 | 19 | 1 | blockstun | Blockstun frames |
 | 20 | 1 | hitstop | Hitstop frames |
 | 21 | 1 | _reserved | Reserved |
-| 22 | 4 | hit_windows_off | Offset into HIT_WINDOWS section |
+| 22 | 4 | hit_windows_off | Byte offset within HIT_WINDOWS section |
 | 26 | 2 | hit_windows_len | Number of hit windows |
-| 28 | 2 | hurt_windows_off | Offset into HURT_WINDOWS section (compressed) |
+| 28 | 2 | hurt_windows_off | Byte offset within HURT_WINDOWS section (compressed to u16) |
 | 30 | 2 | hurt_windows_len | Number of hurt windows |
+
+#### ResourceDef12 (12 bytes)
+
+Character resource pool definition.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | name | StrRef to resource name |
+| 8 | 2 | start | Starting amount |
+| 10 | 2 | max | Max amount |
+
+#### MoveExtras56 (56 bytes)
+
+Per-move offsets/lengths for optional data arrays (parallel to `MOVES`). All offsets are byte offsets into their respective backing section.
+
+Each range is 8 bytes: `off(u32) + len(u16) + _pad(u16)`.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | on_use_emits | Range into `EVENT_EMITS` |
+| 8 | 8 | on_hit_emits | Range into `EVENT_EMITS` |
+| 16 | 8 | on_block_emits | Range into `EVENT_EMITS` |
+| 24 | 8 | notifies | Range into `MOVE_NOTIFIES` |
+| 32 | 8 | resource_costs | Range into `MOVE_RESOURCE_COSTS` |
+| 40 | 8 | resource_preconditions | Range into `MOVE_RESOURCE_PRECONDITIONS` |
+| 48 | 8 | resource_deltas | Range into `MOVE_RESOURCE_DELTAS` |
+
+#### EventEmit16 (16 bytes)
+
+One notification event emission: `emit_event(id, args)`.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | id | StrRef to event id |
+| 8 | 8 | args | Range into `EVENT_ARGS` (byte off + count) |
+
+#### EventArg20 (20 bytes)
+
+Flat arg map entry `key -> value`.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | key | StrRef to arg key |
+| 8 | 1 | tag | Value type tag: 0=bool, 1=i64, 2=f32, 3=string/enum |
+| 9 | 3 | _reserved | Reserved (0) |
+| 12 | 8 | value | Type-dependent payload |
+
+`value` encoding by `tag`:
+
+- `0 (bool)`: `u64` where 0=false, nonzero=true
+- `1 (i64)`: `i64` little-endian
+- `2 (f32)`: `f32` little-endian in the lower 4 bytes (upper 4 bytes 0)
+- `3 (string/enum)`: StrRef packed as `off(u32) + len(u16) + _pad(u16)`
+
+#### MoveNotify12 (12 bytes)
+
+Timeline-triggered notify point.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | frame | Frame number |
+| 2 | 2 | _pad | Reserved (0) |
+| 4 | 8 | emits | Range into `EVENT_EMITS` |
+
+#### MoveResourceCost12 (12 bytes)
+
+Resource-type move costs only (`Cost::Resource`).
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | name | StrRef to resource name |
+| 8 | 2 | amount | Cost amount |
+| 10 | 2 | _pad | Reserved (0) |
+
+#### MoveResourcePrecondition12 (12 bytes)
+
+Resource-type move preconditions only (`Precondition::Resource`).
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | name | StrRef to resource name |
+| 8 | 2 | min | Minimum required (0xFFFF = none) |
+| 10 | 2 | max | Maximum allowed (0xFFFF = none) |
+
+#### MoveResourceDelta16 (16 bytes)
+
+Resource delta applied by a trigger.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 8 | name | StrRef to resource name |
+| 8 | 4 | delta | Signed delta (i32) |
+| 12 | 1 | trigger | 0=on_use, 1=on_hit, 2=on_block |
+| 13 | 3 | _pad | Reserved (0) |
 
 #### Shape12 (12 bytes)
 
@@ -259,7 +360,6 @@ The `framesmith-fspack` crate returns specific errors for parse failures:
 |-------|-------------|
 | `TooShort` | Input data too short for valid header |
 | `InvalidMagic` | Magic bytes are not "FSPK" |
-| `UnsupportedVersion` | Version is not supported (only v1 currently) |
 | `OutOfBounds` | Section offset/length exceeds data bounds |
 
 Example error handling:
@@ -276,9 +376,6 @@ match PackView::parse(&buffer) {
     }
     Err(Error::InvalidMagic) => {
         log_error("Not a valid FSPK file");
-    }
-    Err(Error::UnsupportedVersion) => {
-        log_error("FSPK version not supported, update game");
     }
     Err(Error::OutOfBounds) => {
         log_error("FSPK file corrupt (invalid section offsets)");

@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// Custom schema for (u8, u8) tuple to fix schemars 1.0 missing `items` field
+fn frame_range_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "type": "array",
+        "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "Frame range as [start, end]"
+    }))
+    .unwrap()
+}
+
+/// Custom schema for Option<(u8, u8)>
+fn optional_frame_range_schema(gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    gen.subschema_for::<Option<[u8; 2]>>()
+}
+
 /// Complete character definition
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Character {
@@ -13,6 +30,16 @@ pub struct Character {
     pub jump_duration: u32,
     pub dash_distance: u32,
     pub dash_duration: u32,
+    #[serde(default)]
+    pub resources: Vec<CharacterResource>,
+}
+
+/// Named resource pool definition for a character.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CharacterResource {
+    pub name: String,
+    pub start: u16,
+    pub max: u16,
 }
 
 /// Single move definition
@@ -50,6 +77,8 @@ pub struct Move {
     pub on_use: Option<OnUse>,
     pub on_hit: Option<OnHit>,
     pub on_block: Option<OnBlock>,
+    #[serde(default)]
+    pub notifies: Vec<MoveNotify>,
     pub advanced_hurtboxes: Option<Vec<FrameHurtbox>>,
 }
 
@@ -84,9 +113,43 @@ impl Default for Move {
             on_use: None,
             on_hit: None,
             on_block: None,
+            notifies: Vec::new(),
             advanced_hurtboxes: None,
         }
     }
+}
+
+/// One event emission: `emit_event(id, args)`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EventEmit {
+    pub id: String,
+    #[serde(default)]
+    pub args: std::collections::BTreeMap<String, EventArgValue>,
+}
+
+/// Flat primitive arg values for event args.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub enum EventArgValue {
+    Bool(bool),
+    I64(i64),
+    F32(f32),
+    String(String),
+}
+
+/// Resource delta applied by a trigger.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ResourceDelta {
+    pub name: String,
+    pub delta: i32,
+}
+
+/// Timeline-triggered notification events.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MoveNotify {
+    pub frame: u16,
+    #[serde(default)]
+    pub events: Vec<EventEmit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -100,6 +163,7 @@ pub enum GuardType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FrameHitbox {
+    #[schemars(schema_with = "frame_range_schema")]
     pub frames: (u8, u8),
     pub r#box: Rect,
 }
@@ -192,6 +256,7 @@ pub enum HitboxShape {
 /// A single hit within a move (for multi-hit moves)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Hit {
+    #[schemars(schema_with = "frame_range_schema")]
     pub frames: (u8, u8),
     pub damage: u16,
     pub chip_damage: Option<u16>,
@@ -273,6 +338,7 @@ pub struct Movement {
     pub airborne: Option<bool>,
     pub velocity: Option<Vec2>,
     pub acceleration: Option<Vec2>,
+    #[schemars(schema_with = "optional_frame_range_schema")]
     pub frames: Option<(u8, u8)>,
 }
 
@@ -372,6 +438,10 @@ pub struct OnUse {
     pub enters_state: Option<EntersState>,
     pub spawn_entity: Option<SpawnEntity>,
     pub gain_meter: Option<u16>,
+    #[serde(default)]
+    pub events: Vec<EventEmit>,
+    #[serde(default)]
+    pub resource_deltas: Vec<ResourceDelta>,
 }
 
 impl Default for OnUse {
@@ -380,6 +450,8 @@ impl Default for OnUse {
             enters_state: None,
             spawn_entity: None,
             gain_meter: None,
+            events: Vec::new(),
+            resource_deltas: Vec::new(),
         }
     }
 }
@@ -394,6 +466,10 @@ pub struct OnHit {
     pub knockback: Option<Knockback>,
     pub wall_bounce: Option<bool>,
     pub ground_bounce: Option<bool>,
+    #[serde(default)]
+    pub events: Vec<EventEmit>,
+    #[serde(default)]
+    pub resource_deltas: Vec<ResourceDelta>,
 }
 
 impl Default for OnHit {
@@ -405,6 +481,8 @@ impl Default for OnHit {
             knockback: None,
             wall_bounce: None,
             ground_bounce: None,
+            events: Vec::new(),
+            resource_deltas: Vec::new(),
         }
     }
 }
@@ -415,6 +493,10 @@ impl Default for OnHit {
 pub struct OnBlock {
     pub gain_meter: Option<u16>,
     pub pushback: Option<i32>,
+    #[serde(default)]
+    pub events: Vec<EventEmit>,
+    #[serde(default)]
+    pub resource_deltas: Vec<ResourceDelta>,
 }
 
 impl Default for OnBlock {
@@ -422,6 +504,8 @@ impl Default for OnBlock {
         Self {
             gain_meter: None,
             pushback: None,
+            events: Vec::new(),
+            resource_deltas: Vec::new(),
         }
     }
 }
@@ -440,7 +524,122 @@ pub enum HurtboxFlag {
 /// Advanced hurtbox definition with shapes and flags
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FrameHurtbox {
+    #[schemars(schema_with = "frame_range_schema")]
     pub frames: (u8, u8),
     pub boxes: Vec<HitboxShape>,
     pub flags: Option<Vec<HurtboxFlag>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn character_json_without_resources_deserializes() {
+        let json = r#"{
+          "id": "test",
+          "name": "Test",
+          "archetype": "rushdown",
+          "health": 10000,
+          "walk_speed": 4.0,
+          "back_walk_speed": 3.0,
+          "jump_height": 120,
+          "jump_duration": 45,
+          "dash_distance": 80,
+          "dash_duration": 18
+        }"#;
+
+        let character: Character = serde_json::from_str(json).expect("character should parse");
+        assert!(character.resources.is_empty());
+    }
+
+    #[test]
+    fn move_on_hit_events_args_deserialize_typed_values() {
+        let json = r#"{
+          "input": "5L",
+          "name": "Light",
+          "tags": [],
+          "startup": 5,
+          "active": 2,
+          "recovery": 10,
+          "damage": 500,
+          "hitstun": 15,
+          "blockstun": 10,
+          "hitstop": 10,
+          "guard": "mid",
+          "hitboxes": [],
+          "hurtboxes": [],
+          "pushback": { "hit": 5, "block": 8 },
+          "meter_gain": { "hit": 100, "whiff": 20 },
+          "animation": "5L",
+          "on_hit": {
+            "events": [
+              {
+                "id": "vfx.hit_sparks",
+                "args": {
+                  "enabled": true,
+                  "count": 3,
+                  "scale": 1.2,
+                  "strength": "light"
+                }
+              }
+            ]
+          }
+        }"#;
+
+        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        let on_hit = mv.on_hit.expect("on_hit should exist");
+        assert_eq!(on_hit.events.len(), 1);
+
+        let emit = &on_hit.events[0];
+        assert_eq!(emit.id, "vfx.hit_sparks");
+        assert!(matches!(
+            emit.args.get("enabled"),
+            Some(EventArgValue::Bool(true))
+        ));
+        assert!(matches!(
+            emit.args.get("count"),
+            Some(EventArgValue::I64(3))
+        ));
+        assert!(
+            matches!(emit.args.get("scale"), Some(EventArgValue::F32(v)) if (*v - 1.2).abs() < 1e-6)
+        );
+        assert!(
+            matches!(emit.args.get("strength"), Some(EventArgValue::String(s)) if s == "light")
+        );
+    }
+
+    #[test]
+    fn move_notifies_deserializes() {
+        let json = r#"{
+          "input": "5L",
+          "name": "Light",
+          "tags": [],
+          "startup": 5,
+          "active": 2,
+          "recovery": 10,
+          "damage": 500,
+          "hitstun": 15,
+          "blockstun": 10,
+          "hitstop": 10,
+          "guard": "mid",
+          "hitboxes": [],
+          "hurtboxes": [],
+          "pushback": { "hit": 5, "block": 8 },
+          "meter_gain": { "hit": 100, "whiff": 20 },
+          "animation": "5L",
+          "notifies": [
+            {
+              "frame": 7,
+              "events": [ { "id": "vfx.swing_trail", "args": { "bone": "hand_r" } } ]
+            }
+          ]
+        }"#;
+
+        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        assert_eq!(mv.notifies.len(), 1);
+        assert_eq!(mv.notifies[0].frame, 7);
+        assert_eq!(mv.notifies[0].events.len(), 1);
+        assert_eq!(mv.notifies[0].events[0].id, "vfx.swing_trail");
+    }
 }

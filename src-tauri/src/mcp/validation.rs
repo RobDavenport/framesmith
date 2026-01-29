@@ -464,6 +464,7 @@ mod tests {
             total: None,
             on_use: None,
             on_block: None,
+            notifies: vec![],
         }
     }
 
@@ -747,6 +748,8 @@ mod tests {
             knockback: None,
             wall_bounce: None,
             ground_bounce: None,
+            events: vec![],
+            resource_deltas: vec![],
         });
         let result = validate_move(&mv);
         assert!(result.is_err());
@@ -769,6 +772,8 @@ mod tests {
             knockback: None,
             wall_bounce: None,
             ground_bounce: None,
+            events: vec![],
+            resource_deltas: vec![],
         });
         let result = validate_move(&mv);
         assert!(result.is_err());
@@ -791,6 +796,8 @@ mod tests {
             knockback: None,
             wall_bounce: None,
             ground_bounce: None,
+            events: vec![],
+            resource_deltas: vec![],
         });
         let result = validate_move(&mv);
         assert!(result.is_err());
@@ -903,6 +910,8 @@ mod tests {
             knockback: None,
             wall_bounce: None,
             ground_bounce: None,
+            events: vec![],
+            resource_deltas: vec![],
         });
 
         mv.advanced_hurtboxes = Some(vec![FrameHurtbox {

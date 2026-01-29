@@ -8,8 +8,7 @@
 //! | Offset | Size | Field          | Description                        |
 //! |--------|------|----------------|------------------------------------|
 //! | 0      | 4    | magic          | "FSPK" (0x4B505346 little-endian)  |
-//! | 4      | 2    | version        | Format version (currently 1)       |
-//! | 6      | 2    | flags          | Reserved, must be 0                |
+//! | 4      | 4    | flags          | Reserved, must be 0                |
 //! | 8      | 4    | total_len      | Total file size in bytes           |
 //! | 12     | 4    | section_count  | Number of sections                 |
 //!
@@ -31,17 +30,14 @@
 //! - String references are (offset: u32, length: u16) pairs into STRING_TABLE
 
 // =============================================================================
-// Magic and Version
+// Magic and Header Fields
 // =============================================================================
 
 /// Magic bytes "FSPK" as a 4-byte array
 pub const MAGIC: [u8; 4] = [b'F', b'S', b'P', b'K'];
 
-/// Current format version
-pub const VERSION: u16 = 1;
-
 /// Reserved flags value (must be 0 for v1)
-pub const FLAGS_RESERVED: u16 = 0;
+pub const FLAGS_RESERVED: u32 = 0;
 
 // =============================================================================
 // Section Kinds (stable numeric IDs - do not reuse deleted values)
@@ -70,6 +66,30 @@ pub const SECTION_SHAPES: u32 = 7;
 
 /// Array of u16 move IDs for cancel targets
 pub const SECTION_CANCELS_U16: u32 = 8;
+
+/// Array of ResourceDef12 structs
+pub const SECTION_RESOURCE_DEFS: u32 = 9;
+
+/// Array of MoveExtras56 structs (parallel to MOVES)
+pub const SECTION_MOVE_EXTRAS: u32 = 10;
+
+/// Array of EventEmit16 structs
+pub const SECTION_EVENT_EMITS: u32 = 11;
+
+/// Array of EventArg20 structs
+pub const SECTION_EVENT_ARGS: u32 = 12;
+
+/// Array of MoveNotify12 structs
+pub const SECTION_MOVE_NOTIFIES: u32 = 13;
+
+/// Array of MoveResourceCost12 structs
+pub const SECTION_MOVE_RESOURCE_COSTS: u32 = 14;
+
+/// Array of MoveResourcePrecondition12 structs
+pub const SECTION_MOVE_RESOURCE_PRECONDITIONS: u32 = 15;
+
+/// Array of MoveResourceDelta16 structs
+pub const SECTION_MOVE_RESOURCE_DELTAS: u32 = 16;
 
 // =============================================================================
 // Sentinel Values
@@ -101,7 +121,7 @@ pub const SHAPE_KIND_CAPSULE: u8 = 3;
 // Structure Sizes (bytes)
 // =============================================================================
 
-/// Container header size: magic(4) + version(2) + flags(2) + total_len(4) + section_count(4)
+/// Container header size: magic(4) + flags(4) + total_len(4) + section_count(4)
 pub const HEADER_SIZE: usize = 16;
 
 /// Section header size: kind(4) + off(4) + len(4) + align(4)
@@ -121,6 +141,30 @@ pub const HURT_WINDOW12_SIZE: usize = 12;
 
 /// Move record size (see MoveRecord struct in module docs)
 pub const MOVE_RECORD_SIZE: usize = 32;
+
+/// ResourceDef record size
+pub const RESOURCE_DEF12_SIZE: usize = 12;
+
+/// MoveExtras record size
+pub const MOVE_EXTRAS56_SIZE: usize = 56;
+
+/// EventEmit record size
+pub const EVENT_EMIT16_SIZE: usize = 16;
+
+/// EventArg record size
+pub const EVENT_ARG20_SIZE: usize = 20;
+
+/// MoveNotify record size
+pub const MOVE_NOTIFY12_SIZE: usize = 12;
+
+/// MoveResourceCost record size
+pub const MOVE_RESOURCE_COST12_SIZE: usize = 12;
+
+/// MoveResourcePrecondition record size
+pub const MOVE_RESOURCE_PRECONDITION12_SIZE: usize = 12;
+
+/// MoveResourceDelta record size
+pub const MOVE_RESOURCE_DELTA16_SIZE: usize = 16;
 
 // =============================================================================
 // Fixed Point Conversion Helpers
@@ -198,8 +242,8 @@ mod tests {
     }
 
     #[test]
-    fn test_version() {
-        assert_eq!(VERSION, 1);
+    fn test_flags_reserved_is_zero() {
+        assert_eq!(FLAGS_RESERVED as u32, 0);
     }
 
     #[test]
@@ -213,14 +257,19 @@ mod tests {
             SECTION_HURT_WINDOWS,
             SECTION_SHAPES,
             SECTION_CANCELS_U16,
+            SECTION_RESOURCE_DEFS,
+            SECTION_MOVE_EXTRAS,
+            SECTION_EVENT_EMITS,
+            SECTION_EVENT_ARGS,
+            SECTION_MOVE_NOTIFIES,
+            SECTION_MOVE_RESOURCE_COSTS,
+            SECTION_MOVE_RESOURCE_PRECONDITIONS,
+            SECTION_MOVE_RESOURCE_DELTAS,
         ];
         let mut sorted = kinds;
         sorted.sort();
         for i in 1..sorted.len() {
-            assert_ne!(
-                sorted[i - 1], sorted[i],
-                "Section kinds must be unique"
-            );
+            assert_ne!(sorted[i - 1], sorted[i], "Section kinds must be unique");
         }
     }
 
@@ -228,7 +277,10 @@ mod tests {
     fn test_structure_sizes() {
         // These sizes are part of the binary format contract and must not change
         assert_eq!(HEADER_SIZE, 16, "Header size must be 16 bytes");
-        assert_eq!(SECTION_HEADER_SIZE, 16, "Section header size must be 16 bytes");
+        assert_eq!(
+            SECTION_HEADER_SIZE, 16,
+            "Section header size must be 16 bytes"
+        );
         assert_eq!(STRREF_SIZE, 8, "StrRef size must be 8 bytes");
         assert_eq!(SHAPE12_SIZE, 12, "Shape12 size must be 12 bytes");
         assert_eq!(HIT_WINDOW24_SIZE, 24, "HitWindow24 size must be 24 bytes");

@@ -7,8 +7,6 @@ pub enum Error {
     TooShort,
     /// The magic bytes do not match the expected FSPK signature.
     InvalidMagic,
-    /// The version is not supported.
-    UnsupportedVersion,
     /// An offset or length field points outside the data.
     OutOfBounds,
 }

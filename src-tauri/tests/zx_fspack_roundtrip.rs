@@ -52,6 +52,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             jump_duration: 40,
             dash_distance: 80,
             dash_duration: 20,
+            resources: vec![],
         },
         moves: vec![Move {
             input: "5L".to_string(),
@@ -98,6 +99,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             on_use: None,
             on_hit: None,
             on_block: None,
+            notifies: vec![],
             advanced_hurtboxes: None,
         }],
         cancel_table: CancelTable {
@@ -142,4 +144,228 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
     assert_eq!(mv.hit_windows_len(), 1);
     assert_eq!(mv.hurt_windows_off(), 0);
     assert_eq!(mv.hurt_windows_len(), 1);
+}
+
+#[test]
+fn zx_fspack_exports_resources_and_events_sections() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelTable, Character, CharacterResource, Cost, EventArgValue, EventEmit, GuardType,
+        MeterGain, Move, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta,
+        TriggerType,
+    };
+    use std::collections::{BTreeMap, HashMap};
+
+    // Move 0: on_hit event emit with args
+    let mut hit_args = BTreeMap::new();
+    hit_args.insert(
+        "strength".to_string(),
+        EventArgValue::String("light".to_string()),
+    );
+    hit_args.insert("scale".to_string(), EventArgValue::F32(1.25));
+    let mv0 = Move {
+        input: "5L".to_string(),
+        name: "Hit event".to_string(),
+        guard: GuardType::Mid,
+        animation: "stand_light".to_string(),
+        trigger: Some(TriggerType::Press),
+        on_hit: Some(OnHit {
+            events: vec![EventEmit {
+                id: "vfx.hit_sparks".to_string(),
+                args: hit_args,
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    // Move 1: notify timeline event
+    let mut notify_args = BTreeMap::new();
+    notify_args.insert(
+        "bone".to_string(),
+        EventArgValue::String("hand_r".to_string()),
+    );
+    let mv1 = Move {
+        input: "5M".to_string(),
+        name: "Notify event".to_string(),
+        guard: GuardType::Mid,
+        animation: "stand_medium".to_string(),
+        notifies: vec![MoveNotify {
+            frame: 7,
+            events: vec![EventEmit {
+                id: "vfx.swing_trail".to_string(),
+                args: notify_args,
+            }],
+        }],
+        ..Default::default()
+    };
+
+    // Move 2: resource cost + precondition + on_use resource delta
+    let mv2 = Move {
+        input: "236P".to_string(),
+        name: "Resource gated".to_string(),
+        guard: GuardType::Mid,
+        animation: "special".to_string(),
+        costs: Some(vec![Cost::Resource {
+            name: "heat".to_string(),
+            amount: 1,
+        }]),
+        preconditions: Some(vec![Precondition::Resource {
+            name: "heat".to_string(),
+            min: Some(1),
+            max: None,
+        }]),
+        on_use: Some(OnUse {
+            resource_deltas: vec![ResourceDelta {
+                name: "heat".to_string(),
+                delta: -1,
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![CharacterResource {
+                name: "heat".to_string(),
+                start: 0,
+                max: 10,
+            }],
+        },
+        moves: vec![
+            Move {
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..mv0
+            },
+            Move {
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..mv1
+            },
+            Move {
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..mv2
+            },
+        ],
+        cancel_table: CancelTable {
+            chains: HashMap::new(),
+            special_cancels: vec![],
+            super_cancels: vec![],
+            jump_cancels: vec![],
+        },
+    };
+
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
+
+    // Resources section exists and decodes
+    let resources = pack
+        .resource_defs()
+        .expect("expected RESOURCE_DEFS section");
+    assert_eq!(resources.len(), 1);
+    let res0 = resources.get(0).expect("resource 0");
+    let name = pack
+        .string(res0.name_off(), res0.name_len())
+        .expect("resource name string");
+    assert_eq!(name, "heat");
+    assert_eq!(res0.start(), 0);
+    assert_eq!(res0.max(), 10);
+
+    // Per-move extras exist and point into backing arrays
+    let extras = pack.move_extras().expect("expected MOVE_EXTRAS section");
+    assert_eq!(extras.len(), 3);
+
+    let emits = pack.event_emits().expect("expected EVENT_EMITS section");
+    let args = pack.event_args().expect("expected EVENT_ARGS section");
+
+    // Move 0: on_hit emit -> id + args
+    let ex0 = extras.get(0).expect("extras 0");
+    let (on_hit_off, on_hit_len) = ex0.on_hit_emits();
+    assert_eq!(on_hit_len, 1);
+    let e0 = emits.get_at(on_hit_off, 0).expect("move0 on_hit emit 0");
+    let e0_id = pack
+        .string(e0.id_off(), e0.id_len())
+        .expect("emit id string");
+    assert_eq!(e0_id, "vfx.hit_sparks");
+    let (args_off, args_len) = e0.args();
+    assert_eq!(args_len, 2);
+    let a0 = args.get_at(args_off, 0).expect("arg 0");
+    let a0_key = pack
+        .string(a0.key_off(), a0.key_len())
+        .expect("arg key string");
+    assert!(a0_key == "scale" || a0_key == "strength");
+
+    // Move 1: notify event
+    let notifies = pack
+        .move_notifies()
+        .expect("expected MOVE_NOTIFIES section");
+    let ex1 = extras.get(1).expect("extras 1");
+    let (notify_off, notify_len) = ex1.notifies();
+    assert_eq!(notify_len, 1);
+    let n0 = notifies.get_at(notify_off, 0).expect("notify 0");
+    assert_eq!(n0.frame(), 7);
+    let (n_emit_off, n_emit_len) = n0.emits();
+    assert_eq!(n_emit_len, 1);
+    let n_emit = emits.get_at(n_emit_off, 0).expect("notify emit 0");
+    let n_id = pack
+        .string(n_emit.id_off(), n_emit.id_len())
+        .expect("notify id");
+    assert_eq!(n_id, "vfx.swing_trail");
+
+    // Move 2: cost + precondition + on_use delta
+    let costs = pack
+        .move_resource_costs()
+        .expect("expected MOVE_RESOURCE_COSTS section");
+    let pre = pack
+        .move_resource_preconditions()
+        .expect("expected MOVE_RESOURCE_PRECONDITIONS section");
+    let deltas = pack
+        .move_resource_deltas()
+        .expect("expected MOVE_RESOURCE_DELTAS section");
+
+    let ex2 = extras.get(2).expect("extras 2");
+    let (cost_off, cost_len) = ex2.resource_costs();
+    assert_eq!(cost_len, 1);
+    let c0 = costs.get_at(cost_off, 0).expect("cost 0");
+    let c0_name = pack
+        .string(c0.name_off(), c0.name_len())
+        .expect("cost name");
+    assert_eq!(c0_name, "heat");
+    assert_eq!(c0.amount(), 1);
+
+    let (pre_off, pre_len) = ex2.resource_preconditions();
+    assert_eq!(pre_len, 1);
+    let p0 = pre.get_at(pre_off, 0).expect("precondition 0");
+    let p0_name = pack
+        .string(p0.name_off(), p0.name_len())
+        .expect("precondition name");
+    assert_eq!(p0_name, "heat");
+    assert_eq!(p0.min(), Some(1));
+    assert_eq!(p0.max(), None);
+
+    let (d_off, d_len) = ex2.resource_deltas();
+    assert_eq!(d_len, 1);
+    let d0 = deltas.get_at(d_off, 0).expect("delta 0");
+    let d0_name = pack
+        .string(d0.name_off(), d0.name_len())
+        .expect("delta name");
+    assert_eq!(d0_name, "heat");
+    assert_eq!(d0.delta(), -1);
+    assert_eq!(
+        d0.trigger(),
+        framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_USE
+    );
 }
