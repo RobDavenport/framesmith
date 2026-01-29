@@ -1,14 +1,34 @@
 # Framesmith
 
-Engine-agnostic fighting game character authoring tool. Define complete, portable fighting game characters (frame data, hitboxes, moves, properties, cancel routes) in a format that can be exported to any game engine.
+Engine-agnostic fighting game character authoring tool. Define portable fighting game characters (frame data, hitboxes, moves, resources, events, cancel routes) as JSON on disk and export to engine/runtime-specific formats.
 
 ## Features
 
-- **Frame Data Table** - Spreadsheet view of all moves with sorting, filtering, and multi-character comparison
-- **Move Editor** - Form-based editing with animation preview and hitbox overlay
+- **Frame Data Table** - Spreadsheet view of all moves with sorting and filtering
+- **Move Editor** - Form-based editing (with support for advanced/optional fields); animation preview is currently a placeholder
 - **Cancel Graph** - Visual node graph showing move cancel relationships
-- **Export Adapters** - Generate engine-specific output (Rust constants, JSON blob, more to come)
-- **MCP Server** - LLM integration for content generation, balancing, and documentation
+- **Export Adapters** - `json-blob` (single JSON) and `zx-fspack` (compact binary pack)
+- **Rules System** - Project/character rules for defaults + validation, plus a registry for resources/events
+- **MCP Server** - LLM integration and programmatic editing/validation via MCP tools
+
+## What Is A “Project”?
+
+A Framesmith project is a folder with this structure:
+
+```text
+my-game/
+  framesmith.rules.json
+  characters/
+    glitch/
+      character.json
+      cancel_table.json
+      moves/
+        5L.json
+        236P.json
+      rules.json          (optional character overrides)
+```
+
+This repo root is also a valid project (it contains `framesmith.rules.json` and `characters/`).
 
 ## Quick Start
 
@@ -18,10 +38,30 @@ npm run tauri dev        # Development mode
 npm run tauri build      # Production build
 ```
 
+Rust tests:
+
+```bash
+cd src-tauri && cargo test
+```
+
+## MCP Server
+
+The MCP server is documented in `docs/mcp-server.md`.
+
+```bash
+cd src-tauri
+cargo run --bin mcp
+```
+
 ## Documentation
 
-- [`docs/design.md`](docs/design.md) - Full design specification
-- [`CLAUDE.md`](CLAUDE.md) - Claude Code guidelines and domain knowledge
+- Start here: [`docs/README.md`](docs/README.md)
+- Data formats: [`docs/data-formats.md`](docs/data-formats.md)
+- Rules (SSOT): [`docs/rules-spec.md`](docs/rules-spec.md)
+- MCP server: [`docs/mcp-server.md`](docs/mcp-server.md)
+- ZX FSPK format: [`docs/zx-fspack.md`](docs/zx-fspack.md)
+- Design notes: [`docs/design.md`](docs/design.md)
+- Contributor/agent notes: [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)
 
 ## Tech Stack
 
@@ -29,7 +69,7 @@ npm run tauri build      # Production build
 |-----------|------------|
 | Desktop framework | Tauri (Rust backend + web frontend) |
 | Frontend | Svelte + TypeScript |
-| 3D rendering | Threlte (Three.js wrapper for Svelte) |
+| 3D rendering | Threlte / Three.js (dependency; preview UI is not yet implemented) |
 | Data format | JSON (directory-based, one file per move) |
 
 ## Recommended IDE Setup

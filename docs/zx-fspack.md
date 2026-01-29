@@ -21,15 +21,21 @@ FSPK (Framesmith Pack) is a compact binary format for storing fighting game char
 
 ## Exporting from Framesmith
 
-Use the `zx-fspack` adapter when exporting a character:
+Use the `zx-fspack` adapter when exporting a character.
+
+- In the app UI: Character Overview -> Export -> "ZX FSPK (Binary)"
+- Programmatically: call the `export_character` command with `adapter = "zx-fspack"`
 
 ```rust
-// Via Tauri command
+// Tauri command signature (Rust side)
+// export_character(characters_dir, character_id, adapter, output_path, pretty)
 export_character(
-    character_dir: "characters/glitch",
-    adapter: "zx-fspack",
-    output_path: "build/char/glitch.fspk"
-)
+    "<project>/characters".to_string(),
+    "glitch".to_string(),
+    "zx-fspack".to_string(),
+    "exports/glitch.fspk".to_string(),
+    false,
+)?;
 ```
 
 This produces a `.fspk` binary file containing:
@@ -70,7 +76,7 @@ if let Some(mesh_keys) = pack.mesh_keys() {
     for i in 0..mesh_keys.len() {
         if let Some((off, len)) = mesh_keys.get(i) {
             if let Some(key) = pack.string(off, len) {
-                // key is something like "glitch.5L" or "glitch.stand_light"
+                // mesh key format: "{character_id}.{animation}" (e.g. "glitch.stand_light")
                 let handle = rom_mesh(key);
                 mesh_handles.push(handle);
             }

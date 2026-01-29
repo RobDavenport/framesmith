@@ -67,17 +67,18 @@
               <li><strong>Apply</strong> default values to moves based on matching criteria</li>
               <li><strong>Validate</strong> moves to enforce constraints with configurable severity</li>
             </ul>
-            <p>
-              Rules are defined in JSON files named <code>framesmith.rules.json</code>. They can exist at two levels:
-            </p>
-            <ol>
-              <li><strong>Project-level:</strong> At the project root (applies to all characters)</li>
-              <li><strong>Character-level:</strong> Inside a character directory (overrides project rules)</li>
-            </ol>
+              <p>
+               Rules are defined at two levels:
+              </p>
+              <ol>
+               <li><strong>Project-level:</strong> <code>&lt;project&gt;/framesmith.rules.json</code> (applies to all characters)</li>
+               <li><strong>Character-level (optional):</strong> <code>&lt;project&gt;/characters/&lt;id&gt;/rules.json</code> (overrides project rules)</li>
+              </ol>
           {:else if activeSection === "format"}
             <h3>Rules File Format</h3>
             <pre><code>{`{
   "version": 1,
+  "registry": { ... },
   "apply": [...],
   "validate": [...]
 }`}</code></pre>
@@ -87,6 +88,7 @@
               </thead>
               <tbody>
                 <tr><td><code>version</code></td><td>number</td><td>Yes</td><td>Schema version. Must be 1.</td></tr>
+                <tr><td><code>registry</code></td><td>Registry</td><td>No</td><td>Optional registry of known resources and events.</td></tr>
                 <tr><td><code>apply</code></td><td>ApplyRule[]</td><td>No</td><td>Rules that set default values.</td></tr>
                 <tr><td><code>validate</code></td><td>ValidateRule[]</td><td>No</td><td>Rules that enforce constraints.</td></tr>
               </tbody>

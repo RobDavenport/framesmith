@@ -1,286 +1,100 @@
-# Framesmith Design
+# Framesmith Design Notes
 
-**Status:** Draft
-**Last reviewed:** 2026-01-28
-**Scope:** Full design spec covering data model, editor UI, and export pipeline
+**Status:** Active
+**Last reviewed:** 2026-01-30
+
+This document describes Framesmith’s intended shape and the current implementation boundaries. For the on-disk JSON formats, use `docs/data-formats.md` (canonical for file layout) and `docs/rules-spec.md` (canonical for rules semantics).
 
 ## Overview
 
-Framesmith is an engine-agnostic fighting game character authoring tool. It enables fast iteration on frame data, hitboxes, move lists, and character properties without requiring game engine rebuilds.
+Framesmith is an engine-agnostic fighting game character authoring tool. It edits character data on disk as a directory of JSON files and exports that data into runtime-friendly formats.
 
-**Purpose:** Define complete, portable fighting game characters in a format that can be exported to any game engine.
+The core idea is “git-friendly authoring”:
 
-**Core workflow:**
-1. Author characters in Framesmith (desktop app)
-2. Save as directory structure (JSON files + asset references)
-3. Export to engine-specific format via codegen adapters
-4. Game engine consumes the output (Rust constants, binary blob, etc.)
+- One character = one folder
+- One move = one file
+- Cancels live in a central table for easy visualization
+- Validation and defaults are configurable via rules files
 
-## Goals
+## Current Product Scope
 
-- **Fast iteration:** Tweak frame data and see results without full rebuilds
-- **Visual overview:** Spreadsheet view for comparing characters side-by-side
-- **Engine-agnostic:** Portable to future fighting games, not locked to Breakpoint
-- **Complete characters:** Frame data, hitboxes, moves, properties, state machines, animations, assets
+Implemented (today):
 
-## Tech Stack
+- Desktop editor (Tauri + Svelte)
+- Projects (open/create): a folder containing `framesmith.rules.json` and `characters/`
+- Character management: create/clone/delete
+- Move management: create, edit, save
+- Views: Character Overview, Frame Data Table, Move Editor, Cancel Graph
+- Rules system: apply defaults + validate moves; optional registry for resources/events
+- Export adapters:
+  - `json-blob` (single JSON blob)
+  - `zx-fspack` (compact binary pack)
+- MCP server for programmatic workflows and LLM integration
 
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| Desktop framework | Tauri | Small binaries, Rust backend aligns with ecosystem |
-| Frontend | Svelte + TypeScript | Lightweight, compiles away, good for form-heavy UIs |
-| 3D rendering | Threlte (Three.js) | Native Svelte integration, animation timeline support |
-| Data format | JSON | Human-readable, easy to diff/version |
-| Backend | Rust | File I/O, JSON parsing, codegen, asset loading |
+Not implemented (yet):
+
+- Animation preview / hitbox overlay editing (UI currently shows placeholders)
+- Interactive editing of cancel routes (graph is visualization-only)
+- Breakpoint Rust adapter (`breakpoint-rust` is currently a stub)
 
 ## Data Model
 
-### Directory Structure
+Canonical Rust types:
 
-A character is a directory with this structure:
+- Character: `src-tauri/src/schema/mod.rs`
+- Rules: `src-tauri/src/rules/mod.rs`
+- ZX FSPK format constants: `src-tauri/src/codegen/zx_fspack_format.rs`
 
-```
-characters/
-  glitch/
-    character.json        # Identity + global properties
-    moves/
-      5L.json             # One file per move (numpad notation)
-      5M.json
-      5H.json
-      2L.json
-      j.H.json
-      236P.json           # Special moves
-      632146PP.json       # Supers
-      ...
-    cancel_table.json     # All cancel relationships
-    hurtboxes.json        # Default hurtbox sets (stand, crouch, airborne)
-    assets.json           # References to mesh, textures, animations
-```
+On disk, a character folder is primarily:
 
-### character.json
+- `character.json`
+- `cancel_table.json`
+- `moves/*.json`
+- optional `rules.json` (character-level rules overrides)
 
-Global character properties:
+See `docs/data-formats.md` for details.
 
-```json
-{
-  "id": "glitch",
-  "name": "GLITCH",
-  "archetype": "rushdown",
-  "health": 1000,
-  "walk_speed": 4.5,
-  "back_walk_speed": 3.2,
-  "jump_height": 120,
-  "jump_duration": 45,
-  "dash_distance": 80,
-  "dash_duration": 18
-}
-```
+## Rules + Validation
 
-### moves/{input}.json
+Rules files do two things:
 
-Single move definition:
+1. Apply defaults (`apply[]`) to moves based on match criteria.
+2. Validate (`validate[]`) moves based on constraints.
 
-```json
-{
-  "input": "5L",
-  "name": "Standing Light",
-  "startup": 7,
-  "active": 3,
-  "recovery": 8,
-  "damage": 30,
-  "hitstun": 17,
-  "blockstun": 11,
-  "hitstop": 6,
-  "guard": "mid",
-  "hitboxes": [
-    { "frames": [7, 9], "box": { "x": 0, "y": -40, "w": 30, "h": 16 } }
-  ],
-  "hurtboxes": [
-    { "frames": [0, 6], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } },
-    { "frames": [7, 17], "box": { "x": 0, "y": -55, "w": 35, "h": 55 } }
-  ],
-  "pushback": { "hit": 2, "block": 2 },
-  "meter_gain": { "hit": 5, "whiff": 2 },
-  "animation": "stand_light"
-}
-```
+Optionally, `registry` provides:
 
-### cancel_table.json
+- Known resource IDs
+- Known notification event IDs with arg schemas and allowed contexts
 
-Central relationship graph defining all cancel routes:
+This registry is used for “no silent errors” validation when moves reference resources/events.
 
-```json
-{
-  "chains": {
-    "5L": ["5L", "5M", "2M", "2L"],
-    "5M": ["5H", "2H"],
-    "2L": ["2M", "5M"]
-  },
-  "special_cancels": ["5L", "5M", "5H", "2L", "2M", "2H"],
-  "super_cancels": ["5H", "2H", "236P", "214P"],
-  "jump_cancels": ["5H"]
-}
-```
-
-### assets.json
-
-Asset references (hybrid model - references during dev, bake for export):
-
-```json
-{
-  "mesh": "meshes/glitch.glb",
-  "textures": {
-    "base": "textures/glitch_base.png",
-    "matcap": "textures/matcap_chrome.png"
-  },
-  "animations": {
-    "stand_light": "animations/glitch/5L.glb",
-    "stand_medium": "animations/glitch/5M.glb"
-  }
-}
-```
-
-## Editor UI
-
-### Four Main Views
-
-**1. Character Overview**
-- Left panel: character list (all characters in project)
-- Center: selected character's properties (health, speed, etc.)
-- Right: at-a-glance stats (total moves, archetype, portrait)
-
-**2. Move List / Frame Data Table**
-- Spreadsheet view of all moves for a character
-- Columns: input, startup, active, recovery, total, damage, hitstun, blockstun, advantage on hit, advantage on block
-- Sortable, filterable (show only lights, only specials, etc.)
-- Click row to open move editor
-- Multi-character comparison mode: side-by-side tables for balance checking
-
-**3. Move Editor**
-- Left: form fields for all frame data properties
-- Center: animation preview with timeline scrubber
-- Right: hitbox/hurtbox overlay editor
-  - Scrub to frame, draw/resize boxes on that frame
-  - Toggle hitbox vs hurtbox visibility
-  - Copy hitbox data across frames
-
-**4. Cancel Graph**
-- Visual node graph showing move relationships
-- Nodes = moves, edges = cancel routes
-- Color-coded by cancel type (chain, special, super, jump)
-- Click edge to remove, drag node-to-node to add
-- Auto-layout with manual adjustment
-
-### Animation Timeline Controls
-
-For the move editor's animation preview:
-
-- Play / Pause button
-- Frame scrubber (drag to any frame)
-- Step backward / forward (single frame with `←` / `→` keys)
-- Current frame display: `Frame 7 / 24`
-- Speed control (0.5x, 1x, 2x)
-
-Hitbox editing happens with animation paused at a specific frame.
+Canonical semantics are in `docs/rules-spec.md`.
 
 ## Export System
 
-### Pipeline
+Exports are run through the same validation/defaulting pipeline used by saving:
 
-```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  Character dir  │  →   │  framesmith     │  →   │  Engine output  │
-│  (JSON files)   │      │  export <adapter>│     │                 │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
-```
+- Load project rules (`<project>/framesmith.rules.json`) and character rules (`<project>/characters/<id>/rules.json`)
+- Validate character resources against the merged registry
+- Validate moves (built-in + rules)
+- Apply defaults
+- Export the resolved character
 
-### Adapters
+Adapters:
 
-| Adapter | Output | Use case |
-|---------|--------|----------|
-| `breakpoint-rust` | Rust constants matching `AttackData` struct | Breakpoint (compile-time) |
-| `json-blob` | Single minified JSON file | Runtime loading |
+- `json-blob`: emits a single JSON blob containing resolved character + moves.
+- `zx-fspack`: emits a `.fspk` binary pack for constrained runtimes (see `docs/zx-fspack.md`).
+- `breakpoint-rust`: reserved name; currently returns an error.
 
-### breakpoint-rust Output Example
+## MCP Server
 
-```rust
-// Generated by Framesmith - do not edit
-pub const STAND_LIGHT: AttackData = AttackData {
-    startup: FramesU8(7),
-    active: FramesU8(3),
-    recovery: FramesU8(8),
-    damage: Damage(30),
-    hitstun: FramesU8(17),
-    blockstun: FramesU8(11),
-    // ...
-};
-```
+The MCP server (`src-tauri/src/bin/mcp.rs`) exposes tools for listing characters, reading/writing moves, inspecting rules schema, and more.
 
-### Asset Baking
+See `docs/mcp-server.md`.
 
-For portable distribution:
+## Design Principles
 
-```bash
-framesmith bake glitch --output glitch.fgc
-```
-
-Produces a single `.fgc` (fighting game character) bundle containing:
-- All JSON data
-- Embedded assets (mesh, textures, animations)
-- Portable package for sharing or porting to another project
-
-## Project Structure
-
-```
-framesmith/
-  src-tauri/                # Rust backend
-    src/
-      main.rs
-      codegen/
-        mod.rs
-        breakpoint.rs       # Breakpoint adapter
-        json_blob.rs        # JSON blob adapter
-      schema/               # Character data types
-      assets/               # Asset loading for preview
-  src/                      # Frontend (Svelte + TypeScript)
-    lib/
-      components/
-      stores/
-      views/
-        CharacterOverview.svelte
-        FrameDataTable.svelte
-        MoveEditor.svelte
-        CancelGraph.svelte
-    App.svelte
-    main.ts
-  characters/               # Working directory for character data
-  Cargo.toml
-  package.json
-  tauri.conf.json
-```
-
-## First Integration: Breakpoint
-
-Initial use case is migrating Breakpoint's existing characters:
-
-1. Define JSON schema matching current `AttackData` fields
-2. Export existing 6 characters from Rust to Framesmith format (one-time migration)
-3. Build `breakpoint-rust` adapter to generate Rust constants
-4. Update Breakpoint build to run `framesmith export breakpoint-rust`
-5. Remove hand-written Rust constants, use generated code
-
-## Future Considerations
-
-These are explicitly out of scope for v1 but noted for later:
-
-- **Live connection to game:** WebSocket or file-watching for hot-reload (left to game engine)
-- **Animation/frame-data sync:** Auto-adjusting animations when frame counts change (game-dependent)
-- **Additional adapters:** Godot, Unity, etc. (add when needed)
-- **Collaborative editing:** Multi-user support (not needed for internal tool)
-- **Plugin system:** Custom validators, exporters (premature for v1)
-
-## Open Questions
-
-1. **Schema versioning:** How to handle breaking changes to the JSON format?
-2. **Hitbox coordinate system:** Screen-space or character-local? Pixels or normalized?
-3. **Animation format:** Accept .glb only, or also sprite sheets for 2D games?
+- Favor explicit data over implicit conventions.
+- Keep authoring formats diffable and merge-friendly.
+- Keep validation centralized and reusable (UI, exporter, MCP).
+- Keep runtime formats compact and parsing-friendly.

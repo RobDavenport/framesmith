@@ -8,9 +8,9 @@ Framesmith supports a flexible rules system that lets you:
 - **Apply** default values to moves based on matching criteria
 - **Validate** moves to enforce constraints with configurable severity
 
-Rules are defined in JSON files named `framesmith.rules.json`. They can exist at two levels:
-1. **Project-level**: At the project root (applies to all characters)
-2. **Character-level**: Inside a character directory (overrides project rules)
+Rules are defined in JSON files at two levels:
+1. **Project-level**: `<project>/framesmith.rules.json` (applies to all characters)
+2. **Character-level (optional)**: `<project>/characters/<id>/rules.json` (overrides project rules for that character)
 
 ## Rules File Format
 
@@ -374,7 +374,7 @@ Project: framesmith.rules.json
     └── validate rules (global constraints)
          │
          ▼
-Character: characters/{id}/framesmith.rules.json
+Character: characters/{id}/rules.json
     │
     ├── apply rules (character-specific defaults)
     └── validate rules (character-specific constraints)
@@ -514,6 +514,18 @@ For IDE autocomplete, reference the JSON Schema in your rules file:
   "apply": [...],
   "validate": [...]
 }
+```
+
+For character-level rules at `characters/<id>/rules.json`, the equivalent relative path is typically:
+
+```json
+{ "$schema": "../../schemas/rules.schema.json", "version": 1, "apply": [], "validate": [] }
+```
+
+If you are using this repo root as your project root, generate/update `schemas/rules.schema.json` with:
+
+```bash
+cd src-tauri && cargo run --bin generate_schema
 ```
 
 The schema is generated from the Rust type definitions and provides:
