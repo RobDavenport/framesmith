@@ -12,7 +12,8 @@
       "Bash(cargo metadata:*)",
       "Bash(python -c:*)",
       "Bash(git reset:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm run tauri:*)"
     ]
   },
   "disabledMcpjsonServers": [
