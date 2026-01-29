@@ -1,4 +1,4 @@
-use crate::codegen::{export_json_blob, export_json_blob_pretty};
+use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
 use crate::schema::{CancelTable, Character, Move};
 use std::collections::HashMap;
 use std::fs;
@@ -269,6 +269,12 @@ pub fn export_character(
             } else {
                 export_json_blob(&char_data)?
             }
+        }
+        "zx-fspack" => {
+            let bytes = export_zx_fspack(&char_data)?;
+            fs::write(&output_path, bytes)
+                .map_err(|e| format!("Failed to write export file: {}", e))?;
+            return Ok(());
         }
         "breakpoint-rust" => {
             return Err("Breakpoint adapter not yet implemented".to_string());

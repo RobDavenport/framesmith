@@ -29,6 +29,9 @@ tokio = { version = "1", features = ["full"] }
 schemars = "1.0"
 anyhow = "1.0"
 
+[dev-dependencies]
+framesmith-fspack = { path = "../crates/framesmith-fspack" }
+
 [[bin]]
 name = "mcp"
 path = "src/bin/mcp.rs"
