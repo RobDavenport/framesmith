@@ -3,6 +3,8 @@
 **Status:** Draft
 **Date:** 2026-01-29
 
+REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
 ## Overview
 
 A rule-based system for defining project-wide and per-character defaults and validation constraints. Eliminates copy-paste of common patterns like gatling chains, cancel rules, and charge times.

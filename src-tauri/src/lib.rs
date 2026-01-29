@@ -1,6 +1,7 @@
 pub mod codegen;
 pub mod commands;
 pub mod mcp;
+pub mod rules;
 pub mod schema;
 
 use commands::{export_character, list_characters, load_character, save_move};

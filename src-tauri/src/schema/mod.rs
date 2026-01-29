@@ -21,6 +21,8 @@ pub struct Character {
 pub struct Move {
     pub input: String,
     pub name: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub startup: u8,
     pub active: u8,
     pub recovery: u8,
@@ -56,6 +58,7 @@ impl Default for Move {
         Self {
             input: String::new(),
             name: String::new(),
+            tags: Vec::new(),
             startup: 0,
             active: 0,
             recovery: 0,
@@ -159,10 +162,31 @@ pub enum TriggerType {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HitboxShape {
-    Aabb { x: i32, y: i32, w: u32, h: u32 },
-    Rect { x: i32, y: i32, w: u32, h: u32, angle: f32 },
-    Circle { x: i32, y: i32, r: u32 },
-    Capsule { x1: i32, y1: i32, x2: i32, y2: i32, r: u32 },
+    Aabb {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+    },
+    Rect {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        angle: f32,
+    },
+    Circle {
+        x: i32,
+        y: i32,
+        r: u32,
+    },
+    Capsule {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        r: u32,
+    },
 }
 
 /// A single hit within a move (for multi-hit moves)

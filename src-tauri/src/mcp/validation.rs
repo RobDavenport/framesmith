@@ -117,7 +117,11 @@ fn validate_hits(hits: &[Hit], errors: &mut Vec<ValidationError>) {
     }
 }
 
-fn validate_hitbox_shape(shape: &HitboxShape, field_prefix: &str, errors: &mut Vec<ValidationError>) {
+fn validate_hitbox_shape(
+    shape: &HitboxShape,
+    field_prefix: &str,
+    errors: &mut Vec<ValidationError>,
+) {
     match shape {
         HitboxShape::Aabb { w, h, .. } | HitboxShape::Rect { w, h, .. } => {
             if *w == 0 {
@@ -424,6 +428,7 @@ mod tests {
         Move {
             input: "5L".to_string(),
             name: "Standing Light".to_string(),
+            tags: vec![],
             startup: 7,
             active: 3,
             recovery: 8,
@@ -571,12 +576,8 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors
-            .iter()
-            .any(|e| e.field == "hits[0].hitboxes[0].w"));
-        assert!(errors
-            .iter()
-            .any(|e| e.field == "hits[0].hitboxes[1].r"));
+        assert!(errors.iter().any(|e| e.field == "hits[0].hitboxes[0].w"));
+        assert!(errors.iter().any(|e| e.field == "hits[0].hitboxes[1].r"));
     }
 
     #[test]
@@ -618,9 +619,8 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors.iter().any(
-            |e| e.field == "preconditions[0]" && e.message.contains("min_percent cannot be greater")
-        ));
+        assert!(errors.iter().any(|e| e.field == "preconditions[0]"
+            && e.message.contains("min_percent cannot be greater")));
     }
 
     #[test]
@@ -633,7 +633,9 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors.iter().any(|e| e.message.contains("cannot exceed 100")));
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("cannot exceed 100")));
     }
 
     #[test]
@@ -643,8 +645,9 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors.iter().any(|e| e.field == "costs[0].amount"
-            && e.message.contains("must be greater than 0")));
+        assert!(errors
+            .iter()
+            .any(|e| e.field == "costs[0].amount" && e.message.contains("must be greater than 0")));
     }
 
     #[test]
@@ -662,9 +665,7 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors
-            .iter()
-            .any(|e| e.field == "movement.distance"));
+        assert!(errors.iter().any(|e| e.field == "movement.distance"));
     }
 
     #[test]
@@ -698,9 +699,7 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors
-            .iter()
-            .any(|e| e.field == "super_freeze.frames"));
+        assert!(errors.iter().any(|e| e.field == "super_freeze.frames"));
     }
 
     #[test]
@@ -730,8 +729,12 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors.iter().any(|e| e.field == "super_freeze.darken"
-            && e.message.contains("between 0.0 and 1.0")));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.field == "super_freeze.darken"
+                    && e.message.contains("between 0.0 and 1.0"))
+        );
     }
 
     #[test]
@@ -792,8 +795,10 @@ mod tests {
         let result = validate_move(&mv);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors.iter().any(|e| e.field == "on_hit.status[0].multiplier"
-            && e.message.contains("between 0.0 and 1.0")));
+        assert!(errors
+            .iter()
+            .any(|e| e.field == "on_hit.status[0].multiplier"
+                && e.message.contains("between 0.0 and 1.0")));
     }
 
     #[test]

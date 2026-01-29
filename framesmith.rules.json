@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "apply": [
+    {
+      "match": {},
+      "set": {
+        "hitstop": 8,
+        "pushback": { "hit": 5, "block": 8 }
+      }
+    }
+  ],
+  "validate": [
+    {
+      "match": {},
+      "require": { "animation": { "exists": true } },
+      "severity": "warning",
+      "message": "Move missing animation reference"
+    }
+  ]
+}
