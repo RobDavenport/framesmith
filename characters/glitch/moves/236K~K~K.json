@@ -1,0 +1,37 @@
+{
+  "input": "K",
+  "name": "Rekka 3",
+  "type": "special",
+  "parent": "236K~K",
+  "startup": 12,
+  "active": 7,
+  "recovery": 22,
+  "damage": 100,
+  "hitstun": 30,
+  "blockstun": 18,
+  "hitstop": 10,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 25, "block": 30 },
+  "meter_gain": { "hit": 12, "whiff": 4 },
+  "animation": "rekka3",
+  "preconditions": [
+    { "type": "state", "in": "rekka2" }
+  ],
+  "hits": [
+    {
+      "frames": [12, 18],
+      "damage": 100,
+      "chip_damage": 10,
+      "hitstun": 30,
+      "blockstun": 18,
+      "hitstop": 10,
+      "guard": "mid",
+      "hitboxes": [
+        { "type": "capsule", "x1": 0, "y1": -50, "x2": 60, "y2": -40, "r": 15 }
+      ],
+      "cancels": ["236236P"]
+    }
+  ]
+}

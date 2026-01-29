@@ -1,6 +1,7 @@
 {
   "input": "5H",
   "name": "Standing Heavy",
+  "type": "normal",
   "startup": 14,
   "active": 5,
   "recovery": 20,

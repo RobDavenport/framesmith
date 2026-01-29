@@ -1,0 +1,35 @@
+{
+  "input": "44",
+  "name": "Back Dash",
+  "type": "movement",
+  "startup": 4,
+  "active": 1,
+  "recovery": 12,
+  "damage": 0,
+  "hitstun": 0,
+  "blockstun": 0,
+  "hitstop": 0,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 0, "block": 0 },
+  "meter_gain": { "hit": 0, "whiff": 0 },
+  "animation": "dash_back",
+  "total": 24,
+  "movement": {
+    "distance": 60,
+    "direction": "backward",
+    "curve": "ease-out"
+  },
+  "advanced_hurtboxes": [
+    {
+      "frames": [0, 8],
+      "boxes": [{ "type": "aabb", "x": -12, "y": -65, "w": 24, "h": 65 }],
+      "flags": ["full_invuln"]
+    },
+    {
+      "frames": [9, 24],
+      "boxes": [{ "type": "aabb", "x": -12, "y": -65, "w": 24, "h": 65 }]
+    }
+  ]
+}

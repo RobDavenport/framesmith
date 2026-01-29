@@ -1,0 +1,31 @@
+{
+  "input": "K",
+  "name": "Rekka 2",
+  "type": "special",
+  "parent": "236K",
+  "startup": 10,
+  "active": 5,
+  "recovery": 14,
+  "damage": 70,
+  "hitstun": 20,
+  "blockstun": 14,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [10, 14], "box": { "x": 15, "y": -55, "w": 45, "h": 35 } }
+  ],
+  "hurtboxes": [],
+  "pushback": { "hit": 12, "block": 18 },
+  "meter_gain": { "hit": 8, "whiff": 3 },
+  "animation": "rekka2",
+  "preconditions": [
+    { "type": "state", "in": "rekka" }
+  ],
+  "on_use": {
+    "enters_state": {
+      "name": "rekka2",
+      "duration": 25,
+      "persistent": false
+    }
+  }
+}

@@ -12,5 +12,8 @@
       "Bash(cargo metadata:*)",
       "Bash(python -c:*)"
     ]
-  }
+  },
+  "disabledMcpjsonServers": [
+    "framesmith"
+  ]
 }

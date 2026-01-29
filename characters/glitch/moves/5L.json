@@ -1,6 +1,7 @@
 {
   "input": "5L",
   "name": "Standing Light",
+  "type": "normal",
   "startup": 7,
   "active": 3,
   "recovery": 8,

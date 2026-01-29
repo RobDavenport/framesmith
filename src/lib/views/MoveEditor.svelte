@@ -6,7 +6,10 @@
     selectMove,
     saveMove,
   } from "$lib/stores/character.svelte";
-  import type { Move } from "$lib/types";
+  import type { Move, MoveType, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
+
+  const moveTypeOptions: MoveType[] = ["normal", "command_normal", "special", "super", "movement", "throw"];
+  const triggerOptions: TriggerType[] = ["press", "release", "hold"];
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
@@ -15,6 +18,10 @@
 
   // Local editing state - copy of the move data
   let editingMove = $state<Move | null>(null);
+
+  // Collapsible section states
+  let showPreconditions = $state(false);
+  let showCosts = $state(false);
 
   // Watch for selected move changes and create a local copy
   $effect(() => {
@@ -69,6 +76,71 @@
     } catch (e) {
       saveStatus = `Error: ${e}`;
     }
+  }
+
+  // Helper functions for v2 fields
+  function addPrecondition(type: string) {
+    if (!type) return;
+    if (!editingMove) return;
+
+    const newPrecondition: Precondition = type === 'grounded'
+      ? { type: 'grounded' }
+      : type === 'airborne'
+      ? { type: 'airborne' }
+      : type === 'meter'
+      ? { type: 'meter', min: 25 }
+      : type === 'charge'
+      ? { type: 'charge', direction: '4', min_frames: 45 }
+      : type === 'state'
+      ? { type: 'state', in: '' }
+      : { type: 'health', max_percent: 30 };
+
+    editingMove.preconditions = [...(editingMove.preconditions ?? []), newPrecondition];
+  }
+
+  function removePrecondition(index: number) {
+    if (!editingMove?.preconditions) return;
+    editingMove.preconditions = editingMove.preconditions.filter((_, i) => i !== index);
+    if (editingMove.preconditions.length === 0) {
+      editingMove.preconditions = undefined;
+    }
+  }
+
+  function addCost(type: string) {
+    if (!type) return;
+    if (!editingMove) return;
+
+    const newCost: Cost = type === 'meter'
+      ? { type: 'meter', amount: 25 }
+      : type === 'health'
+      ? { type: 'health', amount: 10 }
+      : { type: 'resource', name: 'custom', amount: 1 };
+
+    editingMove.costs = [...(editingMove.costs ?? []), newCost];
+  }
+
+  function removeCost(index: number) {
+    if (!editingMove?.costs) return;
+    editingMove.costs = editingMove.costs.filter((_, i) => i !== index);
+    if (editingMove.costs.length === 0) {
+      editingMove.costs = undefined;
+    }
+  }
+
+  function updateMovement(field: string, value: any) {
+    if (!editingMove) return;
+    if (!editingMove.movement) {
+      editingMove.movement = { distance: 0, direction: 'forward' };
+    }
+    (editingMove.movement as any)[field] = value;
+  }
+
+  function updateSuperFreeze(field: string, value: any) {
+    if (!editingMove) return;
+    if (!editingMove.super_freeze) {
+      editingMove.super_freeze = { frames: 45 };
+    }
+    (editingMove.super_freeze as any)[field] = value;
   }
 </script>
 
@@ -236,6 +308,209 @@
           </div>
         </section>
 
+        <!-- Move Type & Trigger Section -->
+        <section class="form-section">
+          <h3 class="section-title">Move Type</h3>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="move-type">Type</label>
+              <select id="move-type" bind:value={editingMove.type}>
+                <option value={undefined}>-- Default --</option>
+                {#each moveTypeOptions as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="trigger">Trigger</label>
+              <select id="trigger" bind:value={editingMove.trigger}>
+                <option value={undefined}>press (default)</option>
+                {#each triggerOptions as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+          <div class="form-grid" style="margin-top: 12px;">
+            <div class="form-field">
+              <label for="parent">Parent Move</label>
+              <input
+                type="text"
+                id="parent"
+                placeholder="e.g., 236K for follow-up"
+                bind:value={editingMove.parent}
+              />
+            </div>
+            <div class="form-field">
+              <label for="total">Total Frames (override)</label>
+              <input
+                type="number"
+                id="total"
+                min="0"
+                bind:value={editingMove.total}
+              />
+            </div>
+          </div>
+        </section>
+
+        <!-- Preconditions Section -->
+        <section class="form-section">
+          <button type="button" class="section-title collapsible" onclick={() => showPreconditions = !showPreconditions}>
+            Preconditions {editingMove.preconditions?.length ? `(${editingMove.preconditions.length})` : ''}
+            <span class="collapse-icon">{showPreconditions ? '▼' : '▶'}</span>
+          </button>
+          {#if showPreconditions}
+            <div class="array-editor">
+              {#if editingMove.preconditions}
+                {#each editingMove.preconditions as precondition, i}
+                  <div class="array-item">
+                    <span class="item-label">{precondition.type}</span>
+                    <button class="remove-btn" onclick={() => removePrecondition(i)}>×</button>
+                  </div>
+                {/each}
+              {/if}
+              <select class="add-select" onchange={(e) => addPrecondition(e.currentTarget.value)}>
+                <option value="">+ Add precondition...</option>
+                <option value="meter">Meter requirement</option>
+                <option value="charge">Charge requirement</option>
+                <option value="state">State requirement</option>
+                <option value="grounded">Grounded only</option>
+                <option value="airborne">Airborne only</option>
+                <option value="health">Health requirement</option>
+              </select>
+            </div>
+          {/if}
+        </section>
+
+        <!-- Costs Section -->
+        <section class="form-section">
+          <button type="button" class="section-title collapsible" onclick={() => showCosts = !showCosts}>
+            Costs {editingMove.costs?.length ? `(${editingMove.costs.length})` : ''}
+            <span class="collapse-icon">{showCosts ? '▼' : '▶'}</span>
+          </button>
+          {#if showCosts}
+            <div class="array-editor">
+              {#if editingMove.costs}
+                {#each editingMove.costs as cost, i}
+                  <div class="array-item">
+                    <span class="item-label">{cost.type}: {cost.amount}</span>
+                    <button class="remove-btn" onclick={() => removeCost(i)}>×</button>
+                  </div>
+                {/each}
+              {/if}
+              <select class="add-select" onchange={(e) => addCost(e.currentTarget.value)}>
+                <option value="">+ Add cost...</option>
+                <option value="meter">Meter cost</option>
+                <option value="health">Health cost</option>
+                <option value="resource">Resource cost</option>
+              </select>
+            </div>
+          {/if}
+        </section>
+
+        <!-- Movement Section (for movement type moves) -->
+        {#if editingMove.type === 'movement' || editingMove.movement}
+        <section class="form-section">
+          <h3 class="section-title">Movement</h3>
+          <div class="form-grid four-col">
+            <div class="form-field">
+              <label for="move-distance">Distance</label>
+              <input
+                type="number"
+                id="move-distance"
+                min="0"
+                value={editingMove.movement?.distance ?? 0}
+                oninput={(e) => updateMovement('distance', parseInt(e.currentTarget.value))}
+              />
+            </div>
+            <div class="form-field">
+              <label for="move-direction">Direction</label>
+              <select
+                id="move-direction"
+                value={editingMove.movement?.direction ?? 'forward'}
+                onchange={(e) => updateMovement('direction', e.currentTarget.value)}
+              >
+                <option value="forward">Forward</option>
+                <option value="backward">Backward</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="move-curve">Curve</label>
+              <select
+                id="move-curve"
+                value={editingMove.movement?.curve ?? ''}
+                onchange={(e) => updateMovement('curve', e.currentTarget.value || undefined)}
+              >
+                <option value="">Linear</option>
+                <option value="ease-in">Ease In</option>
+                <option value="ease-out">Ease Out</option>
+                <option value="ease-in-out">Ease In-Out</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="move-airborne">Airborne</label>
+              <input
+                type="checkbox"
+                id="move-airborne"
+                checked={editingMove.movement?.airborne ?? false}
+                onchange={(e) => updateMovement('airborne', e.currentTarget.checked)}
+              />
+            </div>
+          </div>
+        </section>
+        {/if}
+
+        <!-- Super Freeze Section (for super type moves) -->
+        {#if editingMove.type === 'super' || editingMove.super_freeze}
+        <section class="form-section">
+          <h3 class="section-title">Super Freeze</h3>
+          <div class="form-grid four-col">
+            <div class="form-field">
+              <label for="freeze-frames">Frames</label>
+              <input
+                type="number"
+                id="freeze-frames"
+                min="0"
+                value={editingMove.super_freeze?.frames ?? 0}
+                oninput={(e) => updateSuperFreeze('frames', parseInt(e.currentTarget.value))}
+              />
+            </div>
+            <div class="form-field">
+              <label for="freeze-zoom">Zoom</label>
+              <input
+                type="number"
+                id="freeze-zoom"
+                min="0"
+                step="0.1"
+                value={editingMove.super_freeze?.zoom ?? 1.0}
+                oninput={(e) => updateSuperFreeze('zoom', parseFloat(e.currentTarget.value))}
+              />
+            </div>
+            <div class="form-field">
+              <label for="freeze-darken">Darken</label>
+              <input
+                type="number"
+                id="freeze-darken"
+                min="0"
+                max="1"
+                step="0.1"
+                value={editingMove.super_freeze?.darken ?? 0}
+                oninput={(e) => updateSuperFreeze('darken', parseFloat(e.currentTarget.value))}
+              />
+            </div>
+            <div class="form-field">
+              <label for="freeze-flash">Flash</label>
+              <input
+                type="checkbox"
+                id="freeze-flash"
+                checked={editingMove.super_freeze?.flash ?? false}
+                onchange={(e) => updateSuperFreeze('flash', e.currentTarget.checked)}
+              />
+            </div>
+          </div>
+        </section>
+        {/if}
+
         <!-- Pushback Section -->
         <section class="form-section">
           <h3 class="section-title">Pushback</h3>
@@ -372,6 +647,21 @@
     margin-bottom: 12px;
   }
 
+  .section-title.collapsible {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .section-title.collapsible:hover {
+    color: var(--text-primary);
+  }
+
+  .collapse-icon {
+    font-size: 10px;
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -417,6 +707,45 @@
 
   .computed-value.positive {
     color: var(--success);
+  }
+
+  .array-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .array-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .item-label {
+    font-family: monospace;
+  }
+
+  .remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+  }
+
+  .remove-btn:hover {
+    color: var(--accent);
+  }
+
+  .add-select {
+    padding: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
   }
 
   .preview-panel {

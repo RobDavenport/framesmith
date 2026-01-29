@@ -1,0 +1,34 @@
+{
+  "input": "236236P",
+  "name": "Super Fireball",
+  "type": "super",
+  "startup": 8,
+  "active": 5,
+  "recovery": 25,
+  "damage": 250,
+  "hitstun": 40,
+  "blockstun": 25,
+  "hitstop": 15,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 40, "block": 50 },
+  "meter_gain": { "hit": 0, "whiff": 0 },
+  "animation": "super_fireball",
+  "preconditions": [
+    { "type": "meter", "min": 100 }
+  ],
+  "costs": [
+    { "type": "meter", "amount": 100 }
+  ],
+  "super_freeze": {
+    "frames": 45,
+    "zoom": 1.5,
+    "darken": 0.7,
+    "flash": true
+  },
+  "on_hit": {
+    "gain_meter": 0,
+    "wall_bounce": true
+  }
+}

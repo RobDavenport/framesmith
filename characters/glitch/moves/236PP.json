@@ -1,0 +1,29 @@
+{
+  "input": "236PP",
+  "name": "EX Fireball",
+  "type": "special",
+  "startup": 10,
+  "active": 6,
+  "recovery": 15,
+  "damage": 120,
+  "hitstun": 25,
+  "blockstun": 18,
+  "hitstop": 10,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 15, "block": 25 },
+  "meter_gain": { "hit": 0, "whiff": 0 },
+  "animation": "ex_fireball",
+  "preconditions": [
+    { "type": "meter", "min": 25 }
+  ],
+  "costs": [
+    { "type": "meter", "amount": 25 }
+  ],
+  "hits": [
+    { "frames": [10, 12], "damage": 40, "chip_damage": 4, "hitstun": 15, "blockstun": 10, "hitstop": 8, "guard": "mid", "hitboxes": [], "cancels": [] },
+    { "frames": [14, 16], "damage": 40, "chip_damage": 4, "hitstun": 15, "blockstun": 10, "hitstop": 8, "guard": "mid", "hitboxes": [], "cancels": [] },
+    { "frames": [18, 20], "damage": 40, "chip_damage": 4, "hitstun": 25, "blockstun": 15, "hitstop": 10, "guard": "mid", "hitboxes": [], "cancels": [] }
+  ]
+}

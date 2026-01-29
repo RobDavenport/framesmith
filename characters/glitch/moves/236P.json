@@ -1,0 +1,25 @@
+{
+  "input": "236P",
+  "name": "Fireball",
+  "type": "special",
+  "startup": 12,
+  "active": 2,
+  "recovery": 18,
+  "damage": 80,
+  "hitstun": 20,
+  "blockstun": 14,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 20, "block": 30 },
+  "meter_gain": { "hit": 10, "whiff": 3 },
+  "animation": "fireball",
+  "on_use": {
+    "spawn_entity": {
+      "type": "projectile",
+      "tag": "fireball",
+      "data": "fireball_projectile"
+    }
+  }
+}
