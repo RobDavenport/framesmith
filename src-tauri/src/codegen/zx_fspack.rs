@@ -180,22 +180,55 @@ fn pack_hurt_window(hb: &FrameHitbox, shapes_off: u32) -> [u8; HURT_WINDOW12_SIZ
     buf
 }
 
+/// Convert MoveType to u8 for binary encoding.
+fn move_type_to_u8(move_type: Option<&crate::schema::MoveType>) -> u8 {
+    use crate::schema::MoveType;
+    match move_type {
+        Some(MoveType::Normal) => 0,
+        Some(MoveType::CommandNormal) => 1,
+        Some(MoveType::Special) => 2,
+        Some(MoveType::Super) => 3,
+        Some(MoveType::Movement) => 4,
+        Some(MoveType::Throw) => 5,
+        None => 0, // default to Normal
+    }
+}
+
+/// Convert TriggerType to u8 for binary encoding.
+fn trigger_type_to_u8(trigger: Option<&crate::schema::TriggerType>) -> u8 {
+    use crate::schema::TriggerType;
+    match trigger {
+        Some(TriggerType::Press) => 0,
+        Some(TriggerType::Release) => 1,
+        Some(TriggerType::Hold) => 2,
+        None => 0, // default to Press
+    }
+}
+
 /// Pack a Move into a MoveRecord structure.
 ///
 /// MoveRecord layout (32 bytes):
-/// - move_id (u16): move identifier
-/// - mesh_key (u16): index into MESH_KEYS or KEY_NONE
-/// - keyframes_key (u16): index into KEYFRAMES_KEYS or KEY_NONE
-/// - startup (u8): startup frames
-/// - active (u8): active frames
-/// - recovery (u8): recovery frames
-/// - total (u8): total frames (0 = auto-calculated)
-/// - hit_windows_off (u32): offset into HIT_WINDOWS section
-/// - hit_windows_len (u16): number of hit windows
-/// - hurt_windows_off (u32): offset into HURT_WINDOWS section
-/// - hurt_windows_len (u16): number of hurt windows
-/// - cancels_off (u32): offset into CANCELS_U16 section
-/// - cancels_len (u16): number of cancel target move IDs
+/// - 0-1: move_id (u16)
+/// - 2-3: mesh_key (u16)
+/// - 4-5: keyframes_key (u16)
+/// - 6: move_type (u8)
+/// - 7: trigger (u8)
+/// - 8: guard (u8)
+/// - 9: flags (u8)
+/// - 10: startup (u8)
+/// - 11: active (u8)
+/// - 12: recovery (u8)
+/// - 13: reserved (u8)
+/// - 14-15: total (u16)
+/// - 16-17: damage (u16)
+/// - 18: hitstun (u8)
+/// - 19: blockstun (u8)
+/// - 20: hitstop (u8)
+/// - 21: reserved (u8)
+/// - 22-25: hit_windows_off (u32)
+/// - 26-27: hit_windows_len (u16)
+/// - 28-29: hurt_windows_off (u16)
+/// - 30-31: hurt_windows_len (u16)
 fn pack_move_record(
     move_id: u16,
     mesh_key: u16,
@@ -203,7 +236,7 @@ fn pack_move_record(
     mv: &Move,
     hit_windows_off: u32,
     hit_windows_len: u16,
-    hurt_windows_off: u32,
+    hurt_windows_off: u16,
     hurt_windows_len: u16,
 ) -> [u8; MOVE_RECORD_SIZE] {
     let mut buf = [0u8; MOVE_RECORD_SIZE];
@@ -211,17 +244,27 @@ fn pack_move_record(
     buf[0..2].copy_from_slice(&move_id.to_le_bytes()); // move_id
     buf[2..4].copy_from_slice(&mesh_key.to_le_bytes()); // mesh_key
     buf[4..6].copy_from_slice(&keyframes_key.to_le_bytes()); // keyframes_key
-    buf[6] = mv.startup; // startup
-    buf[7] = mv.active; // active
-    buf[8] = mv.recovery; // recovery
-    buf[9] = mv.total.unwrap_or(0); // total
-    buf[10..14].copy_from_slice(&hit_windows_off.to_le_bytes()); // hit_windows_off
-    buf[14..16].copy_from_slice(&hit_windows_len.to_le_bytes()); // hit_windows_len
-    buf[16..20].copy_from_slice(&hurt_windows_off.to_le_bytes()); // hurt_windows_off
-    buf[20..22].copy_from_slice(&hurt_windows_len.to_le_bytes()); // hurt_windows_len
-    buf[22..26].copy_from_slice(&0u32.to_le_bytes()); // cancels_off (empty for v1)
-    buf[26..28].copy_from_slice(&0u16.to_le_bytes()); // cancels_len (empty for v1)
-    // bytes 28-31 are reserved/padding (already zeroed)
+    buf[6] = move_type_to_u8(mv.move_type.as_ref()); // move_type
+    buf[7] = trigger_type_to_u8(mv.trigger.as_ref()); // trigger
+    buf[8] = guard_type_to_u8(&mv.guard); // guard
+    buf[9] = 0; // flags (reserved for v1)
+    buf[10] = mv.startup; // startup
+    buf[11] = mv.active; // active
+    buf[12] = mv.recovery; // recovery
+    buf[13] = 0; // reserved
+    let total = mv.total.map(|t| t as u16).unwrap_or_else(|| {
+        (mv.startup as u16) + (mv.active as u16) + (mv.recovery as u16)
+    });
+    buf[14..16].copy_from_slice(&total.to_le_bytes()); // total
+    buf[16..18].copy_from_slice(&mv.damage.to_le_bytes()); // damage
+    buf[18] = mv.hitstun; // hitstun
+    buf[19] = mv.blockstun; // blockstun
+    buf[20] = mv.hitstop; // hitstop
+    buf[21] = 0; // reserved
+    buf[22..26].copy_from_slice(&hit_windows_off.to_le_bytes()); // hit_windows_off
+    buf[26..28].copy_from_slice(&hit_windows_len.to_le_bytes()); // hit_windows_len
+    buf[28..30].copy_from_slice(&hurt_windows_off.to_le_bytes()); // hurt_windows_off (u16)
+    buf[30..32].copy_from_slice(&hurt_windows_len.to_le_bytes()); // hurt_windows_len
 
     buf
 }
@@ -271,7 +314,7 @@ pub fn pack_moves(moves: &[Move], anim_to_index: Option<&HashMap<String, u16>>) 
 
         // Track offsets before adding this move's data
         let hit_windows_off = packed.hit_windows.len() as u32;
-        let hurt_windows_off = packed.hurt_windows.len() as u32;
+        let hurt_windows_off = packed.hurt_windows.len() as u16; // u16 for compact layout
 
         // Pack hitboxes -> shapes + hit_windows
         for hb in &mv.hitboxes {
@@ -1085,30 +1128,67 @@ mod tests {
 
         assert_eq!(mr.len(), MOVE_RECORD_SIZE);
 
+        // 0-1: move_id
         let move_id = u16::from_le_bytes([mr[0], mr[1]]);
         assert_eq!(move_id, 42);
 
+        // 2-3: mesh_key
         let mesh_key = u16::from_le_bytes([mr[2], mr[3]]);
         assert_eq!(mesh_key, KEY_NONE);
 
+        // 4-5: keyframes_key
         let keyframes_key = u16::from_le_bytes([mr[4], mr[5]]);
         assert_eq!(keyframes_key, KEY_NONE);
 
-        assert_eq!(mr[6], 5); // startup
-        assert_eq!(mr[7], 3); // active
-        assert_eq!(mr[8], 10); // recovery
-        assert_eq!(mr[9], 0); // total (not set)
+        // 6: move_type (None -> 0)
+        assert_eq!(mr[6], 0);
+        // 7: trigger (None -> 0)
+        assert_eq!(mr[7], 0);
+        // 8: guard (Mid -> 1)
+        assert_eq!(mr[8], 1);
+        // 9: flags
+        assert_eq!(mr[9], 0);
 
-        let hit_off = u32::from_le_bytes([mr[10], mr[11], mr[12], mr[13]]);
+        // 10: startup
+        assert_eq!(mr[10], 5);
+        // 11: active
+        assert_eq!(mr[11], 3);
+        // 12: recovery
+        assert_eq!(mr[12], 10);
+        // 13: reserved
+        assert_eq!(mr[13], 0);
+
+        // 14-15: total (5+3+10=18)
+        let total = u16::from_le_bytes([mr[14], mr[15]]);
+        assert_eq!(total, 18);
+
+        // 16-17: damage
+        let damage = u16::from_le_bytes([mr[16], mr[17]]);
+        assert_eq!(damage, 500);
+
+        // 18: hitstun
+        assert_eq!(mr[18], 12);
+        // 19: blockstun
+        assert_eq!(mr[19], 8);
+        // 20: hitstop
+        assert_eq!(mr[20], 10);
+        // 21: reserved
+        assert_eq!(mr[21], 0);
+
+        // 22-25: hit_windows_off
+        let hit_off = u32::from_le_bytes([mr[22], mr[23], mr[24], mr[25]]);
         assert_eq!(hit_off, 100);
 
-        let hit_len = u16::from_le_bytes([mr[14], mr[15]]);
+        // 26-27: hit_windows_len
+        let hit_len = u16::from_le_bytes([mr[26], mr[27]]);
         assert_eq!(hit_len, 2);
 
-        let hurt_off = u32::from_le_bytes([mr[16], mr[17], mr[18], mr[19]]);
+        // 28-29: hurt_windows_off (u16)
+        let hurt_off = u16::from_le_bytes([mr[28], mr[29]]);
         assert_eq!(hurt_off, 200);
 
-        let hurt_len = u16::from_le_bytes([mr[20], mr[21]]);
+        // 30-31: hurt_windows_len
+        let hurt_len = u16::from_le_bytes([mr[30], mr[31]]);
         assert_eq!(hurt_len, 3);
     }
 
@@ -1149,9 +1229,9 @@ mod tests {
             let offset = i * MOVE_RECORD_SIZE;
             let record = &packed.moves[offset..offset + MOVE_RECORD_SIZE];
 
-            // Extract hit_windows offset and length
-            let hit_off = u32::from_le_bytes([record[10], record[11], record[12], record[13]]);
-            let hit_len = u16::from_le_bytes([record[14], record[15]]) as u32;
+            // Extract hit_windows offset (22-25) and length (26-27)
+            let hit_off = u32::from_le_bytes([record[22], record[23], record[24], record[25]]);
+            let hit_len = u16::from_le_bytes([record[26], record[27]]) as u32;
 
             // Verify hit_windows reference is within bounds
             let hit_end = hit_off + hit_len * HIT_WINDOW24_SIZE as u32;
@@ -1164,9 +1244,9 @@ mod tests {
                 packed.hit_windows.len()
             );
 
-            // Extract hurt_windows offset and length
-            let hurt_off = u32::from_le_bytes([record[16], record[17], record[18], record[19]]);
-            let hurt_len = u16::from_le_bytes([record[20], record[21]]) as u32;
+            // Extract hurt_windows offset (28-29, u16) and length (30-31)
+            let hurt_off = u16::from_le_bytes([record[28], record[29]]) as u32;
+            let hurt_len = u16::from_le_bytes([record[30], record[31]]) as u32;
 
             // Verify hurt_windows reference is within bounds
             let hurt_end = hurt_off + hurt_len * HURT_WINDOW12_SIZE as u32;
@@ -1249,8 +1329,8 @@ mod tests {
 
         // Move record should have zero-length references
         let record = &packed.moves[0..MOVE_RECORD_SIZE];
-        let hit_len = u16::from_le_bytes([record[14], record[15]]);
-        let hurt_len = u16::from_le_bytes([record[20], record[21]]);
+        let hit_len = u16::from_le_bytes([record[26], record[27]]);
+        let hurt_len = u16::from_le_bytes([record[30], record[31]]);
         assert_eq!(hit_len, 0);
         assert_eq!(hurt_len, 0);
     }
