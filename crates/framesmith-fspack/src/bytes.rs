@@ -1,5 +1,12 @@
 //! Byte reading utilities for no_std environments.
 
+/// Read a u8 from `data` at `offset`.
+/// Returns `None` if `offset >= data.len()`.
+#[inline]
+pub fn read_u8(data: &[u8], offset: usize) -> Option<u8> {
+    data.get(offset).copied()
+}
+
 /// Read a little-endian u16 from `data` at `offset`.
 /// Returns `None` if `offset + 2 > data.len()`.
 #[inline]
