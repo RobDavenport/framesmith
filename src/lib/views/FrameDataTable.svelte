@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentCharacter, selectMove } from "$lib/stores/character.svelte";
+  import CreateMoveModal from "$lib/components/CreateMoveModal.svelte";
   import type { Move } from "$lib/types";
 
   interface Props {
@@ -7,6 +8,7 @@
   }
 
   let { onEditMove }: Props = $props();
+  let showCreateModal = $state(false);
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
@@ -94,6 +96,11 @@
   function formatAdvantage(value: number): string {
     return value >= 0 ? `+${value}` : String(value);
   }
+
+  function handleMoveCreated(input: string) {
+    selectMove(input);
+    onEditMove(input);
+  }
 </script>
 
 <div class="frame-data-container">
@@ -104,6 +111,10 @@
       {/each}
     </select>
     <span class="count">{filteredMoves.length} moves</span>
+    <div class="toolbar-spacer"></div>
+    <button class="new-move-btn" onclick={() => showCreateModal = true}>
+      + New Move
+    </button>
   </div>
 
   <div class="table-wrapper">
@@ -162,6 +173,12 @@
       </tbody>
     </table>
   </div>
+
+  <CreateMoveModal
+    open={showCreateModal}
+    onClose={() => showCreateModal = false}
+    onCreated={handleMoveCreated}
+  />
 </div>
 
 <style>
@@ -247,5 +264,21 @@
 
   .guard {
     text-transform: capitalize;
+  }
+
+  .toolbar-spacer {
+    flex: 1;
+  }
+
+  .new-move-btn {
+    background: var(--accent);
+    border-color: var(--accent);
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .new-move-btn:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 </style>

@@ -1,10 +1,12 @@
 <script lang="ts">
   import { getCurrentCharacter, exportCharacter } from "$lib/stores/character.svelte";
+  import DeleteCharacterModal from "$lib/components/DeleteCharacterModal.svelte";
   import type { Move, CancelTable } from "$lib/types";
 
   let exportAdapter = $state("json-blob");
   let exportPretty = $state(true);
   let exportStatus = $state<string | null>(null);
+  let showDeleteModal = $state(false);
 
   const characterData = $derived(getCurrentCharacter());
   const character = $derived(characterData?.character);
@@ -55,7 +57,15 @@
     if (!character) return;
 
     exportStatus = null;
-    const filename = `${character.id}.${exportAdapter === "json-blob" ? "json" : "rs"}`;
+    let extension: string;
+    if (exportAdapter === "zx-fspack") {
+      extension = "fspk";
+    } else if (exportAdapter === "json-blob") {
+      extension = "json";
+    } else {
+      extension = "rs";
+    }
+    const filename = `${character.id}.${extension}`;
     const outputPath = `exports/${filename}`;
 
     try {
@@ -168,10 +178,15 @@
       <div class="export-controls">
         <select bind:value={exportAdapter}>
           <option value="json-blob">JSON Blob</option>
+          <option value="zx-fspack">ZX FSPK (Binary)</option>
           <option value="breakpoint-rust" disabled>Breakpoint Rust (coming soon)</option>
         </select>
         <label class="checkbox-label">
-          <input type="checkbox" bind:checked={exportPretty} />
+          <input
+            type="checkbox"
+            bind:checked={exportPretty}
+            disabled={exportAdapter === "zx-fspack"}
+          />
           Pretty print
         </label>
         <button onclick={handleExport}>Export Character</button>
@@ -182,6 +197,26 @@
         {/if}
       </div>
     </div>
+
+    <div class="danger-zone">
+      <h3>Danger Zone</h3>
+      <div class="danger-content">
+        <div class="danger-info">
+          <span class="danger-title">Delete this character</span>
+          <span class="danger-desc">Once deleted, this character cannot be recovered.</span>
+        </div>
+        <button class="delete-btn" onclick={() => showDeleteModal = true}>
+          Delete Character
+        </button>
+      </div>
+    </div>
+
+    <DeleteCharacterModal
+      open={showDeleteModal}
+      characterId={character.id}
+      characterName={character.name}
+      onClose={() => showDeleteModal = false}
+    />
   </div>
 {/if}
 
@@ -305,5 +340,59 @@
 
   .export-status.error {
     color: var(--accent);
+  }
+
+  .danger-zone {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--error, #ef4444);
+  }
+
+  .danger-zone h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--error, #ef4444);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .danger-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .danger-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .danger-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .danger-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .delete-btn {
+    background: transparent;
+    border: 1px solid var(--error, #ef4444);
+    color: var(--error, #ef4444);
+    flex-shrink: 0;
+  }
+
+  .delete-btn:hover {
+    background: var(--error, #ef4444);
+    color: white;
   }
 </style>
