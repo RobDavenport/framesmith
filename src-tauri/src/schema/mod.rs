@@ -42,6 +42,34 @@ pub struct CharacterResource {
     pub max: u16,
 }
 
+/// Character assets manifest (textures, models, animations).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CharacterAssets {
+    #[serde(default = "default_assets_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub textures: Vec<String>,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub animations: Vec<String>,
+}
+
+fn default_assets_version() -> u32 {
+    1
+}
+
+impl Default for CharacterAssets {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            textures: Vec::new(),
+            models: Vec::new(),
+            animations: Vec::new(),
+        }
+    }
+}
+
 /// Single move definition
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]

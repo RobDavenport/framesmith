@@ -1,9 +1,30 @@
 use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
-use crate::schema::{CancelTable, Character, Move};
+use crate::schema::{CancelTable, Character, CharacterAssets, Move};
+use base64::Engine;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
+
+fn validate_asset_relative_path(relative_path: &str) -> Result<PathBuf, String> {
+    if relative_path.is_empty() {
+        return Err("Invalid asset path".to_string());
+    }
+
+    let path = Path::new(relative_path);
+    if path.is_absolute() {
+        return Err("Invalid asset path".to_string());
+    }
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {}
+            _ => return Err("Invalid asset path".to_string()),
+        }
+    }
+
+    Ok(path.to_path_buf())
+}
 
 fn project_rules_path(characters_dir: &str) -> PathBuf {
     let project_root = Path::new(characters_dir).parent().unwrap_or(Path::new("."));
@@ -91,7 +112,10 @@ pub struct CharacterSummary {
 pub fn list_characters(characters_dir: String) -> Result<Vec<CharacterSummary>, String> {
     let path = Path::new(&characters_dir);
     if !path.exists() {
-        return Ok(vec![]);
+        return Err(format!(
+            "Characters directory does not exist: {}",
+            characters_dir
+        ));
     }
 
     let mut summaries = vec![];
@@ -172,6 +196,61 @@ pub fn load_character(
         moves: resolved_moves,
         cancel_table,
     })
+}
+
+#[tauri::command]
+pub fn load_character_assets(
+    characters_dir: String,
+    character_id: String,
+) -> Result<CharacterAssets, String> {
+    validate_character_id(&character_id)?;
+
+    let char_path = Path::new(&characters_dir).join(&character_id);
+    if !char_path.exists() {
+        return Err(format!("Character '{}' not found", character_id));
+    }
+
+    let assets_file = char_path.join("assets.json");
+    if !assets_file.exists() {
+        return Ok(CharacterAssets::default());
+    }
+
+    let content = fs::read_to_string(&assets_file)
+        .map_err(|e| format!("Failed to read assets.json: {}", e))?;
+    let assets: CharacterAssets =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid assets.json format: {}", e))?;
+
+    Ok(assets)
+}
+
+#[tauri::command]
+pub fn read_character_asset_base64(
+    characters_dir: String,
+    character_id: String,
+    relative_path: String,
+) -> Result<String, String> {
+    validate_character_id(&character_id)?;
+    let rel_path = validate_asset_relative_path(&relative_path)?;
+
+    let char_path = Path::new(&characters_dir).join(&character_id);
+    if !char_path.exists() {
+        return Err(format!("Character '{}' not found", character_id));
+    }
+
+    let base_canon = char_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve character directory: {}", e))?;
+    let requested = char_path.join(rel_path);
+    let requested_canon = requested
+        .canonicalize()
+        .map_err(|e| format!("Failed to read asset file: {}", e))?;
+
+    if !requested_canon.starts_with(&base_canon) {
+        return Err("Invalid asset path".to_string());
+    }
+
+    let bytes = fs::read(&requested_canon).map_err(|e| format!("Failed to read asset file: {}", e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 #[tauri::command]
@@ -337,9 +416,6 @@ pub fn export_character(
             fs::write(&output_path, bytes)
                 .map_err(|e| format!("Failed to write export file: {}", e))?;
             return Ok(());
-        }
-        "breakpoint-rust" => {
-            return Err("Breakpoint adapter not yet implemented".to_string());
         }
         _ => return Err(format!("Unknown adapter: {}", adapter)),
     };
@@ -713,6 +789,58 @@ mod tests {
         fs::create_dir_all(&moves_dir).unwrap();
 
         characters_dir.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_load_character_assets_missing_returns_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let characters_dir = setup_test_character(&temp_dir);
+
+        let assets = load_character_assets(characters_dir, "test-char".to_string()).unwrap();
+        assert_eq!(assets.version, 1);
+        assert!(assets.textures.is_empty());
+        assert!(assets.models.is_empty());
+        assert!(assets.animations.is_empty());
+    }
+
+    #[test]
+    fn test_read_character_asset_base64_rejects_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let characters_dir = setup_test_character(&temp_dir);
+
+        let err = read_character_asset_base64(
+            characters_dir.clone(),
+            "test-char".to_string(),
+            "../x".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err, "Invalid asset path");
+
+        let err = read_character_asset_base64(
+            characters_dir,
+            "test-char".to_string(),
+            "..\\x".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err, "Invalid asset path");
+    }
+
+    #[test]
+    fn test_read_character_asset_base64_reads_fixture() {
+        let temp_dir = TempDir::new().unwrap();
+        let characters_dir = setup_test_character(&temp_dir);
+
+        let file_path = Path::new(&characters_dir).join("test-char").join("hello.bin");
+        fs::write(&file_path, b"hello").unwrap();
+
+        let b64 = read_character_asset_base64(
+            characters_dir,
+            "test-char".to_string(),
+            "hello.bin".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(b64, "aGVsbG8=");
     }
 
     #[test]
