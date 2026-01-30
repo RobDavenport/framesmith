@@ -161,6 +161,53 @@ pub fn list_characters(characters_dir: String) -> Result<Vec<CharacterSummary>, 
     Ok(summaries)
 }
 
+/// Merged rules registry data sent to the frontend.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MergedRegistry {
+    pub resources: Vec<String>,
+    pub move_types: Option<crate::rules::MoveTypesConfig>,
+    pub chain_order: Option<Vec<String>>,
+}
+
+#[tauri::command]
+pub fn load_rules_registry(
+    characters_dir: String,
+    character_id: String,
+) -> Result<MergedRegistry, String> {
+    validate_character_id(&character_id)?;
+
+    let char_path = Path::new(&characters_dir).join(&character_id);
+    if !char_path.exists() {
+        return Err(format!("Character '{}' not found", character_id));
+    }
+
+    let project_rules_path = project_rules_path(&characters_dir);
+    let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
+        format!(
+            "Failed to load project rules file {}: {}",
+            project_rules_path.display(),
+            e
+        )
+    })?;
+
+    let character_rules_path = char_path.join("rules.json");
+    let character_rules = crate::rules::load_rules_file(&character_rules_path).map_err(|e| {
+        format!(
+            "Failed to load character rules file {}: {}",
+            character_rules_path.display(),
+            e
+        )
+    })?;
+
+    let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
+
+    Ok(MergedRegistry {
+        resources: registry.resources,
+        move_types: registry.move_types,
+        chain_order: registry.chain_order,
+    })
+}
+
 #[tauri::command]
 pub fn load_character(
     characters_dir: String,

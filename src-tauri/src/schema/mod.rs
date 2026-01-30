@@ -95,8 +95,10 @@ pub struct Move {
     pub meter_gain: MeterGain,
     pub animation: String,
     // Advanced fields (all optional for backward compatibility)
+    /// Move type as a flexible string (e.g., "normal", "special", "super", "ex", "rekka").
+    /// Custom types can be defined per-project via rules registry.
     #[serde(rename = "type")]
-    pub move_type: Option<MoveType>,
+    pub move_type: Option<String>,
     pub trigger: Option<TriggerType>,
     pub parent: Option<String>,
     pub total: Option<u8>,
@@ -231,18 +233,6 @@ pub struct CancelTable {
 // ============================================================================
 // Advanced Move Data Types
 // ============================================================================
-
-/// Type of move
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MoveType {
-    Normal,
-    CommandNormal,
-    Special,
-    Super,
-    Movement,
-    Throw,
-}
 
 /// Input trigger type
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -420,7 +410,7 @@ pub enum StatusEffect {
         duration: u16,
     },
     Seal {
-        move_types: Vec<MoveType>,
+        move_types: Vec<String>,
         duration: u16,
     },
 }

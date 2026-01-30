@@ -23,7 +23,7 @@ pub struct RulesFile {
 }
 
 /// Registry of resource IDs and event definitions.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
 pub struct RulesRegistry {
     /// Known resource IDs (e.g. "heat", "ammo").
     #[serde(default)]
@@ -31,6 +31,24 @@ pub struct RulesRegistry {
     /// Known event definitions keyed by event ID.
     #[serde(default)]
     pub events: std::collections::BTreeMap<String, EventDefinition>,
+    /// Move type configuration for filtering and categorization.
+    #[serde(default)]
+    pub move_types: Option<MoveTypesConfig>,
+    /// Chain order for deriving chain cancel edges from tags (e.g., ["L", "M", "H"]).
+    #[serde(default)]
+    pub chain_order: Option<Vec<String>>,
+}
+
+/// Configuration for move types and their filter groupings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MoveTypesConfig {
+    /// List of valid move type strings (e.g., "normal", "special", "super", "ex").
+    #[serde(default)]
+    pub types: Vec<String>,
+    /// Filter groups mapping group names to lists of types.
+    /// E.g., {"normals": ["normal", "command_normal"], "specials": ["special", "super", "ex"]}
+    #[serde(default)]
+    pub filter_groups: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// Definition for a registered event.
@@ -275,13 +293,8 @@ fn button_from_input(input: &str) -> Option<&str> {
 
 pub fn matches_move(spec: &MatchSpec, mv: &crate::schema::Move) -> bool {
     if let Some(ty) = &spec.r#type {
-        let mv_type = match mv.move_type {
-            Some(crate::schema::MoveType::Normal) => "normal",
-            Some(crate::schema::MoveType::CommandNormal) => "command_normal",
-            Some(crate::schema::MoveType::Special) => "special",
-            Some(crate::schema::MoveType::Super) => "super",
-            Some(crate::schema::MoveType::Movement) => "movement",
-            Some(crate::schema::MoveType::Throw) => "throw",
+        let mv_type = match &mv.move_type {
+            Some(t) => t.as_str(),
             None => return false,
         };
 
@@ -374,6 +387,8 @@ pub fn merged_validate_rules(
 /// Semantics:
 /// - `resources`: union + dedup (project then character)
 /// - `events`: merge by key; character overrides same id
+/// - `move_types`: character overrides project if present
+/// - `chain_order`: character overrides project if present
 pub fn merged_registry(
     project: Option<&RulesFile>,
     character: Option<&RulesFile>,
@@ -382,6 +397,8 @@ pub fn merged_registry(
     let mut seen = std::collections::HashSet::<String>::new();
 
     let mut events = std::collections::BTreeMap::new();
+    let mut move_types: Option<MoveTypesConfig> = None;
+    let mut chain_order: Option<Vec<String>> = None;
 
     if let Some(reg) = project.and_then(|r| r.registry.as_ref()) {
         for r in &reg.resources {
@@ -390,6 +407,12 @@ pub fn merged_registry(
             }
         }
         events.extend(reg.events.iter().map(|(k, v)| (k.clone(), v.clone())));
+        if reg.move_types.is_some() {
+            move_types = reg.move_types.clone();
+        }
+        if reg.chain_order.is_some() {
+            chain_order = reg.chain_order.clone();
+        }
     }
 
     if let Some(reg) = character.and_then(|r| r.registry.as_ref()) {
@@ -401,9 +424,21 @@ pub fn merged_registry(
         for (k, v) in &reg.events {
             events.insert(k.clone(), v.clone());
         }
+        // Character overrides project for move_types and chain_order
+        if reg.move_types.is_some() {
+            move_types = reg.move_types.clone();
+        }
+        if reg.chain_order.is_some() {
+            chain_order = reg.chain_order.clone();
+        }
     }
 
-    RulesRegistry { resources, events }
+    RulesRegistry {
+        resources,
+        events,
+        move_types,
+        chain_order,
+    }
 }
 
 pub fn validate_character_resources_with_registry(
@@ -1230,7 +1265,7 @@ mod tests {
     fn test_matches_move_or_within_field_and_across_fields() {
         let mut mv = crate::schema::Move::default();
         mv.input = "2L".to_string();
-        mv.move_type = Some(crate::schema::MoveType::CommandNormal);
+        mv.move_type = Some("command_normal".to_string());
         mv.guard = crate::schema::GuardType::Unblockable;
 
         // OR within a field
@@ -1612,7 +1647,7 @@ mod tests {
 
         let mut mv = crate::schema::Move::default();
         mv.input = "236P".to_string();
-        mv.move_type = Some(crate::schema::MoveType::Special);
+        mv.move_type = Some("special".to_string());
         mv.hitstop = 0;
 
         let resolved = apply_rules_to_move(Some(&project), None, &mv).unwrap();
@@ -1661,7 +1696,7 @@ mod tests {
 
         let mut mv = crate::schema::Move::default();
         mv.input = "5L".to_string();
-        mv.move_type = Some(crate::schema::MoveType::Normal);
+        mv.move_type = Some("normal".to_string());
         mv.hitstop = 0;
 
         let resolved = apply_rules_to_move(Some(&project), Some(&character), &mv).unwrap();
@@ -1751,6 +1786,7 @@ mod tests {
             registry: Some(RulesRegistry {
                 resources: vec!["heat".to_string(), "ammo".to_string()],
                 events: project_events,
+                ..Default::default()
             }),
             apply: vec![],
             validate: vec![],
@@ -1771,6 +1807,7 @@ mod tests {
             registry: Some(RulesRegistry {
                 resources: vec!["heat".to_string(), "stamina".to_string()],
                 events: character_events,
+                ..Default::default()
             }),
             apply: vec![],
             validate: vec![],
@@ -1804,6 +1841,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec![],
             events: std::collections::BTreeMap::new(),
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();
@@ -1844,6 +1882,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec![],
             events,
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();
@@ -1889,6 +1928,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec![],
             events,
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();
@@ -1933,6 +1973,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec![],
             events,
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();
@@ -1960,6 +2001,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec![],
             events: std::collections::BTreeMap::new(),
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();
@@ -1980,6 +2022,7 @@ mod tests {
         let rules = rules_with_registry(RulesRegistry {
             resources: vec!["stamina".to_string()],
             events: std::collections::BTreeMap::new(),
+            ..Default::default()
         });
 
         let mut mv = make_valid_move();

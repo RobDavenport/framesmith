@@ -210,17 +210,20 @@ fn pack_hurt_window(hb: &FrameHitbox, shapes_off: u32) -> [u8; HURT_WINDOW12_SIZ
     buf
 }
 
-/// Convert MoveType to u8 for binary encoding.
-fn move_type_to_u8(move_type: Option<&crate::schema::MoveType>) -> u8 {
-    use crate::schema::MoveType;
-    match move_type {
-        Some(MoveType::Normal) => 0,
-        Some(MoveType::CommandNormal) => 1,
-        Some(MoveType::Special) => 2,
-        Some(MoveType::Super) => 3,
-        Some(MoveType::Movement) => 4,
-        Some(MoveType::Throw) => 5,
-        None => 0, // default to Normal
+/// Convert move type string to u8 for binary encoding.
+/// Maps common type strings to fixed IDs for runtime compatibility.
+fn move_type_to_u8(move_type: Option<&String>) -> u8 {
+    match move_type.map(|s| s.as_str()) {
+        Some("normal") => 0,
+        Some("command_normal") => 1,
+        Some("special") => 2,
+        Some("super") => 3,
+        Some("movement") => 4,
+        Some("throw") => 5,
+        Some("ex") => 6,
+        Some("rekka") => 7,
+        Some(_) => 255, // unknown custom type
+        None => 0,      // default to normal
     }
 }
 

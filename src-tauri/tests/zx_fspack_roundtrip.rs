@@ -35,7 +35,7 @@ fn zx_fspack_export_roundtrips_through_reader() {
 fn zx_fspack_move_record_fields_match_reader_layout() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Move, MoveType, Pushback, Rect,
+        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Move, Pushback, Rect,
         TriggerType,
     };
     use std::collections::HashMap;
@@ -87,7 +87,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             pushback: Pushback { hit: 2, block: 2 },
             meter_gain: MeterGain { hit: 5, whiff: 2 },
             animation: "stand_light".to_string(),
-            move_type: Some(MoveType::Normal),
+            move_type: Some("normal".to_string()),
             trigger: Some(TriggerType::Press),
             parent: None,
             total: None,

@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CharacterData, CharacterSummary, Move } from "$lib/types";
+import type { CharacterData, CharacterSummary, Move, MergedRegistry } from "$lib/types";
 import { loadAssets, resetAssetsState } from "./assets.svelte";
 import { getProjectPath } from "./project.svelte";
 
 // Reactive state using Svelte 5 runes
 let characterList = $state<CharacterSummary[]>([]);
 let currentCharacter = $state<CharacterData | null>(null);
+let rulesRegistry = $state<MergedRegistry | null>(null);
 let selectedMoveInput = $state<string | null>(null);
 let loading = $state(false);
 let error = $state<string | null>(null);
@@ -34,6 +35,10 @@ export function getCharacterList() {
 
 export function getCurrentCharacter() {
   return currentCharacter;
+}
+
+export function getRulesRegistry() {
+  return rulesRegistry;
 }
 
 export function getSelectedMove(): Move | null {
@@ -89,21 +94,30 @@ export async function selectCharacter(characterId: string): Promise<void> {
   loading = true;
   error = null;
   selectedMoveInput = null;
+  rulesRegistry = null;
   resetAssetsState();
   try {
-    const nextCharacter = await invoke<CharacterData>("load_character", {
-      charactersDir,
-      characterId,
-    });
+    const [nextCharacter, registry] = await Promise.all([
+      invoke<CharacterData>("load_character", {
+        charactersDir,
+        characterId,
+      }),
+      invoke<MergedRegistry>("load_rules_registry", {
+        charactersDir,
+        characterId,
+      }),
+    ]);
 
     if (seq !== selectSeq) return;
 
     currentCharacter = nextCharacter;
+    rulesRegistry = registry;
     void loadAssets(characterId);
   } catch (e) {
     if (seq !== selectSeq) return;
     error = formatError(e);
     currentCharacter = null;
+    rulesRegistry = null;
     resetAssetsState();
   } finally {
     if (seq === selectSeq) {
@@ -119,6 +133,7 @@ export function selectMove(input: string): void {
 export function clearSelection(): void {
   selectSeq++;
   currentCharacter = null;
+  rulesRegistry = null;
   selectedMoveInput = null;
   resetAssetsState();
 }
@@ -127,6 +142,7 @@ export function resetCharacterState(): void {
   selectSeq++;
   characterList = [];
   currentCharacter = null;
+  rulesRegistry = null;
   selectedMoveInput = null;
   error = null;
   resetAssetsState();

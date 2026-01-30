@@ -16,7 +16,8 @@
       "Bash(npm run tauri:*)",
       "Bash(cargo add:*)",
       "Bash(npm run build:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(npx svelte-check)"
     ]
   },
   "disabledMcpjsonServers": [

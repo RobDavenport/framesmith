@@ -1,10 +1,70 @@
 <script lang="ts">
-  import { getCurrentCharacter } from "$lib/stores/character.svelte";
+  import { getCurrentCharacter, getRulesRegistry } from "$lib/stores/character.svelte";
   import type { Move, CancelTable } from "$lib/types";
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
   const cancelTable = $derived(characterData?.cancel_table);
+  const registry = $derived(getRulesRegistry());
+
+  // Default chain order if not specified in registry
+  const defaultChainOrder = ["L", "M", "H"];
+
+  // Get chain order from registry or use default
+  const chainOrder = $derived(registry?.chain_order ?? defaultChainOrder);
+
+  // Default filter groups for type detection
+  const defaultSpecialTypes = ["special", "ex", "rekka"];
+  const defaultSuperTypes = ["super"];
+
+  // Get type groups from registry
+  const specialTypes = $derived(
+    registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
+  );
+  const superTypes = $derived(
+    registry?.move_types?.filter_groups?.["supers"] ?? defaultSuperTypes
+  );
+
+  // Check if cancel table is effectively empty (tag-based system)
+  const isCancelTableEmpty = $derived.by(() => {
+    if (!cancelTable) return true;
+    return (
+      Object.keys(cancelTable.chains).length === 0 &&
+      cancelTable.special_cancels.length === 0 &&
+      cancelTable.super_cancels.length === 0 &&
+      cancelTable.jump_cancels.length === 0
+    );
+  });
+
+  // Extract button from input (e.g., "5L" -> "L", "j.H" -> "H", "2M" -> "M")
+  function extractButton(input: string): string | null {
+    // Match trailing alphabetic characters
+    const match = input.match(/([A-Z]+)$/i);
+    return match ? match[1].toUpperCase() : null;
+  }
+
+  // Check if a move has a specific tag (tags are resolved by rules)
+  function hasTag(move: Move, tag: string): boolean {
+    return (move as any).tags?.includes(tag) ?? false;
+  }
+
+  // Check if move is a special type
+  function isSpecialType(move: Move): boolean {
+    if (move.type) {
+      return specialTypes.includes(move.type);
+    }
+    // Fallback to input pattern
+    return /\d{3,}/.test(move.input);
+  }
+
+  // Check if move is a super type
+  function isSuperType(move: Move): boolean {
+    if (move.type) {
+      return superTypes.includes(move.type);
+    }
+    // Fallback to 6+ digit input pattern
+    return /\d{6,}/.test(move.input);
+  }
 
   // SVG dimensions
   const width = 800;
@@ -63,56 +123,121 @@
     type: "chain" | "special" | "super" | "jump";
   }
 
-  // Build edges from cancel table
+  // Build edges from cancel table OR from tags if cancel table is empty
   const edges = $derived.by(() => {
-    if (!cancelTable) return [];
-
     const edgeList: Edge[] = [];
     const moveInputs = new Set(moves.map((m) => m.input));
+    const movesByInput = new Map(moves.map((m) => [m.input, m]));
 
-    // Chain edges (from chains object)
-    for (const [fromMove, targets] of Object.entries(cancelTable.chains)) {
-      if (!moveInputs.has(fromMove)) continue;
-      for (const toMove of targets) {
-        if (moveInputs.has(toMove)) {
-          edgeList.push({ from: fromMove, to: toMove, type: "chain" });
-        }
-      }
-    }
-
-    // Special cancel edges - these moves can cancel into any special move
-    // We'll draw edges from special_cancel moves to all special moves
-    const specialMoves = moves.filter((m) => /\d{3,}/.test(m.input));
-    for (const fromInput of cancelTable.special_cancels) {
-      if (!moveInputs.has(fromInput)) continue;
-      for (const specialMove of specialMoves) {
-        // Avoid self-loops and duplicates with chains
-        if (fromInput !== specialMove.input) {
-          const existingChain = edgeList.find(
-            (e) => e.from === fromInput && e.to === specialMove.input && e.type === "chain"
-          );
-          if (!existingChain) {
-            edgeList.push({ from: fromInput, to: specialMove.input, type: "special" });
+    // If cancel table has explicit data, use it
+    if (!isCancelTableEmpty && cancelTable) {
+      // Chain edges (from chains object)
+      for (const [fromMove, targets] of Object.entries(cancelTable.chains)) {
+        if (!moveInputs.has(fromMove)) continue;
+        for (const toMove of targets) {
+          if (moveInputs.has(toMove)) {
+            edgeList.push({ from: fromMove, to: toMove, type: "chain" });
           }
         }
       }
+
+      // Special cancel edges
+      const specialMovesList = moves.filter((m) => isSpecialType(m));
+      for (const fromInput of cancelTable.special_cancels) {
+        if (!moveInputs.has(fromInput)) continue;
+        for (const specialMove of specialMovesList) {
+          if (fromInput !== specialMove.input) {
+            const existingChain = edgeList.find(
+              (e) => e.from === fromInput && e.to === specialMove.input && e.type === "chain"
+            );
+            if (!existingChain) {
+              edgeList.push({ from: fromInput, to: specialMove.input, type: "special" });
+            }
+          }
+        }
+      }
+
+      // Super cancel edges
+      const superMovesList = moves.filter((m) => isSuperType(m));
+      for (const fromInput of cancelTable.super_cancels) {
+        if (!moveInputs.has(fromInput)) continue;
+        for (const superMove of superMovesList) {
+          if (fromInput !== superMove.input) {
+            edgeList.push({ from: fromInput, to: superMove.input, type: "super" });
+          }
+        }
+      }
+
+      return edgeList;
     }
 
-    // Super cancel edges - these moves can cancel into supers
-    // We'll mark super moves as ones with 6+ digit inputs (like 632146PP)
-    const superMoves = moves.filter((m) => /\d{6,}/.test(m.input));
-    for (const fromInput of cancelTable.super_cancels) {
-      if (!moveInputs.has(fromInput)) continue;
-      for (const superMove of superMoves) {
-        if (fromInput !== superMove.input) {
-          edgeList.push({ from: fromInput, to: superMove.input, type: "super" });
-        }
+    // Tag-based edge derivation (when cancel table is empty)
+    // Build index of moves by button for chain lookup
+    const movesByButton = new Map<string, Move[]>();
+    for (const move of moves) {
+      const button = extractButton(move.input);
+      if (button) {
+        const list = movesByButton.get(button) ?? [];
+        list.push(move);
+        movesByButton.set(button, list);
       }
     }
 
-    // Jump cancel edges - shown as special markers on nodes
-    // For visualization, we'll draw a self-referential indicator
-    // Actually, let's skip jump cancels as edges since they're not move-to-move
+    // Get special and super moves for cancel targets
+    const specialMovesList = moves.filter((m) => isSpecialType(m));
+    const superMovesList = moves.filter((m) => isSuperType(m));
+
+    for (const move of moves) {
+      const moveButton = extractButton(move.input);
+      const buttonIndex = moveButton ? chainOrder.indexOf(moveButton) : -1;
+
+      // Chain tag: can cancel into moves with buttons later in chain order
+      if (hasTag(move, "chain") && buttonIndex >= 0) {
+        for (let i = buttonIndex + 1; i < chainOrder.length; i++) {
+          const targetButton = chainOrder[i];
+          const targetMoves = movesByButton.get(targetButton) ?? [];
+          for (const targetMove of targetMoves) {
+            // Only chain into normals (same position: standing/crouching/jumping)
+            // For simplicity, just add the edge
+            if (move.input !== targetMove.input) {
+              edgeList.push({ from: move.input, to: targetMove.input, type: "chain" });
+            }
+          }
+        }
+      }
+
+      // Self-gatling tag: can cancel into itself
+      if (hasTag(move, "self_gatling")) {
+        edgeList.push({ from: move.input, to: move.input, type: "chain" });
+      }
+
+      // Special cancel tag: can cancel into any special move
+      if (hasTag(move, "special_cancel")) {
+        for (const specialMove of specialMovesList) {
+          if (move.input !== specialMove.input) {
+            // Avoid duplicate if already added as chain
+            const exists = edgeList.some(
+              (e) => e.from === move.input && e.to === specialMove.input
+            );
+            if (!exists) {
+              edgeList.push({ from: move.input, to: specialMove.input, type: "special" });
+            }
+          }
+        }
+      }
+
+      // Super cancel tag: can cancel into any super move
+      if (hasTag(move, "super_cancel")) {
+        for (const superMove of superMovesList) {
+          if (move.input !== superMove.input) {
+            edgeList.push({ from: move.input, to: superMove.input, type: "super" });
+          }
+        }
+      }
+
+      // Jump cancel tag: mark for visual indicator (handled separately)
+      // No edges needed since jump is not a move
+    }
 
     return edgeList;
   });
@@ -177,9 +302,15 @@
     );
   }
 
-  // Check if move has jump cancel
+  // Check if move has jump cancel (from cancel table or tags)
   function hasJumpCancel(input: string): boolean {
-    return cancelTable?.jump_cancels?.includes(input) ?? false;
+    // Check explicit cancel table first
+    if (cancelTable?.jump_cancels?.includes(input)) {
+      return true;
+    }
+    // Check for jump_cancel tag
+    const move = moves.find((m) => m.input === input);
+    return move ? hasTag(move, "jump_cancel") : false;
   }
 </script>
 

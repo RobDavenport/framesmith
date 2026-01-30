@@ -58,9 +58,9 @@ ZX FSPK details: `docs/zx-fspack.md`.
 ## Editor Views
 
 1. **Character Overview** - Character list, properties
-2. **Frame Data Table** - Spreadsheet view
-3. **Move Editor** - Form-based editing; animation preview is a placeholder
-4. **Cancel Graph** - Visualization of cancel relationships
+2. **Frame Data Table** - Spreadsheet view with configurable type-based filtering
+3. **Move Editor** - Form-based editing with sprite and GLTF animation preview
+4. **Cancel Graph** - Visualization of cancel relationships (supports both explicit cancel tables and tag-based rules)
 
 ## MCP Server
 

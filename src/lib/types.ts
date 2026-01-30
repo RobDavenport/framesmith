@@ -2,7 +2,9 @@
 // Core Enums / Literal Types
 // =============================================================================
 
-export type MoveType = "normal" | "command_normal" | "special" | "super" | "movement" | "throw";
+// MoveType is now a flexible string - custom types can be defined per-project via rules registry.
+// Common built-in types: "normal", "command_normal", "special", "super", "movement", "throw"
+// Custom types examples: "ex", "rekka", "install", etc.
 
 export type TriggerType = "press" | "release" | "hold";
 
@@ -185,7 +187,7 @@ export interface WeakenEffect {
 
 export interface SealEffect {
   type: "seal";
-  move_types: MoveType[];
+  move_types: string[];
   duration: number;
 }
 
@@ -334,8 +336,8 @@ export interface Move {
   input: string;
   name: string;
 
-  // v2: Move classification
-  type?: MoveType;
+  // v2: Move classification (flexible string type)
+  type?: string;
   trigger?: TriggerType; // default "press"
   parent?: string | null;
 
@@ -434,4 +436,19 @@ export interface CharacterAssets {
   textures: Record<string, string>;
   models: Record<string, string>;
   animations: Record<string, AnimationClip>;
+}
+
+// =============================================================================
+// Rules Registry Types (for filtering and cancel graph)
+// =============================================================================
+
+export interface MoveTypesConfig {
+  types: string[];
+  filter_groups: Record<string, string[]>;
+}
+
+export interface MergedRegistry {
+  resources: string[];
+  move_types?: MoveTypesConfig;
+  chain_order?: string[];
 }

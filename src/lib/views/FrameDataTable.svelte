@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCurrentCharacter, selectMove } from "$lib/stores/character.svelte";
+  import { getCurrentCharacter, getRulesRegistry, selectMove } from "$lib/stores/character.svelte";
   import CreateMoveModal from "$lib/components/CreateMoveModal.svelte";
   import type { Move } from "$lib/types";
 
@@ -12,6 +12,7 @@
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
+  const registry = $derived(getRulesRegistry());
 
   // Only include sortable columns (string or number types)
   type SortableColumn = "input" | "name" | "startup" | "active" | "recovery" | "damage" | "hitstun" | "blockstun" | "hitstop" | "guard" | "animation" | "total" | "advantage_hit" | "advantage_block";
@@ -20,14 +21,57 @@
   let sortDirection = $state<"asc" | "desc">("asc");
   let filterType = $state<string>("all");
 
-  const filterOptions = [
-    { value: "all", label: "All Moves" },
-    { value: "normal", label: "Normals" },
-    { value: "special", label: "Specials" },
-  ];
+  // Default filter groups if none defined in registry
+  const defaultNormalTypes = ["normal", "command_normal"];
+  const defaultSpecialTypes = ["special", "super", "ex", "rekka"];
 
-  function isSpecialMove(input: string): boolean {
-    return /\d{3,}/.test(input); // Contains 3+ consecutive digits (motion input)
+  // Get filter groups from registry or use defaults
+  const normalTypes = $derived(
+    registry?.move_types?.filter_groups?.["normals"] ?? defaultNormalTypes
+  );
+  const specialTypes = $derived(
+    registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
+  );
+
+  // Build filter options from registry if available
+  const filterOptions = $derived.by(() => {
+    const options = [{ value: "all", label: "All Moves" }];
+
+    if (registry?.move_types?.filter_groups) {
+      // Use custom filter groups from registry
+      for (const groupName of Object.keys(registry.move_types.filter_groups)) {
+        options.push({
+          value: groupName,
+          label: groupName.charAt(0).toUpperCase() + groupName.slice(1),
+        });
+      }
+    } else {
+      // Default filter options
+      options.push(
+        { value: "normals", label: "Normals" },
+        { value: "specials", label: "Specials" }
+      );
+    }
+
+    return options;
+  });
+
+  // Check if move matches a filter group
+  function matchesFilterGroup(move: Move, groupName: string): boolean {
+    const groups = registry?.move_types?.filter_groups;
+    const types = groups?.[groupName] ?? (groupName === "normals" ? defaultNormalTypes : groupName === "specials" ? defaultSpecialTypes : []);
+
+    if (move.type) {
+      return types.includes(move.type);
+    }
+    // Fallback: use input pattern if type not set
+    if (groupName === "normals") {
+      return !/\d{3,}/.test(move.input);
+    }
+    if (groupName === "specials") {
+      return /\d{3,}/.test(move.input);
+    }
+    return false;
   }
 
   function getTotal(move: Move): number {
@@ -43,13 +87,10 @@
   }
 
   const filteredMoves = $derived.by(() => {
-    let filtered = moves;
-    if (filterType === "normal") {
-      filtered = moves.filter((m) => !isSpecialMove(m.input));
-    } else if (filterType === "special") {
-      filtered = moves.filter((m) => isSpecialMove(m.input));
+    if (filterType === "all") {
+      return moves;
     }
-    return filtered;
+    return moves.filter((m) => matchesFilterGroup(m, filterType));
   });
 
   const sortedMoves = $derived.by(() => {

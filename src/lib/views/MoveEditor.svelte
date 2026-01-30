@@ -8,9 +8,10 @@
   } from "$lib/stores/character.svelte";
   import { getAssets, getAssetsError, isAssetsLoading } from "$lib/stores/assets.svelte";
   import MoveAnimationPreview from "$lib/components/MoveAnimationPreview.svelte";
-  import type { Move, MoveType, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
+  import type { Move, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
 
-  const moveTypeOptions: MoveType[] = ["normal", "command_normal", "special", "super", "movement", "throw"];
+  // Common move types - custom types can be entered directly
+  const commonMoveTypes = ["normal", "command_normal", "special", "super", "movement", "throw", "ex", "rekka"];
   const triggerOptions: TriggerType[] = ["press", "release", "hold"];
 
   const characterData = $derived(getCurrentCharacter());
@@ -150,21 +151,26 @@
   }
 </script>
 
-{#if editingMove}
-  <div class="move-editor-container">
-    <!-- Move Selector -->
-    <div class="move-selector">
-      <label for="move-select">Move:</label>
-      <select id="move-select" value={selectedMoveInput} onchange={handleMoveSelect}>
+<div class="move-editor-container">
+  <!-- Move Selector - always visible so users can select a move -->
+  <div class="move-selector">
+    <label for="move-select">Move:</label>
+    <select id="move-select" value={selectedMoveInput ?? ""} onchange={handleMoveSelect}>
+      {#if moves.length === 0}
+        <option value="">No moves available</option>
+      {:else}
+        <option value="" disabled>Select a move...</option>
         {#each moves as move}
           <option value={move.input}>{move.input} - {move.name}</option>
         {/each}
-      </select>
-      {#if hasChanges}
-        <span class="unsaved-indicator">Unsaved changes</span>
       {/if}
-    </div>
+    </select>
+    {#if hasChanges}
+      <span class="unsaved-indicator">Unsaved changes</span>
+    {/if}
+  </div>
 
+  {#if editingMove}
     <div class="editor-layout">
       <!-- Left Panel: Form Fields -->
       <div class="form-panel">
@@ -320,12 +326,18 @@
           <div class="form-grid">
             <div class="form-field">
               <label for="move-type">Type</label>
-              <select id="move-type" bind:value={editingMove.type}>
-                <option value={undefined}>-- Default --</option>
-                {#each moveTypeOptions as option}
+              <input
+                type="text"
+                id="move-type"
+                list="move-type-options"
+                placeholder="normal, special, super..."
+                bind:value={editingMove.type}
+              />
+              <datalist id="move-type-options">
+                {#each commonMoveTypes as option}
                   <option value={option}>{option}</option>
                 {/each}
-              </select>
+              </datalist>
             </div>
             <div class="form-field">
               <label for="trigger">Trigger</label>
@@ -590,12 +602,12 @@
         />
       </div>
     </div>
-  </div>
-{:else}
-  <div class="no-move">
-    <p>No move selected. Select a move from the Frame Data table or use the dropdown above.</p>
-  </div>
-{/if}
+  {:else}
+    <div class="no-move">
+      <p>No move selected. Select a move from the dropdown above or the Frame Data table.</p>
+    </div>
+  {/if}
+</div>
 
 <style>
   .move-editor-container {

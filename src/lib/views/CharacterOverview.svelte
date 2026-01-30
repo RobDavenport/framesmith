@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCurrentCharacter, exportCharacter } from "$lib/stores/character.svelte";
+  import { getCurrentCharacter, getRulesRegistry, exportCharacter } from "$lib/stores/character.svelte";
   import DeleteCharacterModal from "$lib/components/DeleteCharacterModal.svelte";
   import type { Move, CancelTable } from "$lib/types";
 
@@ -12,19 +12,40 @@
   const character = $derived(characterData?.character);
   const moves = $derived(characterData?.moves ?? []);
   const cancelTable = $derived(characterData?.cancel_table);
+  const registry = $derived(getRulesRegistry());
 
-  // Move categorization helpers
-  function isSpecialMove(input: string): boolean {
-    return /\d{3,}/.test(input); // Contains 3+ consecutive digits (motion input)
+  // Default filter groups if none defined in registry
+  const defaultNormalTypes = ["normal", "command_normal"];
+  const defaultSpecialTypes = ["special", "super", "ex", "rekka"];
+
+  // Get filter group from registry or use defaults
+  const normalTypes = $derived(
+    registry?.move_types?.filter_groups?.["normals"] ?? defaultNormalTypes
+  );
+  const specialTypes = $derived(
+    registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
+  );
+
+  // Move categorization helpers using move.type field
+  function isNormalMove(move: Move): boolean {
+    if (move.type) {
+      return normalTypes.includes(move.type);
+    }
+    // Fallback: use input pattern if type not set
+    return !/\d{3,}/.test(move.input);
   }
 
-  function isNormalMove(input: string): boolean {
-    return !isSpecialMove(input);
+  function isSpecialMove(move: Move): boolean {
+    if (move.type) {
+      return specialTypes.includes(move.type);
+    }
+    // Fallback: use input pattern if type not set
+    return /\d{3,}/.test(move.input);
   }
 
   // Move statistics
-  const normalMoves = $derived(moves.filter((m) => isNormalMove(m.input)));
-  const specialMoves = $derived(moves.filter((m) => isSpecialMove(m.input)));
+  const normalMoves = $derived(moves.filter((m) => isNormalMove(m)));
+  const specialMoves = $derived(moves.filter((m) => isSpecialMove(m)));
 
   const avgStartup = $derived.by(() => {
     if (moves.length === 0) return 0;
