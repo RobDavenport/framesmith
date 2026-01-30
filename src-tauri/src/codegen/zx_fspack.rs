@@ -268,6 +268,7 @@ fn pack_move_record(
     hit_windows_len: u16,
     hurt_windows_off: u16,
     hurt_windows_len: u16,
+    flags: u8,
 ) -> [u8; MOVE_RECORD_SIZE] {
     let mut buf = [0u8; MOVE_RECORD_SIZE];
 
@@ -277,7 +278,7 @@ fn pack_move_record(
     buf[6] = move_type_to_u8(mv.move_type.as_ref()); // move_type
     buf[7] = trigger_type_to_u8(mv.trigger.as_ref()); // trigger
     buf[8] = guard_type_to_u8(&mv.guard); // guard
-    buf[9] = 0; // flags (reserved for v1)
+    buf[9] = flags; // cancel flags
     buf[10] = mv.startup; // startup
     buf[11] = mv.active; // active
     buf[12] = mv.recovery; // recovery
@@ -300,6 +301,20 @@ fn pack_move_record(
     buf
 }
 
+/// Cancel lookup data for export.
+///
+/// Contains HashSets for each cancel type, keyed by move input notation.
+pub struct CancelLookup<'a> {
+    /// Moves that have chain cancel routes (keys in chains HashMap)
+    pub chains: std::collections::HashSet<&'a str>,
+    /// Moves that can cancel into specials
+    pub specials: std::collections::HashSet<&'a str>,
+    /// Moves that can cancel into supers
+    pub supers: std::collections::HashSet<&'a str>,
+    /// Moves that can cancel into jump
+    pub jumps: std::collections::HashSet<&'a str>,
+}
+
 /// Packed move data with backing arrays.
 pub struct PackedMoveData {
     /// MOVES section: array of MoveRecord (32 bytes each)
@@ -320,9 +335,13 @@ pub struct PackedMoveData {
 ///
 /// The `anim_to_index` map provides indices into the MESH_KEYS/KEYFRAMES_KEYS arrays
 /// for each animation name. If None, all moves use KEY_NONE for asset references.
+///
+/// The `cancel_lookup` provides cancel information for setting MoveRecord.flags.
+/// If None, all flags are 0.
 pub fn pack_moves(
     moves: &[Move],
     anim_to_index: Option<&HashMap<String, u16>>,
+    cancel_lookup: Option<&CancelLookup>,
 ) -> Result<PackedMoveData, String> {
     let mut packed = PackedMoveData {
         moves: Vec::new(),
@@ -378,6 +397,24 @@ pub fn pack_moves(
         let hit_windows_len = checked_u16(mv.hitboxes.len(), "hit_windows_len")?;
         let hurt_windows_len = checked_u16(mv.hurtboxes.len(), "hurt_windows_len")?;
 
+        // Compute cancel flags from lookup
+        let mut flags: u8 = 0;
+        if let Some(lookup) = cancel_lookup {
+            let input = mv.input.as_str();
+            if lookup.chains.contains(input) {
+                flags |= super::zx_fspack_format::CANCEL_FLAG_CHAIN;
+            }
+            if lookup.specials.contains(input) {
+                flags |= super::zx_fspack_format::CANCEL_FLAG_SPECIAL;
+            }
+            if lookup.supers.contains(input) {
+                flags |= super::zx_fspack_format::CANCEL_FLAG_SUPER;
+            }
+            if lookup.jumps.contains(input) {
+                flags |= super::zx_fspack_format::CANCEL_FLAG_JUMP;
+            }
+        }
+
         // Pack move record - mesh_key and keyframes_key both use the same animation index
         packed.moves.extend_from_slice(&pack_move_record(
             move_id,
@@ -388,6 +425,7 @@ pub fn pack_moves(
             hit_windows_len,
             hurt_windows_off,
             hurt_windows_len,
+            flags,
         ));
     }
 
@@ -507,8 +545,36 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         anim_to_index.insert((*anim).to_string(), idx);
     }
 
-    // Step 2: Pack moves with animation indices
-    let packed = pack_moves(&char_data.moves, Some(&anim_to_index))?;
+    // Build cancel lookup from cancel_table
+    let cancel_lookup = CancelLookup {
+        chains: char_data
+            .cancel_table
+            .chains
+            .keys()
+            .map(|s| s.as_str())
+            .collect(),
+        specials: char_data
+            .cancel_table
+            .special_cancels
+            .iter()
+            .map(|s| s.as_str())
+            .collect(),
+        supers: char_data
+            .cancel_table
+            .super_cancels
+            .iter()
+            .map(|s| s.as_str())
+            .collect(),
+        jumps: char_data
+            .cancel_table
+            .jump_cancels
+            .iter()
+            .map(|s| s.as_str())
+            .collect(),
+    };
+
+    // Step 2: Pack moves with animation indices and cancel lookup
+    let packed = pack_moves(&char_data.moves, Some(&anim_to_index), Some(&cancel_lookup))?;
 
     // Step 3: Pack optional sections (resources, events, notifies)
     const OPT_U16_NONE: u16 = u16::MAX;
@@ -1723,7 +1789,7 @@ mod tests {
     #[test]
     fn test_pack_move_record() {
         let mv = make_move_with_hitboxes();
-        let mr = pack_move_record(42, KEY_NONE, KEY_NONE, &mv, 100, 2, 200, 3);
+        let mr = pack_move_record(42, KEY_NONE, KEY_NONE, &mv, 100, 2, 200, 3, 0);
 
         assert_eq!(mr.len(), MOVE_RECORD_SIZE);
 
@@ -1794,7 +1860,7 @@ mod tests {
     #[test]
     fn test_pack_moves_count_matches() {
         let moves = vec![make_move_with_hitboxes(), make_move_with_hitboxes()];
-        let packed = pack_moves(&moves, None).unwrap();
+        let packed = pack_moves(&moves, None, None).unwrap();
 
         // Move count matches input
         let move_count = packed.moves.len() / MOVE_RECORD_SIZE;
@@ -1808,7 +1874,7 @@ mod tests {
     fn test_pack_moves_section_sizes() {
         let mv = make_move_with_hitboxes();
         let moves = vec![mv];
-        let packed = pack_moves(&moves, None).unwrap();
+        let packed = pack_moves(&moves, None, None).unwrap();
 
         // 1 move with 1 hitbox and 1 hurtbox
         assert_eq!(packed.moves.len(), 1 * MOVE_RECORD_SIZE);
@@ -1821,7 +1887,7 @@ mod tests {
     #[test]
     fn test_pack_moves_references_valid() {
         let moves = vec![make_move_with_hitboxes(), make_move_with_hitboxes()];
-        let packed = pack_moves(&moves, None).unwrap();
+        let packed = pack_moves(&moves, None, None).unwrap();
 
         // Verify each move record has valid references
         for i in 0..2 {
@@ -1863,7 +1929,7 @@ mod tests {
     #[test]
     fn test_pack_moves_shape_references_valid() {
         let mv = make_move_with_hitboxes();
-        let packed = pack_moves(&[mv], None).unwrap();
+        let packed = pack_moves(&[mv], None, None).unwrap();
 
         // Verify hit window shape reference
         let hit_window = &packed.hit_windows[0..HIT_WINDOW24_SIZE];
@@ -1896,7 +1962,7 @@ mod tests {
 
     #[test]
     fn test_pack_moves_empty() {
-        let packed = pack_moves(&[], None).unwrap();
+        let packed = pack_moves(&[], None, None).unwrap();
 
         assert_eq!(packed.moves.len(), 0);
         assert_eq!(packed.shapes.len(), 0);
@@ -1923,7 +1989,7 @@ mod tests {
             ..Default::default()
         };
 
-        let packed = pack_moves(&[mv], None).unwrap();
+        let packed = pack_moves(&[mv], None, None).unwrap();
 
         assert_eq!(packed.moves.len(), MOVE_RECORD_SIZE);
         assert_eq!(packed.shapes.len(), 0);
@@ -2202,5 +2268,96 @@ mod tests {
         let mv1 = moves.get(1).expect("should get move 1");
         assert_eq!(mv1.mesh_key(), framesmith_fspack::KEY_NONE);
         assert_eq!(mv1.keyframes_key(), framesmith_fspack::KEY_NONE);
+    }
+
+    /// Test that cancel flags are correctly exported to MoveRecord.flags
+    #[test]
+    fn test_cancel_flags_exported() {
+        use crate::commands::CharacterData;
+
+        let mut chains = HashMap::new();
+        chains.insert("5L".to_string(), vec!["5M".to_string()]);
+
+        let char_data = CharacterData {
+            character: Character {
+                id: "t".into(),
+                name: "T".into(),
+                archetype: "test".into(),
+                health: 1000,
+                walk_speed: 3.0,
+                back_walk_speed: 3.0,
+                jump_height: 100,
+                jump_duration: 40,
+                dash_distance: 80,
+                dash_duration: 20,
+                resources: vec![],
+            },
+            moves: vec![
+                Move {
+                    input: "5L".into(),
+                    name: "Jab".into(),
+                    guard: GuardType::Mid,
+                    animation: "a".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+                Move {
+                    input: "5M".into(),
+                    name: "Medium".into(),
+                    guard: GuardType::Mid,
+                    animation: "b".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+            ],
+            cancel_table: CancelTable {
+                chains,
+                special_cancels: vec!["5L".to_string()],
+                super_cancels: vec!["5M".to_string()],
+                jump_cancels: vec!["5L".to_string()],
+            },
+        };
+
+        let bytes = export_zx_fspack(&char_data).unwrap();
+        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
+        let moves = pack.moves().unwrap();
+
+        // 5L should have: chain + special + jump flags
+        let mv0 = moves.get(0).unwrap();
+        assert_eq!(
+            mv0.flags() & 0x01,
+            0x01,
+            "5L should have CHAIN flag (flags=0x{:02x})",
+            mv0.flags()
+        );
+        assert_eq!(
+            mv0.flags() & 0x02,
+            0x02,
+            "5L should have SPECIAL flag (flags=0x{:02x})",
+            mv0.flags()
+        );
+        assert_eq!(
+            mv0.flags() & 0x08,
+            0x08,
+            "5L should have JUMP flag (flags=0x{:02x})",
+            mv0.flags()
+        );
+
+        // 5M should have: super flag only
+        let mv1 = moves.get(1).unwrap();
+        assert_eq!(
+            mv1.flags() & 0x04,
+            0x04,
+            "5M should have SUPER flag (flags=0x{:02x})",
+            mv1.flags()
+        );
+        assert_eq!(
+            mv1.flags() & 0x01,
+            0x00,
+            "5M should NOT have CHAIN flag (flags=0x{:02x})",
+            mv1.flags()
+        );
     }
 }
