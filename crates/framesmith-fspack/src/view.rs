@@ -1750,16 +1750,17 @@ mod tests {
             data.resize(off as usize, 0);
         }
 
-        fn build_move_extras_record64(input: (u32, u16)) -> [u8; 64] {
+        fn build_move_extras_record72(input: (u32, u16)) -> [u8; 72] {
             fn write_range(dst: &mut [u8], base: usize, r: (u32, u16)) {
                 dst[base..base + 4].copy_from_slice(&r.0.to_le_bytes());
                 dst[base + 4..base + 6].copy_from_slice(&r.1.to_le_bytes());
                 dst[base + 6..base + 8].copy_from_slice(&0u16.to_le_bytes());
             }
 
-            let mut data = [0u8; 64];
+            let mut data = [0u8; 72];
             // All other extras empty for this test.
             write_range(&mut data, 56, input);
+            // cancels at offset 64 left as zeros
             data
         }
 
@@ -1780,7 +1781,7 @@ mod tests {
         let moves_len = 32u32;
 
         let extras_off = align_up(moves_off + moves_len, 4);
-        let extras_len = 64u32;
+        let extras_len = 72u32;
 
         let total_len = extras_off + extras_len;
 
@@ -1835,7 +1836,7 @@ mod tests {
 
         // MOVE_EXTRAS (one record)
         pad_to(&mut data, extras_off);
-        data.extend_from_slice(&build_move_extras_record64(input_ref));
+        data.extend_from_slice(&build_move_extras_record72(input_ref));
 
         assert_eq!(data.len(), total_len as usize);
 
@@ -1863,14 +1864,15 @@ mod tests {
         resource_preconditions: (u32, u16),
         resource_deltas: (u32, u16),
         input: (u32, u16),
-    ) -> [u8; 64] {
+        cancels: (u32, u16),
+    ) -> [u8; 72] {
         fn write_range(dst: &mut [u8], base: usize, r: (u32, u16)) {
             dst[base..base + 4].copy_from_slice(&r.0.to_le_bytes());
             dst[base + 4..base + 6].copy_from_slice(&r.1.to_le_bytes());
             dst[base + 6..base + 8].copy_from_slice(&0u16.to_le_bytes());
         }
 
-        let mut data = [0u8; 64];
+        let mut data = [0u8; 72];
         write_range(&mut data, 0, on_use_emits);
         write_range(&mut data, 8, on_hit_emits);
         write_range(&mut data, 16, on_block_emits);
@@ -1879,6 +1881,7 @@ mod tests {
         write_range(&mut data, 40, resource_preconditions);
         write_range(&mut data, 48, resource_deltas);
         write_range(&mut data, 56, input);
+        write_range(&mut data, 64, cancels);
         data
     }
 
@@ -1988,7 +1991,7 @@ mod tests {
         let moves_len = 32u32;
 
         let extras_off = align_up(moves_off + moves_len, 4);
-        let extras_len = 64u32;
+        let extras_len = 72u32;
 
         let res_off = align_up(extras_off + extras_len, 4);
         let res_len = 12u32;
@@ -2116,6 +2119,7 @@ mod tests {
             (0, 1), // preconditions -> MOVE_RESOURCE_PRECONDITIONS[0]
             (0, 1), // deltas -> MOVE_RESOURCE_DELTAS[0]
             (0, 0), // input
+            (0, 0), // cancels
         ));
 
         // RESOURCE_DEFS

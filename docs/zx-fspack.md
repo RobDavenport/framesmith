@@ -169,9 +169,9 @@ if let Some(moves) = pack.moves() {
 | HIT_WINDOWS | 5 | Array of HitWindow24 structs (active hitbox frames) |
 | HURT_WINDOWS | 6 | Array of HurtWindow12 structs (hurtbox frames) |
 | SHAPES | 7 | Array of Shape12 structs (hitbox/hurtbox geometry) |
-| CANCELS_U16 | 8 | Array of u16 move IDs for cancel targets (v1: empty) |
+| CANCELS_U16 | 8 | Array of u16 move IDs for cancel targets |
 | RESOURCE_DEFS | 9 | Array of ResourceDef12 structs (character resource pools) |
-| MOVE_EXTRAS | 10 | Array of MoveExtras56 structs (parallel to MOVES) |
+| MOVE_EXTRAS | 10 | Array of MoveExtras72 structs (parallel to MOVES) |
 | EVENT_EMITS | 11 | Array of EventEmit16 structs |
 | EVENT_ARGS | 12 | Array of EventArg20 structs |
 | MOVE_NOTIFIES | 13 | Array of MoveNotify12 structs |
@@ -201,7 +201,7 @@ String references point into the STRING_TABLE section:
 | 6 | 1 | move_type | Move type enum |
 | 7 | 1 | trigger | Input trigger type |
 | 8 | 1 | guard | Guard type (high/mid/low) |
-| 9 | 1 | flags | Move flags |
+| 9 | 1 | flags | Cancel flags (see below) |
 | 10 | 1 | startup | Startup frames |
 | 11 | 1 | active | Active frames |
 | 12 | 1 | recovery | Recovery frames |
@@ -217,6 +217,15 @@ String references point into the STRING_TABLE section:
 | 28 | 2 | hurt_windows_off | Byte offset within HURT_WINDOWS section (compressed to u16) |
 | 30 | 2 | hurt_windows_len | Number of hurt windows |
 
+**Cancel Flags (MoveRecord.flags byte):**
+
+| Bit | Flag | Description |
+|-----|------|-------------|
+| 0x01 | CHAIN | Move has chain cancel routes in CANCELS_U16 |
+| 0x02 | SPECIAL | Move can cancel into special moves |
+| 0x04 | SUPER | Move can cancel into super moves |
+| 0x08 | JUMP | Move can cancel into jump |
+
 #### ResourceDef12 (12 bytes)
 
 Character resource pool definition.
@@ -227,7 +236,7 @@ Character resource pool definition.
 | 8 | 2 | start | Starting amount |
 | 10 | 2 | max | Max amount |
 
-#### MoveExtras56 (56 bytes)
+#### MoveExtras72 (72 bytes)
 
 Per-move offsets/lengths for optional data arrays (parallel to `MOVES`). All offsets are byte offsets into their respective backing section.
 
@@ -242,6 +251,8 @@ Each range is 8 bytes: `off(u32) + len(u16) + _pad(u16)`.
 | 32 | 8 | resource_costs | Range into `MOVE_RESOURCE_COSTS` |
 | 40 | 8 | resource_preconditions | Range into `MOVE_RESOURCE_PRECONDITIONS` |
 | 48 | 8 | resource_deltas | Range into `MOVE_RESOURCE_DELTAS` |
+| 56 | 8 | input_notation | StrRef to move input notation (e.g., "5L", "236P") |
+| 64 | 8 | cancels | Range into `CANCELS_U16` for chain cancel targets |
 
 #### EventEmit16 (16 bytes)
 
@@ -394,16 +405,21 @@ match PackView::parse(&buffer) {
 
 The current v1 format has the following limitations:
 
-1. **Cancel routes not included**: The CANCELS_U16 section is present but empty in v1. Cancel relationships are managed separately.
+1. **Basic hitbox shapes only**: Only rectangular (AABB) hitboxes are exported from the current Framesmith schema. Shaped hitboxes (circles, capsules) require the v2 advanced move data schema.
 
-2. **Basic hitbox shapes only**: Only rectangular (AABB) hitboxes are exported from the current Framesmith schema. Shaped hitboxes (circles, capsules) require the v2 advanced move data schema.
-
-3. **No compression**: Data is stored uncompressed. For bandwidth-sensitive applications, compress the `.fspk` file externally and decompress before parsing.
+2. **No compression**: Data is stored uncompressed. For bandwidth-sensitive applications, compress the `.fspk` file externally and decompress before parsing.
 
 ## Future Enhancements
 
 Planned for future versions:
 
-- **v2**: Pack cancel routes from `cancel_table.json` into CANCELS_U16
 - **v2**: Support advanced shaped hitboxes (circles, capsules, oriented rects)
 - **TBD**: Optional per-section compression
+
+## Changelog
+
+### v1.1 (2026-01-30)
+
+- Cancel flags (chain/special/super/jump) now exported in `MoveRecord.flags` byte
+- Chain cancel routes exported to `CANCELS_U16` section
+- `MoveExtras` expanded from 56 to 72 bytes to include cancel offset/length at bytes 64-71
