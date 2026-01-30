@@ -375,6 +375,14 @@ impl<'a> PackView<'a> {
         let data = self.get_section(SECTION_MOVE_RESOURCE_DELTAS)?;
         Some(MoveResourceDeltasView { data })
     }
+
+    /// Get cancel targets as a typed view.
+    ///
+    /// Returns `None` if no cancels section exists.
+    pub fn cancels(&self) -> Option<CancelsView<'a>> {
+        let data = self.get_section(SECTION_CANCELS_U16)?;
+        Some(CancelsView { data })
+    }
 }
 
 // =============================================================================
@@ -1160,6 +1168,56 @@ impl<'a> MoveResourceDeltaView<'a> {
 
     pub fn trigger(&self) -> u8 {
         read_u8(self.data, 12).unwrap_or(RESOURCE_DELTA_TRIGGER_ON_USE)
+    }
+}
+
+/// Zero-copy view over cancel targets (CANCELS_U16 section).
+///
+/// Each entry is a u16 move ID representing a cancel target.
+#[derive(Clone, Copy)]
+pub struct CancelsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> CancelsView<'a> {
+    /// Returns the total number of cancel target entries.
+    pub fn len(&self) -> usize {
+        self.data.len() / 2
+    }
+
+    /// Returns true if there are no cancel targets.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get a cancel target by global index.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<u16> {
+        let off = index.checked_mul(2)?;
+        if off + 2 > self.data.len() {
+            return None;
+        }
+        read_u16_le(self.data, off)
+    }
+
+    /// Get a cancel target at a byte offset + index.
+    ///
+    /// This is used to access a move's chain targets when you have the
+    /// offset (in bytes) and want to iterate by index within that range.
+    ///
+    /// Returns `None` if the computed position is out of bounds.
+    pub fn get_at(&self, offset_bytes: u32, index: usize) -> Option<u16> {
+        let base = (offset_bytes as usize).checked_add(index.checked_mul(2)?)?;
+        if base + 2 > self.data.len() {
+            return None;
+        }
+        read_u16_le(self.data, base)
+    }
+
+    /// Returns an iterator over all cancel target move IDs.
+    pub fn iter(&self) -> impl Iterator<Item = u16> + '_ {
+        (0..self.len()).filter_map(move |i| self.get(i))
     }
 }
 
@@ -2158,5 +2216,70 @@ mod tests {
         assert_eq!(pack.string(d0.name_off(), d0.name_len()), Some("heat"));
         assert_eq!(d0.delta(), -1);
         assert_eq!(d0.trigger(), RESOURCE_DELTA_TRIGGER_ON_USE);
+    }
+
+    #[test]
+    fn cancels_view_basic() {
+        // Build a minimal pack with CANCELS_U16 section containing [1, 3, 5]
+        let cancel_data: [u8; 6] = [
+            0x01, 0x00, // u16 = 1
+            0x03, 0x00, // u16 = 3
+            0x05, 0x00, // u16 = 5
+        ];
+
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off + cancel_data.len() as u32;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_CANCELS_U16,
+            data_off,
+            cancel_data.len() as u32,
+            2,
+        ));
+        data.extend_from_slice(&cancel_data);
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let cancels = pack.cancels().expect("cancels view");
+
+        assert_eq!(cancels.len(), 3);
+        assert!(!cancels.is_empty());
+        assert_eq!(cancels.get(0), Some(1));
+        assert_eq!(cancels.get(1), Some(3));
+        assert_eq!(cancels.get(2), Some(5));
+        assert_eq!(cancels.get(3), None); // out of bounds
+
+        // Test get_at: offset 2 bytes (skip first entry), index 0 should give 3
+        assert_eq!(cancels.get_at(2, 0), Some(3));
+        assert_eq!(cancels.get_at(2, 1), Some(5));
+        assert_eq!(cancels.get_at(2, 2), None); // out of bounds
+
+        // Test iterator
+        let all: std::vec::Vec<u16> = cancels.iter().collect();
+        assert_eq!(all, std::vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn cancels_view_empty() {
+        // Build a pack with empty CANCELS_U16 section
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(SECTION_CANCELS_U16, data_off, 0, 2));
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let cancels = pack.cancels().expect("cancels view");
+
+        assert_eq!(cancels.len(), 0);
+        assert!(cancels.is_empty());
+        assert_eq!(cancels.get(0), None);
+
+        let all: std::vec::Vec<u16> = cancels.iter().collect();
+        assert!(all.is_empty());
     }
 }
