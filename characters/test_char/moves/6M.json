@@ -1,0 +1,22 @@
+{
+  "input": "6M",
+  "name": "Forward Medium",
+  "type": "command_normal",
+  "startup": 18,
+  "active": 4,
+  "recovery": 16,
+  "damage": 55,
+  "hitstun": 22,
+  "blockstun": 12,
+  "hitstop": 9,
+  "guard": "high",
+  "hitboxes": [
+    { "frames": [18, 21], "box": { "x": 15, "y": -70, "w": 40, "h": 25 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 37], "box": { "x": -10, "y": -65, "w": 35, "h": 65 } }
+  ],
+  "pushback": { "hit": 5, "block": 4 },
+  "meter_gain": { "hit": 10, "whiff": 4 },
+  "animation": "forward_medium"
+}

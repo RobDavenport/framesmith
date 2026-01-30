@@ -1,0 +1,36 @@
+{
+  "input": "214K",
+  "name": "Gun Shot",
+  "type": "special",
+  "startup": 8,
+  "active": 2,
+  "recovery": 22,
+  "damage": 70,
+  "hitstun": 18,
+  "blockstun": 12,
+  "hitstop": 6,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [
+    { "frames": [0, 31], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } }
+  ],
+  "pushback": { "hit": 25, "block": 30 },
+  "meter_gain": { "hit": 10, "whiff": 3 },
+  "animation": "gun_shot",
+  "preconditions": [
+    { "type": "resource", "name": "ammo", "min": 1 },
+    { "type": "entitycount", "tag": "bullet", "max": 2 }
+  ],
+  "costs": [
+    { "type": "resource", "name": "ammo", "amount": 1 }
+  ],
+  "on_use": {
+    "spawn_entity": {
+      "type": "projectile",
+      "tag": "bullet",
+      "data": "bullet_projectile",
+      "position": { "x": 20, "y": -45 }
+    },
+    "events": [{ "id": "spend_ammo", "args": { "weapon": "pistol", "count": 1 } }]
+  }
+}

@@ -56,7 +56,7 @@ pub const SECTION_CANCELS_U16: u32 = 8;
 /// Array of ResourceDef12 structs
 pub const SECTION_RESOURCE_DEFS: u32 = 9;
 
-/// Array of MoveExtras56 structs (parallel to MOVES)
+/// Array of MoveExtras structs (parallel to MOVES)
 pub const SECTION_MOVE_EXTRAS: u32 = 10;
 
 /// Array of EventEmit16 structs
@@ -91,7 +91,7 @@ pub const MOVE_RECORD_SIZE: usize = 32;
 pub const RESOURCE_DEF_SIZE: usize = 12;
 
 /// MoveExtras record size
-pub const MOVE_EXTRAS_SIZE: usize = 56;
+pub const MOVE_EXTRAS_SIZE: usize = 64;
 
 /// EventEmit record size
 pub const EVENT_EMIT_SIZE: usize = 16;
@@ -320,6 +320,26 @@ impl<'a> PackView<'a> {
         Some(MoveExtrasView { data })
     }
 
+    /// Find a move by input notation (e.g., "5L", "236P").
+    ///
+    /// Returns the move index and view if found.
+    pub fn find_move_by_input(&self, input: &str) -> Option<(usize, MoveView<'a>)> {
+        let moves = self.moves()?;
+        let extras = self.move_extras()?;
+
+        for i in 0..moves.len() {
+            let ex = extras.get(i)?;
+            let (off, len) = ex.input();
+            if let Some(move_input) = self.string(off, len) {
+                if move_input == input {
+                    return Some((i, moves.get(i)?));
+                }
+            }
+        }
+
+        None
+    }
+
     /// Get event emits as a typed view.
     pub fn event_emits(&self) -> Option<EventEmitsView<'a>> {
         let data = self.get_section(SECTION_EVENT_EMITS)?;
@@ -490,6 +510,16 @@ pub struct MoveView<'a> {
     data: &'a [u8],
 }
 
+/// Decoded cancel flags from move flags byte.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CancelFlags {
+    pub chain: bool,
+    pub special: bool,
+    pub super_cancel: bool,
+    pub jump: bool,
+    pub self_gatling: bool,
+}
+
 impl<'a> MoveView<'a> {
     /// Returns the move ID (index in the moves array).
     pub fn move_id(&self) -> u16 {
@@ -524,6 +554,18 @@ impl<'a> MoveView<'a> {
     /// Returns the move flags.
     pub fn flags(&self) -> u8 {
         read_u8(self.data, 9).unwrap_or(0)
+    }
+
+    /// Decode cancel flags from the flags byte.
+    pub fn cancel_flags(&self) -> CancelFlags {
+        let f = self.flags();
+        CancelFlags {
+            chain: f & 0x01 != 0,
+            special: f & 0x02 != 0,
+            super_cancel: f & 0x04 != 0,
+            jump: f & 0x08 != 0,
+            self_gatling: f & 0x10 != 0,
+        }
     }
 
     /// Returns the startup frames.
@@ -709,6 +751,11 @@ impl<'a> MoveExtrasRecordView<'a> {
 
     pub fn resource_deltas(&self) -> (u32, u16) {
         read_range(self.data, 48).unwrap_or((0, 0))
+    }
+
+    /// Get the input notation string reference (offset, length).
+    pub fn input(&self) -> (u32, u16) {
+        read_range(self.data, 56).unwrap_or((0, 0))
     }
 }
 
@@ -1338,32 +1385,31 @@ mod tests {
     }
 
     /// Build a minimal FSPK pack containing:
-    /// - STRING_TABLE: "glitch.5h" (9 bytes)
-    /// - MESH_KEYS: one StrRef pointing to "glitch.5h"
+    /// - STRING_TABLE: "test_char.5h" (12 bytes)
+    /// - MESH_KEYS: one StrRef pointing to "test_char.5h"
     /// - MOVES: one MoveRecord with mesh_key=0
     fn build_minimal_typed_pack() -> std::vec::Vec<u8> {
         let mut data = std::vec::Vec::new();
 
-        // String data: "glitch.5h" (9 bytes)
-        let string_data = b"glitch.5h";
-        let string_len = string_data.len() as u32; // 9
+        // String data: "test_char.5h" (12 bytes)
+        let string_data = b"test_char.5h";
+        let string_len = string_data.len() as u32; // 12
 
         // Calculate offsets:
         // Header: 16 bytes
         // 3 section headers: 48 bytes (16 * 3)
         // Section data starts at: 64
 
-        // STRING_TABLE at offset 64, len 9
-        // MESH_KEYS at offset 73 (64 + 9), but align to 4 -> 76, len 8
+        // STRING_TABLE at offset 64, len 12
+        // MESH_KEYS at offset 76 (64 + 12), len 8
         // MOVES at offset 84 (76 + 8), len 32
 
-        // Actually let's align properly:
-        // offset 64: STRING_TABLE (9 bytes) -> ends at 73
+        // offset 64: STRING_TABLE (12 bytes) -> ends at 76
         // offset 76 (aligned to 4): MESH_KEYS (8 bytes) -> ends at 84
         // offset 84 (aligned to 4): MOVES (32 bytes) -> ends at 116
 
         let string_table_off: u32 = 64;
-        let mesh_keys_off: u32 = 76; // 64 + 9 = 73, round up to 76 (4-byte aligned)
+        let mesh_keys_off: u32 = 76; // 64 + 12 = 76 (already aligned)
         let moves_off: u32 = 84; // 76 + 8 = 84 (already aligned)
 
         let total_len: u32 = 116; // 84 + 32
@@ -1389,11 +1435,10 @@ mod tests {
         // String table data
         data.extend_from_slice(string_data);
 
-        // Padding to align mesh_keys (73 -> 76 = 3 bytes padding)
-        data.extend_from_slice(&[0, 0, 0]);
+        // No padding needed - 64 + 12 = 76 is already 4-byte aligned
 
-        // Mesh keys: one StrRef pointing to "glitch.5h" at offset 0, len 9
-        data.extend_from_slice(&build_strref(0, 9));
+        // Mesh keys: one StrRef pointing to "test_char.5h" at offset 0, len 12
+        data.extend_from_slice(&build_strref(0, 12));
 
         // Move record: mesh_key=0, keyframes_key=0xFFFF (none)
         data.extend_from_slice(&build_move_record(
@@ -1434,11 +1479,11 @@ mod tests {
         // Get the first mesh key strref
         let (off, len) = mesh_keys.get(0).expect("should get mesh key 0");
         assert_eq!(off, 0);
-        assert_eq!(len, 9);
+        assert_eq!(len, 12);
 
         // Resolve to string
         let key_str = pack.string(off, len).expect("should resolve string");
-        assert_eq!(key_str, "glitch.5h");
+        assert_eq!(key_str, "test_char.5h");
     }
 
     #[test]
@@ -1468,6 +1513,56 @@ mod tests {
     }
 
     #[test]
+    fn move_view_cancel_flags_decode() {
+        // Pack with a single MOVES section.
+        let total_len: u32 = (HEADER_SIZE + SECTION_HEADER_SIZE + MOVE_RECORD_SIZE) as u32;
+        let moves_off: u32 = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, 1));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVES,
+            moves_off,
+            MOVE_RECORD_SIZE as u32,
+            4,
+        ));
+
+        // Flags byte: bits 0..4 set.
+        data.extend_from_slice(&build_move_record(
+            0,        // move_id
+            KEY_NONE, // mesh_key
+            KEY_NONE, // keyframes_key
+            0,        // move_type
+            0,        // trigger
+            0,        // guard
+            0x1F,     // flags
+            0,        // startup
+            0,        // active
+            0,        // recovery
+            0,        // total
+            0,        // damage
+            0,        // hitstun
+            0,        // blockstun
+            0,        // hitstop
+            0,        // hit_windows_off
+            0,        // hit_windows_len
+            0,        // hurt_windows_off
+            0,        // hurt_windows_len
+        ));
+
+        assert_eq!(data.len(), total_len as usize);
+
+        let pack = PackView::parse(&data).expect("should parse pack");
+        let mv = pack.moves().expect("moves").get(0).expect("move 0");
+        let flags = mv.cancel_flags();
+        assert!(flags.chain);
+        assert!(flags.special);
+        assert!(flags.super_cancel);
+        assert!(flags.jump);
+        assert!(flags.self_gatling);
+    }
+
+    #[test]
     fn typed_views_mesh_key_lookup() {
         let pack_data = build_minimal_typed_pack();
         let pack = PackView::parse(&pack_data).expect("should parse typed pack");
@@ -1484,7 +1579,7 @@ mod tests {
         let mesh_key_str = pack
             .string(off, len)
             .expect("should resolve mesh key string");
-        assert_eq!(mesh_key_str, "glitch.5h");
+        assert_eq!(mesh_key_str, "test_char.5h");
     }
 
     #[test]
@@ -1575,6 +1670,125 @@ mod tests {
         assert_eq!(key_str, "anim.idle");
     }
 
+    #[test]
+    fn find_move_by_input_notation() {
+        fn align_up(v: u32, align: u32) -> u32 {
+            if align <= 1 {
+                return v;
+            }
+            let mask = align - 1;
+            (v + mask) & !mask
+        }
+
+        fn pad_to(data: &mut std::vec::Vec<u8>, off: u32) {
+            assert!(data.len() <= off as usize);
+            data.resize(off as usize, 0);
+        }
+
+        fn build_move_extras_record64(input: (u32, u16)) -> [u8; 64] {
+            fn write_range(dst: &mut [u8], base: usize, r: (u32, u16)) {
+                dst[base..base + 4].copy_from_slice(&r.0.to_le_bytes());
+                dst[base + 4..base + 6].copy_from_slice(&r.1.to_le_bytes());
+                dst[base + 6..base + 8].copy_from_slice(&0u16.to_le_bytes());
+            }
+
+            let mut data = [0u8; 64];
+            // All other extras empty for this test.
+            write_range(&mut data, 56, input);
+            data
+        }
+
+        // Provide a string table containing the input notation itself.
+        let string_data = b"5L";
+        let input_ref = (0u32, 2u16);
+
+        // Section order:
+        // STRING_TABLE, MOVES, MOVE_EXTRAS
+        let section_count = 3u32;
+        let section_headers_bytes = section_count as usize * SECTION_HEADER_SIZE;
+        let data_start = (HEADER_SIZE + section_headers_bytes) as u32;
+
+        let string_off = data_start;
+        let string_len = string_data.len() as u32;
+
+        let moves_off = align_up(string_off + string_len, 4);
+        let moves_len = 32u32;
+
+        let extras_off = align_up(moves_off + moves_len, 4);
+        let extras_len = 64u32;
+
+        let total_len = extras_off + extras_len;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_STRING_TABLE,
+            string_off,
+            string_len,
+            1,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVES,
+            moves_off,
+            moves_len,
+            4,
+        ));
+        data.extend_from_slice(&build_section_header(
+            SECTION_MOVE_EXTRAS,
+            extras_off,
+            extras_len,
+            4,
+        ));
+
+        // STRING_TABLE
+        pad_to(&mut data, string_off);
+        data.extend_from_slice(string_data);
+
+        // MOVES (one placeholder move)
+        pad_to(&mut data, moves_off);
+        data.extend_from_slice(&build_move_record(
+            0,        // move_id
+            KEY_NONE, // mesh_key
+            KEY_NONE, // keyframes_key
+            0,        // move_type
+            0,        // trigger
+            0,        // guard
+            0,        // flags
+            0,        // startup
+            0,        // active
+            0,        // recovery
+            0,        // total
+            0,        // damage
+            0,        // hitstun
+            0,        // blockstun
+            0,        // hitstop
+            0,        // hit_windows_off
+            0,        // hit_windows_len
+            0,        // hurt_windows_off
+            0,        // hurt_windows_len
+        ));
+
+        // MOVE_EXTRAS (one record)
+        pad_to(&mut data, extras_off);
+        data.extend_from_slice(&build_move_extras_record64(input_ref));
+
+        assert_eq!(data.len(), total_len as usize);
+
+        let pack = PackView::parse(&data).expect("should parse pack");
+
+        let extras = pack.move_extras().expect("move extras");
+        let ex0 = extras.get(0).expect("extras 0");
+        let (off, len) = ex0.input();
+        assert_eq!(pack.string(off, len), Some("5L"));
+
+        let (idx, mv) = pack
+            .find_move_by_input("5L")
+            .expect("expected to find move by input");
+        assert_eq!(idx, 0);
+        assert_eq!(mv.move_id(), 0);
+        assert!(pack.find_move_by_input("2M").is_none());
+    }
+
     fn build_move_extras_record(
         on_use_emits: (u32, u16),
         on_hit_emits: (u32, u16),
@@ -1583,14 +1797,15 @@ mod tests {
         resource_costs: (u32, u16),
         resource_preconditions: (u32, u16),
         resource_deltas: (u32, u16),
-    ) -> [u8; 56] {
+        input: (u32, u16),
+    ) -> [u8; 64] {
         fn write_range(dst: &mut [u8], base: usize, r: (u32, u16)) {
             dst[base..base + 4].copy_from_slice(&r.0.to_le_bytes());
             dst[base + 4..base + 6].copy_from_slice(&r.1.to_le_bytes());
             dst[base + 6..base + 8].copy_from_slice(&0u16.to_le_bytes());
         }
 
-        let mut data = [0u8; 56];
+        let mut data = [0u8; 64];
         write_range(&mut data, 0, on_use_emits);
         write_range(&mut data, 8, on_hit_emits);
         write_range(&mut data, 16, on_block_emits);
@@ -1598,6 +1813,7 @@ mod tests {
         write_range(&mut data, 32, resource_costs);
         write_range(&mut data, 40, resource_preconditions);
         write_range(&mut data, 48, resource_deltas);
+        write_range(&mut data, 56, input);
         data
     }
 
@@ -1707,7 +1923,7 @@ mod tests {
         let moves_len = 32u32;
 
         let extras_off = align_up(moves_off + moves_len, 4);
-        let extras_len = 56u32;
+        let extras_len = 64u32;
 
         let res_off = align_up(extras_off + extras_len, 4);
         let res_len = 12u32;
@@ -1834,6 +2050,7 @@ mod tests {
             (0, 1), // costs -> MOVE_RESOURCE_COSTS[0]
             (0, 1), // preconditions -> MOVE_RESOURCE_PRECONDITIONS[0]
             (0, 1), // deltas -> MOVE_RESOURCE_DELTAS[0]
+            (0, 0), // input
         ));
 
         // RESOURCE_DEFS

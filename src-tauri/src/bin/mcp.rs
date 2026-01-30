@@ -1,6 +1,8 @@
 use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use clap::Parser;
 use serde::Deserialize;
 use rmcp::{
     handler::server::tool::ToolRouter,
@@ -14,18 +16,26 @@ use rmcp::{
     transport::stdio,
 };
 
+#[derive(Parser, Debug)]
+#[command(name = "framesmith-mcp", about = "Framesmith MCP server for character data")]
+struct Args {
+    /// Path to the characters directory (overrides FRAMESMITH_CHARACTERS_DIR env var)
+    #[arg(long, short = 'c')]
+    characters_dir: Option<String>,
+}
+
 /// The rules specification documentation (SSOT).
 const RULES_SPEC_MD: &str = include_str!("../../../docs/rules-spec.md");
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CharacterIdParam {
-    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MoveIdParam {
-    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
     #[schemars(description = "The move input notation (e.g., '5L', '236P')")]
     pub move_input: String,
@@ -33,10 +43,42 @@ pub struct MoveIdParam {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UpdateMoveParam {
-    #[schemars(description = "The character ID (e.g., 'glitch')")]
+    #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
     #[schemars(description = "Complete move data as JSON object")]
     pub move_data: d_developmentnethercore_projectframesmith_lib::schema::Move,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExportCharacterParam {
+    #[schemars(description = "The character ID (folder name under characters dir)")]
+    pub character_id: String,
+    #[schemars(description = "Export adapter: 'zx-fspack' (default) or 'json-blob'")]
+    pub adapter: Option<String>,
+    #[schemars(description = "Output file path, relative to the project root or absolute under the project root")]
+    pub output_path: String,
+    #[schemars(description = "Pretty JSON output (json-blob only)")]
+    pub pretty: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExportAllCharactersParam {
+    #[schemars(description = "Export adapter: 'zx-fspack' (default) or 'json-blob'")]
+    pub adapter: Option<String>,
+    #[schemars(description = "Output directory, relative to the project root or absolute under the project root")]
+    pub out_dir: String,
+    #[schemars(description = "Pretty JSON output (json-blob only)")]
+    pub pretty: Option<bool>,
+    #[schemars(description = "Continue exporting others after an error")]
+    pub keep_going: Option<bool>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ExportResultRow {
+    pub character_id: String,
+    pub ok: bool,
+    pub output_path: String,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -76,6 +118,152 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(
             "Framesmith MCP server is running!",
         )]))
+    }
+
+    #[tool(description = "Export a character to a file (runs validation + rules). Supports zx-fspack (.fspk) and json-blob (.json).")]
+    async fn export_character(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportCharacterParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::export_character;
+
+        let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
+        let pretty = params.pretty.unwrap_or(false);
+        if adapter == "zx-fspack" && pretty {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from("pretty=true is only supported for json-blob"),
+                data: None,
+            });
+        }
+
+        let project_root = project_root_from_characters_dir(&self.characters_dir);
+        let output_path = resolve_output_path_under_project(&project_root, &params.output_path)
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(e),
+                data: None,
+            })?;
+
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                message: Cow::from(format!(
+                    "Failed to create output directory {}: {}",
+                    parent.display(),
+                    e
+                )),
+                data: None,
+            })?;
+        }
+
+        export_character(
+            self.characters_dir.clone(),
+            params.character_id,
+            adapter,
+            output_path.to_string_lossy().to_string(),
+            pretty,
+        )
+        .map_err(|e| {
+            let code = if e.starts_with("Invalid ") || e.contains("Validation") {
+                rmcp::model::ErrorCode::INVALID_PARAMS
+            } else {
+                rmcp::model::ErrorCode::INTERNAL_ERROR
+            };
+            McpError {
+                code,
+                message: Cow::from(e),
+                data: None,
+            }
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Exported character to {}",
+            output_path.display()
+        ))]))
+    }
+
+    #[tool(description = "Export all characters to a directory (runs validation + rules). Returns a JSON array of per-character results.")]
+    async fn export_all_characters(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportAllCharactersParam>,
+    ) -> Result<CallToolResult, McpError> {
+        use d_developmentnethercore_projectframesmith_lib::commands::export_character;
+
+        let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
+        let pretty = params.pretty.unwrap_or(false);
+        let keep_going = params.keep_going.unwrap_or(false);
+        if adapter == "zx-fspack" && pretty {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from("pretty=true is only supported for json-blob"),
+                data: None,
+            });
+        }
+
+        let project_root = project_root_from_characters_dir(&self.characters_dir);
+        let out_dir = resolve_output_path_under_project(&project_root, &params.out_dir).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        std::fs::create_dir_all(&out_dir).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!(
+                "Failed to create output directory {}: {}",
+                out_dir.display(),
+                e
+            )),
+            data: None,
+        })?;
+
+        let ids = find_character_dir_names(&self.characters_dir).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(e),
+            data: None,
+        })?;
+
+        let ext = adapter_default_ext(&adapter);
+        let mut results: Vec<ExportResultRow> = Vec::new();
+        for id in ids {
+            let out_path = out_dir.join(format!("{}{}", id, ext));
+            let res = export_character(
+                self.characters_dir.clone(),
+                id.clone(),
+                adapter.clone(),
+                out_path.to_string_lossy().to_string(),
+                pretty,
+            );
+
+            match res {
+                Ok(()) => results.push(ExportResultRow {
+                    character_id: id,
+                    ok: true,
+                    output_path: out_path.to_string_lossy().to_string(),
+                    error: None,
+                }),
+                Err(e) => {
+                    results.push(ExportResultRow {
+                        character_id: id.clone(),
+                        ok: false,
+                        output_path: out_path.to_string_lossy().to_string(),
+                        error: Some(e),
+                    });
+                    if !keep_going {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let json = serde_json::to_string_pretty(&results).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Serialization error: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     #[tool(description = "List all available characters with their IDs, names, and move counts")]
@@ -525,11 +713,102 @@ impl ServerHandler for FramesmithMcp {
     }
 }
 
+fn project_root_from_characters_dir(characters_dir: &str) -> PathBuf {
+    Path::new(characters_dir)
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf()
+}
+
+fn resolve_output_path_under_project(project_root: &Path, user_path: &str) -> Result<PathBuf, String> {
+    if user_path.trim().is_empty() {
+        return Err("output path cannot be empty".to_string());
+    }
+
+    let p = Path::new(user_path);
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        project_root.join(p)
+    };
+
+    // Canonicalize a stable project root.
+    let root_canon = project_root
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve project root {}: {}", project_root.display(), e))?;
+
+    // Canonicalize the output parent dir (file may not exist yet).
+    let parent = abs
+        .parent()
+        .ok_or_else(|| "Invalid output path".to_string())?;
+    let parent_canon = parent.canonicalize().or_else(|_| {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create output directory {}: {}", parent.display(), e))?;
+        parent.canonicalize().map_err(|e| {
+            format!(
+                "Failed to resolve output directory {}: {}",
+                parent.display(),
+                e
+            )
+        })
+    })?;
+
+    if !parent_canon.starts_with(&root_canon) {
+        return Err(format!(
+            "Output path must be under the project root {}",
+            root_canon.display()
+        ));
+    }
+
+    Ok(abs)
+}
+
+fn adapter_default_ext(adapter: &str) -> &'static str {
+    match adapter {
+        "zx-fspack" => ".fspk",
+        "json-blob" => ".json",
+        _ => ".bin",
+    }
+}
+
+fn find_character_dir_names(characters_dir: &str) -> Result<Vec<String>, String> {
+    let mut ids: Vec<String> = Vec::new();
+    let rd = std::fs::read_dir(characters_dir)
+        .map_err(|e| format!("Failed to read characters directory {}: {}", characters_dir, e))?;
+    for entry in rd {
+        let entry = entry.map_err(|e| format!("Failed to read characters directory entry: {}", e))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if !path.join("character.json").exists() {
+            continue;
+        }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if !name.is_empty() {
+                ids.push(name.to_string());
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Default to ./characters, can be overridden via env
-    let characters_dir = std::env::var("FRAMESMITH_CHARACTERS_DIR")
-        .unwrap_or_else(|_| "./characters".to_string());
+    let args = Args::parse();
+
+    // Priority: CLI arg > env var > default
+    let characters_dir = args
+        .characters_dir
+        .or_else(|| std::env::var("FRAMESMITH_CHARACTERS_DIR").ok())
+        .unwrap_or_else(|| "./characters".to_string());
+
+    // Canonicalize the path so relative paths work correctly from any cwd
+    let characters_dir = std::fs::canonicalize(&characters_dir)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(characters_dir);
 
     let service = FramesmithMcp::new(characters_dir).serve(stdio()).await?;
     service.waiting().await?;

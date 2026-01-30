@@ -2,8 +2,8 @@ use d_developmentnethercore_projectframesmith_lib::{codegen, commands};
 
 #[test]
 fn zx_fspack_export_roundtrips_through_reader() {
-    let char_data = commands::load_character("../characters".to_string(), "glitch".to_string())
-        .expect("load glitch character");
+    let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
+        .expect("load test_char character");
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
     assert!(!bytes.is_empty(), "export should produce non-empty output");
@@ -368,4 +368,71 @@ fn zx_fspack_exports_resources_and_events_sections() {
         d0.trigger(),
         framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_USE
     );
+}
+
+#[test]
+fn zx_fspack_exports_move_input_notation() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+    };
+    use std::collections::HashMap;
+
+    fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
+        u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
+    }
+
+    fn read_u16_le(bytes: &[u8], off: usize) -> u16 {
+        u16::from_le_bytes([bytes[off], bytes[off + 1]])
+    }
+
+    // Minimal character with a single move and no optional extras.
+    // MOVE_EXTRAS should still be present because every move has an input.
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![],
+        },
+        moves: vec![Move {
+            input: "5L".to_string(),
+            name: "Test Jab".to_string(),
+            guard: GuardType::Mid,
+            animation: "stand_light".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable {
+            chains: HashMap::new(),
+            special_cancels: vec![],
+            super_cancels: vec![],
+            jump_cancels: vec![],
+        },
+    };
+
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
+
+    let extras_data = pack
+        .get_section(framesmith_fspack::SECTION_MOVE_EXTRAS)
+        .expect("expected MOVE_EXTRAS section");
+    assert_eq!(extras_data.len(), 64, "expected one 64-byte extras record");
+
+    // The input notation string ref is stored at byte offset 56 within the record.
+    let input_off = read_u32_le(extras_data, 56);
+    let input_len = read_u16_le(extras_data, 60);
+
+    let input = pack
+        .string(input_off, input_len)
+        .expect("input notation string");
+    assert_eq!(input, "5L");
 }

@@ -1,0 +1,29 @@
+{
+  "input": "22P",
+  "name": "Poison Release",
+  "type": "special",
+  "trigger": "release",
+  "startup": 12,
+  "active": 4,
+  "recovery": 20,
+  "damage": 40,
+  "hitstun": 16,
+  "blockstun": 10,
+  "hitstop": 6,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [12, 15], "box": { "x": 5, "y": -55, "w": 45, "h": 35 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 35], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } }
+  ],
+  "pushback": { "hit": 5, "block": 8 },
+  "meter_gain": { "hit": 6, "whiff": 2 },
+  "animation": "poison_release",
+  "on_hit": {
+    "status": [
+      { "type": "poison", "damage_per_frame": 1, "duration": 120 },
+      { "type": "stun", "duration": 30 }
+    ]
+  }
+}

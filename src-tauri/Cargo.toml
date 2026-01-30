@@ -31,6 +31,7 @@ rmcp = { version = "0.14", features = ["server", "transport-io", "macros"] }
 tokio = { version = "1", features = ["full"] }
 schemars = "1.0"
 anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 framesmith-fspack = { path = "../crates/framesmith-fspack" }
@@ -44,4 +45,9 @@ test = false
 [[bin]]
 name = "generate_schema"
 path = "src/bin/generate_schema.rs"
+test = false
+
+[[bin]]
+name = "framesmith"
+path = "src/bin/framesmith.rs"
 test = false

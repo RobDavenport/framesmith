@@ -2,6 +2,7 @@
   "input": "5L",
   "name": "Standing Light",
   "type": "normal",
+  "tags": ["starter", "poke"],
   "startup": 7,
   "active": 3,
   "recovery": 8,
@@ -19,5 +20,14 @@
   ],
   "pushback": { "hit": 2, "block": 2 },
   "meter_gain": { "hit": 5, "whiff": 2 },
-  "animation": "stand_light"
+  "animation": "stand_light",
+  "notifies": [
+    {
+      "frame": 7,
+      "events": [{ "id": "gain_heat", "args": { "amount": 5 } }]
+    }
+  ],
+  "on_hit": {
+    "events": [{ "id": "gain_heat", "args": { "amount": 10 } }]
+  }
 }

@@ -11,53 +11,75 @@ From repo root:
 
 ```bash
 cd src-tauri
-cargo run --bin mcp
+cargo run --bin mcp -- --characters-dir ../characters
 ```
 
-The server reads `FRAMESMITH_CHARACTERS_DIR` to find your characters folder. If unset, it defaults to `./characters` relative to `src-tauri/`.
+The server finds the characters folder via (in priority order):
+1. `--characters-dir` / `-c` CLI argument
+2. `FRAMESMITH_CHARACTERS_DIR` environment variable
+3. Default: `./characters` relative to cwd
 
-Recommended: point it at a project’s `characters/` folder (so it can also find `<project>/framesmith.rules.json` via the parent directory).
+Paths are canonicalized on startup, so relative paths work correctly.
 
 ## Configuration (.mcp.json)
 
-If you use `"command": "target/debug/mcp"`, build it first:
+Build the MCP binary first:
 
 ```bash
-cd src-tauri
-cargo build --bin mcp
+cd framesmith/src-tauri
+cargo build --release --bin mcp
 ```
 
-Example for this repo (project root is the repo root):
+All paths in the config are relative to your project root (where `.mcp.json` lives). No `cwd` manipulation needed.
+
+### Framesmith repo
 
 ```json
 {
   "mcpServers": {
     "framesmith": {
-      "command": "target/debug/mcp",
-      "cwd": "./src-tauri",
-      "env": {
-        "FRAMESMITH_CHARACTERS_DIR": "../characters"
-      }
+      "command": "./src-tauri/target/release/mcp.exe",
+      "args": ["--characters-dir", "./characters"]
     }
   }
 }
 ```
 
-Example for an external project at `D:/games/my-game`:
+### External project (same workspace)
+
+For a project alongside framesmith (e.g., `workspace/my-game` next to `workspace/framesmith`):
 
 ```json
 {
   "mcpServers": {
     "framesmith": {
-      "command": "target/debug/mcp",
-      "cwd": "./src-tauri",
-      "env": {
-        "FRAMESMITH_CHARACTERS_DIR": "D:/games/my-game/characters"
-      }
+      "command": "../framesmith/src-tauri/target/release/mcp.exe",
+      "args": ["--characters-dir", "./characters"]
     }
   }
 }
 ```
+
+Both paths are relative to your project root:
+- `command`: path to the framesmith binary
+- `--characters-dir`: path to your project's characters folder
+
+### External project (different location)
+
+For projects outside the workspace, use absolute paths:
+
+```json
+{
+  "mcpServers": {
+    "framesmith": {
+      "command": "C:/tools/framesmith/mcp.exe",
+      "args": ["--characters-dir", "./characters"]
+    }
+  }
+}
+```
+
+Or install the binary to your PATH and just use `"command": "framesmith-mcp"`.
 
 ## Tools
 
@@ -76,7 +98,9 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 | `get_cancel_table` | Get cancel relationships |
 | `get_frame_data_table` | Get a compact computed frame-data table |
 | `get_rules_schema` | Get JSON Schema for rules files (for IDE autocomplete) |
-| `get_builtin_validation` | List built-in validations that always run |
+| `get_builtin_validations` | List built-in validations that always run |
+| `export_character` | Export a character to a file (runs rules + validation) |
+| `export_all_characters` | Export all characters to a directory (runs rules + validation) |
 
 ## Resources
 
@@ -90,3 +114,18 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 - `create_move` and `update_move` validate using project rules (`<project>/framesmith.rules.json`) plus optional character rules (`<project>/characters/<id>/rules.json`).
 - Registry-aware checks run (resources/events must match the rules registry).
 - On validation errors, the tool returns `INVALID_PARAMS`.
+
+## Export Tools
+
+- `export_character` and `export_all_characters` run the same validation + rules pipeline as the app export.
+- For safety, output paths must be under the project root (the parent directory of `FRAMESMITH_CHARACTERS_DIR`).
+
+Example usage (conceptual):
+
+```text
+export_character({
+  "character_id": "test_char",
+  "adapter": "zx-fspack",
+  "output_path": "exports/test_char.fspk"
+})
+```

@@ -8,10 +8,10 @@ use std::collections::HashMap;
 
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
-    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_RECORD_SIZE, SECTION_CANCELS_U16,
-    SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS,
-    SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVES,
-    SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
+    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_EXTRAS64_SIZE, MOVE_RECORD_SIZE,
+    SECTION_CANCELS_U16, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE,
+    SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS,
+    SECTION_MOVES, SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
     SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
     SECTION_SHAPES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
 };
@@ -538,7 +538,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let mut move_resource_deltas_data: Vec<u8> = Vec::new();
 
     // MOVE_EXTRAS is always parallel to MOVES when present.
-    let mut move_extras_records: Vec<[(u32, u16); 7]> = Vec::with_capacity(char_data.moves.len());
+    let mut move_extras_records: Vec<[(u32, u16); 8]> = Vec::with_capacity(char_data.moves.len());
 
     let mut any_move_extras = false;
 
@@ -843,6 +843,9 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             }
         }
 
+        // Intern the move input notation string.
+        let input_ref = strings.intern(&mv.input)?;
+
         let record = [
             (on_use_emits_off, on_use_emits_len),
             (on_hit_emits_off, on_hit_emits_len),
@@ -851,10 +854,11 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             (costs_off, costs_len),
             (pre_off, pre_len),
             (deltas_off, deltas_len),
+            (input_ref.0, input_ref.1),
         ];
-        if record.iter().any(|r| r.1 != 0) {
-            any_move_extras = true;
-        }
+
+        // Always emit MOVE_EXTRAS when there are moves, since every move has an input.
+        any_move_extras = true;
         move_extras_records.push(record);
     }
 
@@ -873,7 +877,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
 
     let mut move_extras_data: Vec<u8> = Vec::new();
     if any_move_extras {
-        move_extras_data.reserve(move_extras_records.len() * 56);
+        move_extras_data.reserve(move_extras_records.len() * MOVE_EXTRAS64_SIZE);
         for rec in &move_extras_records {
             for (off, len) in rec {
                 write_range(&mut move_extras_data, *off, *len);
@@ -1193,7 +1197,7 @@ mod tests {
     fn test_build_asset_keys_deterministic() {
         // Create character data with moves in non-alphabetical order
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![
                 make_test_move("5H", "stand_heavy"),
                 make_test_move("5L", "stand_light"),
@@ -1207,7 +1211,7 @@ mod tests {
 
         // Create the same data but with moves in different order
         let char_data2 = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![
                 make_test_move("5M", "stand_medium"),
                 make_test_move("5L", "stand_light"),
@@ -1231,7 +1235,7 @@ mod tests {
     fn test_build_asset_keys_deduplication() {
         // Create character data where two moves share the same animation
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![
                 make_test_move("5L", "stand_light"),
                 make_test_move("2L", "stand_light"), // Same animation as 5L
@@ -1287,7 +1291,7 @@ mod tests {
     #[test]
     fn test_build_asset_keys_mesh_format() {
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![make_test_move("5L", "stand_light")],
             cancel_table: make_empty_cancel_table(),
         };
@@ -1302,13 +1306,13 @@ mod tests {
         let mesh_key =
             std::str::from_utf8(&bytes[mesh_key_start..mesh_key_start + mesh_key_len]).unwrap();
 
-        assert_eq!(mesh_key, "glitch.stand_light");
+        assert_eq!(mesh_key, "test_char.stand_light");
     }
 
     #[test]
     fn test_build_asset_keys_keyframes_format() {
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![make_test_move("5L", "stand_light")],
             cancel_table: make_empty_cancel_table(),
         };
@@ -1329,7 +1333,7 @@ mod tests {
     #[test]
     fn test_build_asset_keys_empty_moves() {
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![],
             cancel_table: make_empty_cancel_table(),
         };
@@ -1345,7 +1349,7 @@ mod tests {
     #[test]
     fn test_build_asset_keys_skips_empty_animations() {
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![
                 make_test_move("5L", "stand_light"),
                 make_test_move("5M", ""), // Empty animation should be skipped
@@ -1392,7 +1396,7 @@ mod tests {
 
         // Verify section count
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 8, "Section count should be 8");
+        assert_eq!(section_count, 9, "Section count should be 9");
     }
 
     #[test]
@@ -1430,16 +1434,16 @@ mod tests {
 
         let bytes = export_zx_fspack(&char_data).unwrap();
 
-        // Verify we can read all 8 section headers
-        let header_end = HEADER_SIZE + (8 * SECTION_HEADER_SIZE);
+        let section_count = read_u32_le(&bytes, 12) as usize;
+        let header_end = HEADER_SIZE + (section_count * SECTION_HEADER_SIZE);
         assert!(
             bytes.len() >= header_end,
             "Output should have room for all section headers"
         );
 
-        // Check that section kinds are correct (in order)
-        let expected_kinds = [1, 2, 3, 4, 5, 6, 7, 8]; // STRING_TABLE through CANCELS_U16
-        for (i, &expected_kind) in expected_kinds.iter().enumerate() {
+        // Check that section kinds are correct (base v1 sections in order)
+        let expected_base_kinds = [1, 2, 3, 4, 5, 6, 7, 8]; // STRING_TABLE through CANCELS_U16
+        for (i, &expected_kind) in expected_base_kinds.iter().enumerate() {
             let offset = HEADER_SIZE + i * SECTION_HEADER_SIZE;
             let kind = u32::from_le_bytes([
                 bytes[offset],
@@ -1453,6 +1457,20 @@ mod tests {
                 i, expected_kind
             );
         }
+
+        // MOVE_EXTRAS is expected when there are moves.
+        assert_eq!(
+            section_count, 9,
+            "Expected MOVE_EXTRAS section to be present"
+        );
+        let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
+        let extras_kind = u32::from_le_bytes([
+            bytes[extras_kind_off],
+            bytes[extras_kind_off + 1],
+            bytes[extras_kind_off + 2],
+            bytes[extras_kind_off + 3],
+        ]);
+        assert_eq!(extras_kind, SECTION_MOVE_EXTRAS);
     }
 
     #[test]
@@ -1962,7 +1980,7 @@ mod tests {
     fn test_roundtrip_export_and_parse() {
         // Create a character with multiple moves and animations
         let char_data = CharacterData {
-            character: make_test_character("glitch"),
+            character: make_test_character("test_char"),
             moves: vec![
                 make_test_move("5L", "stand_light"),
                 make_test_move("5M", "stand_medium"),
@@ -1977,8 +1995,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // Verify section count (8 sections)
-        assert_eq!(pack.section_count(), 8);
+        // MOVE_EXTRAS is expected when there are moves.
+        assert_eq!(pack.section_count(), 9);
 
         // Verify move count matches
         let moves = pack.moves().expect("should have MOVES section");
@@ -1999,12 +2017,12 @@ mod tests {
         assert_eq!(mesh_keys.len(), 3, "should have 3 mesh keys");
 
         // Verify we can resolve a string from the string table
-        // First mesh key should be "glitch.stand_heavy" (sorted alphabetically)
+        // First mesh key should be "test_char.stand_heavy" (sorted alphabetically)
         let (off, len) = mesh_keys.get(0).expect("should get mesh key 0");
         let mesh_key_str = pack
             .string(off, len)
             .expect("should resolve mesh key string");
-        assert_eq!(mesh_key_str, "glitch.stand_heavy");
+        assert_eq!(mesh_key_str, "test_char.stand_heavy");
 
         // First keyframes key should be "stand_heavy" (sorted alphabetically)
         let (kf_off, kf_len) = kf_keys.get(0).expect("should get keyframes key 0");

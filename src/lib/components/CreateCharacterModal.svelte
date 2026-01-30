@@ -150,7 +150,7 @@
             type="text"
             value={characterId}
             oninput={handleIdChange}
-            placeholder="e.g. glitch"
+            placeholder="e.g. test_char"
             disabled={submitting}
           />
           <span class="hint">Lowercase, letters, numbers, dashes only</span>

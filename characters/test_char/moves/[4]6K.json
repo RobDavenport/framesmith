@@ -1,0 +1,30 @@
+{
+  "input": "[4]6K",
+  "name": "Charge Kick",
+  "type": "special",
+  "startup": 10,
+  "active": 5,
+  "recovery": 18,
+  "damage": 75,
+  "hitstun": 22,
+  "blockstun": 14,
+  "hitstop": 9,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [10, 14], "box": { "x": 20, "y": -35, "w": 55, "h": 25 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 32], "box": { "x": -5, "y": -60, "w": 45, "h": 60 } }
+  ],
+  "pushback": { "hit": 15, "block": 20 },
+  "meter_gain": { "hit": 10, "whiff": 3 },
+  "animation": "charge_kick",
+  "preconditions": [
+    { "type": "charge", "direction": "back", "min_frames": 30 }
+  ],
+  "movement": {
+    "distance": 100,
+    "direction": "forward",
+    "curve": "linear"
+  }
+}

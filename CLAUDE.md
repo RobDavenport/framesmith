@@ -24,7 +24,7 @@ Each character is stored as a directory inside `characters/`:
 <project>/
   framesmith.rules.json
   characters/
-    glitch/
+    test_char/
       character.json         # Properties (health, speed, etc.)
       cancel_table.json      # Cancel relationships
       moves/

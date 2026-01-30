@@ -1,0 +1,25 @@
+{
+  "input": "2L",
+  "name": "Crouching Light",
+  "type": "normal",
+  "startup": 6,
+  "active": 3,
+  "recovery": 9,
+  "damage": 25,
+  "hitstun": 15,
+  "blockstun": 10,
+  "hitstop": 5,
+  "guard": "low",
+  "hitboxes": [
+    { "frames": [6, 8], "box": { "x": 5, "y": -15, "w": 35, "h": 15 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 17], "box": { "x": -10, "y": -35, "w": 30, "h": 35 } }
+  ],
+  "pushback": { "hit": 2, "block": 2 },
+  "meter_gain": { "hit": 4, "whiff": 2 },
+  "animation": "crouch_light",
+  "preconditions": [
+    { "type": "grounded" }
+  ]
+}

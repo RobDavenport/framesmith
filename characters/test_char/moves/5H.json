@@ -18,5 +18,8 @@
   ],
   "pushback": { "hit": 6, "block": 5 },
   "meter_gain": { "hit": 12, "whiff": 6 },
-  "animation": "stand_heavy"
+  "animation": "stand_heavy",
+  "on_hit": {
+    "wall_bounce": true
+  }
 }

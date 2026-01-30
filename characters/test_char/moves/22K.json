@@ -1,0 +1,44 @@
+{
+  "input": "22K",
+  "name": "Counter Stance",
+  "type": "special",
+  "trigger": "hold",
+  "startup": 8,
+  "active": 20,
+  "recovery": 15,
+  "damage": 50,
+  "hitstun": 18,
+  "blockstun": 12,
+  "hitstop": 7,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [8, 27], "box": { "x": 5, "y": -50, "w": 40, "h": 30 } }
+  ],
+  "hurtboxes": [],
+  "pushback": { "hit": 10, "block": 15 },
+  "meter_gain": { "hit": 8, "whiff": 0 },
+  "animation": "counter_stance",
+  "advanced_hurtboxes": [
+    {
+      "frames": [0, 7],
+      "boxes": [{ "type": "aabb", "x": -10, "y": -60, "w": 30, "h": 60 }]
+    },
+    {
+      "frames": [8, 27],
+      "boxes": [
+        { "type": "rect", "x": -12, "y": -65, "w": 28, "h": 65, "angle": 0.0 },
+        { "type": "circle", "x": 5, "y": -50, "r": 15 }
+      ],
+      "flags": ["strike_invuln", "armor"]
+    },
+    {
+      "frames": [28, 42],
+      "boxes": [{ "type": "aabb", "x": -10, "y": -60, "w": 30, "h": 60 }]
+    }
+  ],
+  "on_block": {
+    "gain_meter": 5,
+    "pushback": 20,
+    "events": [{ "id": "gain_heat", "args": { "amount": 15 } }]
+  }
+}

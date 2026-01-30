@@ -1,0 +1,11 @@
+{
+  "chains": {
+    "5L": ["5L", "5M", "2L"],
+    "5M": ["5H"],
+    "2L": ["2L", "5M"],
+    "j.L": ["j.L"]
+  },
+  "special_cancels": ["5L", "5M", "5H", "2L", "6M", "j.L"],
+  "super_cancels": ["5H", "236K~K~K", "236P", "[4]6K"],
+  "jump_cancels": ["5H", "6M"]
+}

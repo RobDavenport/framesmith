@@ -57,6 +57,7 @@ npm run tauri dev        # Development mode
 npm run tauri build      # Production build
 cd src-tauri && cargo test   # Run Rust tests
 cd src-tauri && cargo run --bin mcp   # Run MCP server
+cd src-tauri && cargo run --bin framesmith -- export --all --project .. --out-dir ../exports   # Export .fspk packs
 ```
 
 ## Key Constraints
@@ -106,7 +107,7 @@ Add to your Claude Code MCP config (`.mcp.json`):
 | `get_cancel_table` | Get cancel relationships |
 | `get_frame_data_table` | Get compact frame data table with computed advantage |
 | `get_rules_schema` | Get JSON Schema for rules files |
-| `get_builtin_validation` | List built-in validations that always run |
+| `get_builtin_validations` | List built-in validations that always run |
 
 ### Resources
 

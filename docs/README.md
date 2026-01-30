@@ -14,6 +14,7 @@
 | Rules spec (SSOT) | [`rules-spec.md`](rules-spec.md) |
 | MCP server | [`mcp-server.md`](mcp-server.md) |
 | ZX FSPK format | [`zx-fspack.md`](zx-fspack.md) |
+| CLI | [`cli.md`](cli.md) |
 
 ## Start Here
 

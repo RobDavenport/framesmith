@@ -1,0 +1,31 @@
+{
+  "input": "214P",
+  "name": "Life Drain",
+  "type": "special",
+  "startup": 20,
+  "active": 3,
+  "recovery": 25,
+  "damage": 60,
+  "hitstun": 20,
+  "blockstun": 15,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    { "frames": [20, 22], "box": { "x": 10, "y": -50, "w": 35, "h": 30 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 47], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } }
+  ],
+  "pushback": { "hit": 8, "block": 10 },
+  "meter_gain": { "hit": 8, "whiff": 2 },
+  "animation": "life_drain",
+  "preconditions": [
+    { "type": "health", "min_percent": 20 }
+  ],
+  "costs": [
+    { "type": "health", "amount": 50 }
+  ],
+  "on_hit": {
+    "heal": 80
+  }
+}

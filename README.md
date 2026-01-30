@@ -19,7 +19,7 @@ A Framesmith project is a folder with this structure:
 my-game/
   framesmith.rules.json
   characters/
-    glitch/
+    test_char/
       character.json
       cancel_table.json
       moves/
@@ -52,6 +52,17 @@ The MCP server is documented in `docs/mcp-server.md`.
 cd src-tauri
 cargo run --bin mcp
 ```
+
+## CLI
+
+For automation (like exporting `.fspk` packs), use the `framesmith` CLI.
+
+```bash
+cd src-tauri
+cargo run --bin framesmith -- export --project .. --all --out-dir ../exports
+```
+
+See `docs/cli.md`.
 
 ## Documentation
 

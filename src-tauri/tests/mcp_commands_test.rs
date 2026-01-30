@@ -148,13 +148,13 @@ fn get_character_returns_full_data() {
     let temp_dir = TempDir::new().unwrap();
     let characters_dir = setup_test_project(&temp_dir);
 
-    create_test_character(&characters_dir, "glitch");
-    create_test_move(&characters_dir, "glitch", "5L", "Light Punch");
-    create_test_move(&characters_dir, "glitch", "2M", "Crouching Medium");
+    create_test_character(&characters_dir, "test_char");
+    create_test_move(&characters_dir, "test_char", "5L", "Light Punch");
+    create_test_move(&characters_dir, "test_char", "2M", "Crouching Medium");
 
-    let result = load_character(characters_dir, "glitch".to_string()).unwrap();
+    let result = load_character(characters_dir, "test_char".to_string()).unwrap();
 
-    assert_eq!(result.character.id, "glitch");
+    assert_eq!(result.character.id, "test_char");
     assert_eq!(result.character.name, "Test Character");
     assert_eq!(result.moves.len(), 2);
 

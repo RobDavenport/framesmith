@@ -24,6 +24,7 @@ FSPK (Framesmith Pack) is a compact binary format for storing fighting game char
 Use the `zx-fspack` adapter when exporting a character.
 
 - In the app UI: Character Overview -> Export -> "ZX FSPK (Binary)"
+- In the CLI: `cd src-tauri && cargo run --bin framesmith -- export --project .. --character test_char --out ../exports/test_char.fspk`
 - Programmatically: call the `export_character` command with `adapter = "zx-fspack"`
 
 ```rust
@@ -31,9 +32,9 @@ Use the `zx-fspack` adapter when exporting a character.
 // export_character(characters_dir, character_id, adapter, output_path, pretty)
 export_character(
     "<project>/characters".to_string(),
-    "glitch".to_string(),
+    "test_char".to_string(),
     "zx-fspack".to_string(),
-    "exports/glitch.fspk".to_string(),
+    "exports/test_char.fspk".to_string(),
     false,
 )?;
 ```
@@ -55,11 +56,11 @@ use framesmith_fspack::{PackView, KEY_NONE};
 // In ZX game init():
 
 // 1. Get ROM data length and allocate buffer
-let len = rom_data_len("char/glitch.fspk");
+let len = rom_data_len("char/test_char.fspk");
 let mut buffer = alloc_buffer(len);
 
 // 2. Load ROM data into buffer
-rom_data("char/glitch.fspk", &mut buffer);
+rom_data("char/test_char.fspk", &mut buffer);
 
 // 3. Parse the pack (zero-copy, borrows from buffer)
 let pack = PackView::parse(&buffer).expect("invalid pack");
@@ -76,7 +77,7 @@ if let Some(mesh_keys) = pack.mesh_keys() {
     for i in 0..mesh_keys.len() {
         if let Some((off, len)) = mesh_keys.get(i) {
             if let Some(key) = pack.string(off, len) {
-                // mesh key format: "{character_id}.{animation}" (e.g. "glitch.stand_light")
+                // mesh key format: "{character_id}.{animation}" (e.g. "test_char.stand_light")
                 let handle = rom_mesh(key);
                 mesh_handles.push(handle);
             }

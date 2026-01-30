@@ -1,0 +1,29 @@
+{
+  "input": "5T",
+  "name": "Throw",
+  "type": "throw",
+  "startup": 5,
+  "active": 2,
+  "recovery": 20,
+  "damage": 100,
+  "hitstun": 0,
+  "blockstun": 0,
+  "hitstop": 0,
+  "guard": "unblockable",
+  "hitboxes": [
+    { "frames": [5, 6], "box": { "x": 0, "y": -50, "w": 25, "h": 50 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 26], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } }
+  ],
+  "pushback": { "hit": 0, "block": 0 },
+  "meter_gain": { "hit": 15, "whiff": 0 },
+  "animation": "throw",
+  "preconditions": [
+    { "type": "grounded" },
+    { "type": "distance", "max": 50 }
+  ],
+  "on_hit": {
+    "knockback": { "type": "push", "x": 80, "y": 0 }
+  }
+}

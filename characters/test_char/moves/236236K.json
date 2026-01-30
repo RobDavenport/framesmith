@@ -1,0 +1,103 @@
+{
+  "input": "236236K",
+  "name": "Ultimate Barrage",
+  "type": "super",
+  "startup": 10,
+  "active": 15,
+  "recovery": 30,
+  "damage": 280,
+  "hitstun": 45,
+  "blockstun": 25,
+  "hitstop": 12,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [],
+  "pushback": { "hit": 30, "block": 40 },
+  "meter_gain": { "hit": 0, "whiff": 0 },
+  "animation": "ultimate_barrage",
+  "preconditions": [
+    { "type": "meter", "min": 100 },
+    { "type": "opponentstate", "in": ["hitstun", "blockstun", "knockdown"] },
+    { "type": "distance", "min": 30, "max": 150 }
+  ],
+  "costs": [
+    { "type": "meter", "amount": 100 }
+  ],
+  "super_freeze": {
+    "frames": 30,
+    "zoom": 1.8,
+    "darken": 0.6
+  },
+  "hits": [
+    {
+      "frames": [10, 12],
+      "damage": 50,
+      "chip_damage": 5,
+      "hitstun": 15,
+      "blockstun": 10,
+      "hitstop": 6,
+      "guard": "mid",
+      "hitboxes": [
+        { "type": "aabb", "x": 20, "y": -60, "w": 60, "h": 40 }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [14, 16],
+      "damage": 60,
+      "chip_damage": 6,
+      "hitstun": 18,
+      "blockstun": 12,
+      "hitstop": 8,
+      "guard": "mid",
+      "hitboxes": [
+        { "type": "rect", "x": 25, "y": -55, "w": 70, "h": 35, "angle": 15.0 }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [18, 20],
+      "damage": 70,
+      "chip_damage": 7,
+      "hitstun": 20,
+      "blockstun": 14,
+      "hitstop": 10,
+      "guard": "mid",
+      "hitboxes": [
+        { "type": "circle", "x": 40, "y": -45, "r": 30 }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [22, 25],
+      "damage": 100,
+      "chip_damage": 10,
+      "hitstun": 45,
+      "blockstun": 25,
+      "hitstop": 15,
+      "guard": "mid",
+      "hitboxes": [
+        { "type": "capsule", "x1": 10, "y1": -50, "x2": 80, "y2": -40, "r": 20 }
+      ],
+      "cancels": []
+    }
+  ],
+  "on_use": {
+    "gain_meter": 0,
+    "resource_deltas": [
+      { "name": "heat", "delta": 50 }
+    ]
+  },
+  "on_hit": {
+    "ground_bounce": true,
+    "resource_deltas": [
+      { "name": "heat", "delta": 25 }
+    ]
+  },
+  "on_block": {
+    "pushback": 50,
+    "resource_deltas": [
+      { "name": "heat", "delta": 10 }
+    ]
+  }
+}

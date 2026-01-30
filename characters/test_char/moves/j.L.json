@@ -1,0 +1,25 @@
+{
+  "input": "j.L",
+  "name": "Jumping Light",
+  "type": "normal",
+  "startup": 5,
+  "active": 6,
+  "recovery": 3,
+  "damage": 28,
+  "hitstun": 14,
+  "blockstun": 9,
+  "hitstop": 5,
+  "guard": "high",
+  "hitboxes": [
+    { "frames": [5, 10], "box": { "x": 8, "y": -20, "w": 25, "h": 20 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 13], "box": { "x": -8, "y": -55, "w": 28, "h": 55 } }
+  ],
+  "pushback": { "hit": 3, "block": 3 },
+  "meter_gain": { "hit": 4, "whiff": 2 },
+  "animation": "jump_light",
+  "preconditions": [
+    { "type": "airborne" }
+  ]
+}

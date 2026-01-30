@@ -146,7 +146,7 @@ pub const MOVE_RECORD_SIZE: usize = 32;
 pub const RESOURCE_DEF12_SIZE: usize = 12;
 
 /// MoveExtras record size
-pub const MOVE_EXTRAS56_SIZE: usize = 56;
+pub const MOVE_EXTRAS64_SIZE: usize = 64;
 
 /// EventEmit record size
 pub const EVENT_EMIT16_SIZE: usize = 16;

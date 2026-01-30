@@ -34,7 +34,7 @@ Character identity + global properties.
 
 ```json
 {
-  "id": "glitch",
+  "id": "test_char",
   "name": "GLITCH",
   "archetype": "rushdown",
   "health": 10000,
@@ -62,22 +62,22 @@ Per-character asset manifest for the Move Editor preview.
 {
   "version": 1,
   "textures": {
-    "glitch_atlas": "assets/textures/glitch.png"
+    "test_char_atlas": "assets/textures/test_char.png"
   },
   "models": {
-    "glitch": "assets/models/glitch.glb"
+    "test_char": "assets/models/test_char.glb"
   },
   "animations": {
     "stand_light": {
       "mode": "sprite",
-      "texture": "glitch_atlas",
+      "texture": "test_char_atlas",
       "frame_size": { "w": 256, "h": 256 },
       "frames": 18,
       "pivot": { "x": 128, "y": 192 }
     },
     "stand_light_3d": {
       "mode": "gltf",
-      "model": "glitch",
+      "model": "test_char",
       "clip": "stand_light",
       "fps": 60,
       "pivot": { "x": 0, "y": 0, "z": 0 }

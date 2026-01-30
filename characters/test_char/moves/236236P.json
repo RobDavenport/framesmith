@@ -16,7 +16,8 @@
   "meter_gain": { "hit": 0, "whiff": 0 },
   "animation": "super_fireball",
   "preconditions": [
-    { "type": "meter", "min": 100 }
+    { "type": "meter", "min": 100 },
+    { "type": "combocount", "min": 3 }
   ],
   "costs": [
     { "type": "meter", "amount": 100 }
@@ -29,6 +30,7 @@
   },
   "on_hit": {
     "gain_meter": 0,
-    "wall_bounce": true
+    "wall_bounce": true,
+    "knockback": { "type": "launch", "x": 20, "y": -30 }
   }
 }

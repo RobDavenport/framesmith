@@ -9,6 +9,7 @@ pub mod view;
 
 pub use error::Error;
 pub use view::{
+    CancelFlags,
     EventArgView,
     EventArgsView,
     EventEmitView,
