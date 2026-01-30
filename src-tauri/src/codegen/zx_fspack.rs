@@ -307,12 +307,16 @@ fn pack_move_record(
 pub struct CancelLookup<'a> {
     /// Moves that have chain cancel routes (keys in chains HashMap)
     pub chains: std::collections::HashSet<&'a str>,
+    /// Chain routes: maps source move input -> list of target move inputs
+    pub chain_routes: &'a std::collections::HashMap<String, Vec<String>>,
     /// Moves that can cancel into specials
     pub specials: std::collections::HashSet<&'a str>,
     /// Moves that can cancel into supers
     pub supers: std::collections::HashSet<&'a str>,
     /// Moves that can cancel into jump
     pub jumps: std::collections::HashSet<&'a str>,
+    /// Maps move input notation -> move index (for resolving chain targets)
+    pub input_to_index: HashMap<&'a str, u16>,
 }
 
 /// Packed move data with backing arrays.
@@ -397,7 +401,7 @@ pub fn pack_moves(
         let hit_windows_len = checked_u16(mv.hitboxes.len(), "hit_windows_len")?;
         let hurt_windows_len = checked_u16(mv.hurtboxes.len(), "hurt_windows_len")?;
 
-        // Compute cancel flags from lookup
+        // Compute cancel flags and pack chain cancel routes
         let mut flags: u8 = 0;
         if let Some(lookup) = cancel_lookup {
             let input = mv.input.as_str();
@@ -412,6 +416,15 @@ pub fn pack_moves(
             }
             if lookup.jumps.contains(input) {
                 flags |= super::zx_fspack_format::CANCEL_FLAG_JUMP;
+            }
+
+            // Pack chain cancel routes into CANCELS_U16 section
+            if let Some(targets) = lookup.chain_routes.get(input) {
+                for target_input in targets {
+                    if let Some(&target_idx) = lookup.input_to_index.get(target_input.as_str()) {
+                        packed.cancels.extend_from_slice(&target_idx.to_le_bytes());
+                    }
+                }
             }
         }
 
@@ -545,6 +558,14 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         anim_to_index.insert((*anim).to_string(), idx);
     }
 
+    // Build input-to-index map for resolving chain targets
+    let input_to_index: HashMap<&str, u16> = char_data
+        .moves
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.input.as_str(), i as u16))
+        .collect();
+
     // Build cancel lookup from cancel_table
     let cancel_lookup = CancelLookup {
         chains: char_data
@@ -553,6 +574,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             .keys()
             .map(|s| s.as_str())
             .collect(),
+        chain_routes: &char_data.cancel_table.chains,
         specials: char_data
             .cancel_table
             .special_cancels
@@ -571,6 +593,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             .iter()
             .map(|s| s.as_str())
             .collect(),
+        input_to_index,
     };
 
     // Step 2: Pack moves with animation indices and cancel lookup
@@ -2359,5 +2382,95 @@ mod tests {
             "5M should NOT have CHAIN flag (flags=0x{:02x})",
             mv1.flags()
         );
+    }
+
+    /// Test that chain cancel routes are packed into CANCELS_U16 section
+    #[test]
+    fn test_chain_cancel_routes_exported() {
+        use crate::commands::CharacterData;
+
+        // Create chains: 5L -> [5M, 5H], 5M -> [5H]
+        let mut chains = HashMap::new();
+        chains.insert("5L".to_string(), vec!["5M".to_string(), "5H".to_string()]);
+        chains.insert("5M".to_string(), vec!["5H".to_string()]);
+
+        let char_data = CharacterData {
+            character: Character {
+                id: "t".into(),
+                name: "T".into(),
+                archetype: "test".into(),
+                health: 1000,
+                walk_speed: 3.0,
+                back_walk_speed: 3.0,
+                jump_height: 100,
+                jump_duration: 40,
+                dash_distance: 80,
+                dash_duration: 20,
+                resources: vec![],
+            },
+            moves: vec![
+                Move {
+                    input: "5L".into(),
+                    name: "Jab".into(),
+                    guard: GuardType::Mid,
+                    animation: "a".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+                Move {
+                    input: "5M".into(),
+                    name: "Medium".into(),
+                    guard: GuardType::Mid,
+                    animation: "b".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+                Move {
+                    input: "5H".into(),
+                    name: "Heavy".into(),
+                    guard: GuardType::Mid,
+                    animation: "c".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+            ],
+            cancel_table: CancelTable {
+                chains,
+                special_cancels: vec![],
+                super_cancels: vec![],
+                jump_cancels: vec![],
+            },
+        };
+
+        let bytes = export_zx_fspack(&char_data).unwrap();
+        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
+
+        // Get raw CANCELS_U16 section
+        let cancels = pack
+            .get_section(framesmith_fspack::SECTION_CANCELS_U16)
+            .expect("CANCELS_U16 section should exist");
+        assert!(
+            !cancels.is_empty(),
+            "CANCELS_U16 should not be empty (got {} bytes)",
+            cancels.len()
+        );
+
+        // We expect: 5L has 2 targets (5M=1, 5H=2), 5M has 1 target (5H=2)
+        // Total: 3 cancel entries = 6 bytes
+        assert_eq!(cancels.len(), 6, "Expected 3 u16 cancel targets = 6 bytes");
+
+        // The first two u16 should be 5L's targets (indices 1 and 2)
+        let target0 = u16::from_le_bytes([cancels[0], cancels[1]]);
+        let target1 = u16::from_le_bytes([cancels[2], cancels[3]]);
+        // 5M is at index 1, 5H is at index 2
+        assert_eq!(target0, 1, "5L's first chain target should be move index 1 (5M)");
+        assert_eq!(target1, 2, "5L's second chain target should be move index 2 (5H)");
+
+        // The third u16 should be 5M's target (index 2)
+        let target2 = u16::from_le_bytes([cancels[4], cancels[5]]);
+        assert_eq!(target2, 2, "5M's chain target should be move index 2 (5H)");
     }
 }
