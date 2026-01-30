@@ -425,7 +425,7 @@ fn zx_fspack_exports_move_input_notation() {
     let extras_data = pack
         .get_section(framesmith_fspack::SECTION_MOVE_EXTRAS)
         .expect("expected MOVE_EXTRAS section");
-    assert_eq!(extras_data.len(), 64, "expected one 64-byte extras record");
+    assert_eq!(extras_data.len(), 72, "expected one 72-byte extras record");
 
     // The input notation string ref is stored at byte offset 56 within the record.
     let input_off = read_u32_le(extras_data, 56);

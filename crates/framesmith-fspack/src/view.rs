@@ -90,8 +90,8 @@ pub const MOVE_RECORD_SIZE: usize = 32;
 /// ResourceDef record size
 pub const RESOURCE_DEF_SIZE: usize = 12;
 
-/// MoveExtras record size
-pub const MOVE_EXTRAS_SIZE: usize = 64;
+/// MoveExtras record size (expanded from 64 to 72 for cancel offset/length)
+pub const MOVE_EXTRAS_SIZE: usize = 72;
 
 /// EventEmit record size
 pub const EVENT_EMIT_SIZE: usize = 16;
@@ -764,6 +764,13 @@ impl<'a> MoveExtrasRecordView<'a> {
     /// Get the input notation string reference (offset, length).
     pub fn input(&self) -> (u32, u16) {
         read_range(self.data, 56).unwrap_or((0, 0))
+    }
+
+    /// Get the cancel routes offset and length into CANCELS_U16.
+    ///
+    /// Returns (byte_offset, count) where count is the number of u16 target IDs.
+    pub fn cancels(&self) -> (u32, u16) {
+        read_range(self.data, 64).unwrap_or((0, 0))
     }
 }
 

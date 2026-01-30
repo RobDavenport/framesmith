@@ -161,8 +161,8 @@ pub const MOVE_RECORD_SIZE: usize = 32;
 /// ResourceDef record size
 pub const RESOURCE_DEF12_SIZE: usize = 12;
 
-/// MoveExtras record size
-pub const MOVE_EXTRAS64_SIZE: usize = 64;
+/// MoveExtras record size (expanded from 64 to 72 for cancel offset/length)
+pub const MOVE_EXTRAS72_SIZE: usize = 72;
 
 /// EventEmit record size
 pub const EVENT_EMIT16_SIZE: usize = 16;

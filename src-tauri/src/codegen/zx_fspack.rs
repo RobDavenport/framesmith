@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
-    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_EXTRAS64_SIZE, MOVE_RECORD_SIZE,
+    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_EXTRAS72_SIZE, MOVE_RECORD_SIZE,
     SECTION_CANCELS_U16, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE,
     SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS,
     SECTION_MOVES, SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
@@ -329,8 +329,10 @@ pub struct PackedMoveData {
     pub hit_windows: Vec<u8>,
     /// HURT_WINDOWS section: array of HurtWindow12 (12 bytes each)
     pub hurt_windows: Vec<u8>,
-    /// CANCELS_U16 section: array of u16 move IDs (empty for v1)
+    /// CANCELS_U16 section: array of u16 move IDs
     pub cancels: Vec<u8>,
+    /// Per-move cancel info: (byte_offset, count) into CANCELS_U16 section
+    pub cancel_info: Vec<(u32, u16)>,
 }
 
 /// Pack all moves into binary sections.
@@ -353,6 +355,7 @@ pub fn pack_moves(
         hit_windows: Vec::new(),
         hurt_windows: Vec::new(),
         cancels: Vec::new(),
+        cancel_info: Vec::with_capacity(moves.len()),
     };
 
     for (idx, mv) in moves.iter().enumerate() {
@@ -403,6 +406,9 @@ pub fn pack_moves(
 
         // Compute cancel flags and pack chain cancel routes
         let mut flags: u8 = 0;
+        let cancels_off = checked_u32(packed.cancels.len(), "cancels_off")?;
+        let mut cancels_len: u16 = 0;
+
         if let Some(lookup) = cancel_lookup {
             let input = mv.input.as_str();
             if lookup.chains.contains(input) {
@@ -423,10 +429,16 @@ pub fn pack_moves(
                 for target_input in targets {
                     if let Some(&target_idx) = lookup.input_to_index.get(target_input.as_str()) {
                         packed.cancels.extend_from_slice(&target_idx.to_le_bytes());
+                        cancels_len = cancels_len
+                            .checked_add(1)
+                            .ok_or_else(|| "cancel count overflow".to_string())?;
                     }
                 }
             }
         }
+
+        // Track cancel offset/length for this move
+        packed.cancel_info.push((cancels_off, cancels_len));
 
         // Pack move record - mesh_key and keyframes_key both use the same animation index
         packed.moves.extend_from_slice(&pack_move_record(
@@ -627,11 +639,12 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let mut move_resource_deltas_data: Vec<u8> = Vec::new();
 
     // MOVE_EXTRAS is always parallel to MOVES when present.
-    let mut move_extras_records: Vec<[(u32, u16); 8]> = Vec::with_capacity(char_data.moves.len());
+    // Now 9 fields: 8 original + cancels
+    let mut move_extras_records: Vec<[(u32, u16); 9]> = Vec::with_capacity(char_data.moves.len());
 
     let mut any_move_extras = false;
 
-    for mv in &char_data.moves {
+    for (move_idx, mv) in char_data.moves.iter().enumerate() {
         let on_use_events = mv
             .on_use
             .as_ref()
@@ -935,6 +948,9 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         // Intern the move input notation string.
         let input_ref = strings.intern(&mv.input)?;
 
+        // Get cancel info from packed data
+        let (cancel_off, cancel_len) = packed.cancel_info[move_idx];
+
         let record = [
             (on_use_emits_off, on_use_emits_len),
             (on_hit_emits_off, on_hit_emits_len),
@@ -944,6 +960,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             (pre_off, pre_len),
             (deltas_off, deltas_len),
             (input_ref.0, input_ref.1),
+            (cancel_off, cancel_len),
         ];
 
         // Always emit MOVE_EXTRAS when there are moves, since every move has an input.
@@ -966,7 +983,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
 
     let mut move_extras_data: Vec<u8> = Vec::new();
     if any_move_extras {
-        move_extras_data.reserve(move_extras_records.len() * MOVE_EXTRAS64_SIZE);
+        move_extras_data.reserve(move_extras_records.len() * MOVE_EXTRAS72_SIZE);
         for rec in &move_extras_records {
             for (off, len) in rec {
                 write_range(&mut move_extras_data, *off, *len);
@@ -2472,5 +2489,100 @@ mod tests {
         // The third u16 should be 5M's target (index 2)
         let target2 = u16::from_le_bytes([cancels[4], cancels[5]]);
         assert_eq!(target2, 2, "5M's chain target should be move index 2 (5H)");
+    }
+
+    /// Test that MoveExtras includes cancel offset/length for each move
+    #[test]
+    fn test_move_extras_cancel_offsets() {
+        use crate::commands::CharacterData;
+
+        // Create chains: 5L -> [5M, 5H], 5M -> [5H]
+        let mut chains = HashMap::new();
+        chains.insert("5L".to_string(), vec!["5M".to_string(), "5H".to_string()]);
+        chains.insert("5M".to_string(), vec!["5H".to_string()]);
+
+        let char_data = CharacterData {
+            character: Character {
+                id: "t".into(),
+                name: "T".into(),
+                archetype: "test".into(),
+                health: 1000,
+                walk_speed: 3.0,
+                back_walk_speed: 3.0,
+                jump_height: 100,
+                jump_duration: 40,
+                dash_distance: 80,
+                dash_duration: 20,
+                resources: vec![],
+            },
+            moves: vec![
+                Move {
+                    input: "5L".into(),
+                    name: "Jab".into(),
+                    guard: GuardType::Mid,
+                    animation: "a".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+                Move {
+                    input: "5M".into(),
+                    name: "Medium".into(),
+                    guard: GuardType::Mid,
+                    animation: "b".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+                Move {
+                    input: "5H".into(),
+                    name: "Heavy".into(),
+                    guard: GuardType::Mid,
+                    animation: "c".into(),
+                    pushback: Pushback { hit: 0, block: 0 },
+                    meter_gain: MeterGain { hit: 0, whiff: 0 },
+                    ..Default::default()
+                },
+            ],
+            cancel_table: CancelTable {
+                chains,
+                special_cancels: vec![],
+                super_cancels: vec![],
+                jump_cancels: vec![],
+            },
+        };
+
+        let bytes = export_zx_fspack(&char_data).unwrap();
+        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
+
+        let extras = pack.move_extras().expect("MOVE_EXTRAS section");
+        assert_eq!(extras.len(), 3);
+
+        // 5L (index 0) has 2 chain targets at offset 0
+        let ex0 = extras.get(0).expect("extras 0");
+        let (off0, len0) = ex0.cancels();
+        assert_eq!(off0, 0, "5L cancel offset should be 0");
+        assert_eq!(len0, 2, "5L should have 2 cancel targets");
+
+        // 5M (index 1) has 1 chain target at offset 4 (after 5L's 2 targets * 2 bytes)
+        let ex1 = extras.get(1).expect("extras 1");
+        let (off1, len1) = ex1.cancels();
+        assert_eq!(off1, 4, "5M cancel offset should be 4");
+        assert_eq!(len1, 1, "5M should have 1 cancel target");
+
+        // 5H (index 2) has no chain targets
+        let ex2 = extras.get(2).expect("extras 2");
+        let (off2, len2) = ex2.cancels();
+        assert_eq!(len2, 0, "5H should have 0 cancel targets");
+
+        // Verify we can use CancelsView to read targets
+        let cancels = pack.cancels().expect("cancels view");
+
+        // Read 5L's targets
+        assert_eq!(cancels.get_at(off0, 0), Some(1), "5L -> 5M (index 1)");
+        assert_eq!(cancels.get_at(off0, 1), Some(2), "5L -> 5H (index 2)");
+
+        // Read 5M's targets
+        assert_eq!(cancels.get_at(off1, 0), Some(2), "5M -> 5H (index 2)");
     }
 }
