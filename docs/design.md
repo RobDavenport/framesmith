@@ -25,6 +25,7 @@ Implemented (today):
 - Character management: create/clone/delete
 - Move management: create, edit, save
 - Views: Character Overview, Frame Data Table, Move Editor, Cancel Graph
+- Move Editor preview: 2D sprite + 3D glTF animation preview with frame scrubber and hitbox/hurtbox overlay editing
 - Rules system: apply defaults + validate moves; optional registry for resources/events
 - Export adapters:
   - `json-blob` (single JSON blob)
@@ -33,9 +34,7 @@ Implemented (today):
 
 Not implemented (yet):
 
-- Animation preview / hitbox overlay editing (UI currently shows placeholders)
 - Interactive editing of cancel routes (graph is visualization-only)
-- Breakpoint Rust adapter (`breakpoint-rust` is currently a stub)
 
 ## Data Model
 
@@ -84,7 +83,6 @@ Adapters:
 
 - `json-blob`: emits a single JSON blob containing resolved character + moves.
 - `zx-fspack`: emits a `.fspk` binary pack for constrained runtimes (see `docs/zx-fspack.md`).
-- `breakpoint-rust`: reserved name; currently returns an error.
 
 ## MCP Server
 

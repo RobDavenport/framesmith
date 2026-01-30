@@ -25,7 +25,6 @@ framesmith/
       bin/mcp.rs           # MCP server binary
       bin/generate_schema.rs # Generates JSON schema artifacts
       codegen/             # Export adapters
-        breakpoint.rs      # Breakpoint adapter (Rust constants)
         json_blob.rs       # JSON blob adapter
         zx_fspack.rs        # ZX FSPK pack exporter
         zx_fspack_format.rs # ZX FSPK format constants

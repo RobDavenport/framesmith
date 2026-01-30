@@ -179,7 +179,6 @@
         <select bind:value={exportAdapter}>
           <option value="json-blob">JSON Blob</option>
           <option value="zx-fspack">ZX FSPK (Binary)</option>
-          <option value="breakpoint-rust" disabled>Breakpoint Rust (coming soon)</option>
         </select>
         <label class="checkbox-label">
           <input

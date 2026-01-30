@@ -34,8 +34,13 @@ pub fn validate_move(mv: &Move) -> Result<(), Vec<ValidationError>> {
         });
     }
 
-    // Hitbox frame range validation (legacy hitboxes field)
-    let total_frames = mv.startup + mv.active + mv.recovery;
+    // Legacy frame range validation for hitboxes/hurtboxes.
+    // Use explicit mv.total when present (v2 schema), otherwise derive total from S/A/R.
+    let effective_total_frames: u16 = mv
+        .total
+        .map(u16::from)
+        .unwrap_or_else(|| u16::from(mv.startup) + u16::from(mv.active) + u16::from(mv.recovery));
+
     for (i, hitbox) in mv.hitboxes.iter().enumerate() {
         if hitbox.frames.0 > hitbox.frames.1 {
             errors.push(ValidationError {
@@ -43,12 +48,30 @@ pub fn validate_move(mv: &Move) -> Result<(), Vec<ValidationError>> {
                 message: "start frame cannot be after end frame".to_string(),
             });
         }
-        if hitbox.frames.1 > total_frames {
+        if u16::from(hitbox.frames.1) > effective_total_frames {
             errors.push(ValidationError {
                 field: format!("hitboxes[{}].frames", i),
                 message: format!(
                     "end frame {} exceeds total frames {}",
-                    hitbox.frames.1, total_frames
+                    hitbox.frames.1, effective_total_frames
+                ),
+            });
+        }
+    }
+
+    for (i, hurtbox) in mv.hurtboxes.iter().enumerate() {
+        if hurtbox.frames.0 > hurtbox.frames.1 {
+            errors.push(ValidationError {
+                field: format!("hurtboxes[{}].frames", i),
+                message: "start frame cannot be after end frame".to_string(),
+            });
+        }
+        if u16::from(hurtbox.frames.1) > effective_total_frames {
+            errors.push(ValidationError {
+                field: format!("hurtboxes[{}].frames", i),
+                message: format!(
+                    "end frame {} exceeds total frames {}",
+                    hurtbox.frames.1, effective_total_frames
                 ),
             });
         }
@@ -524,6 +547,33 @@ mod tests {
         assert!(errors
             .iter()
             .any(|e| e.message.contains("exceeds total frames")));
+    }
+
+    #[test]
+    fn test_hitbox_ending_at_explicit_total_passes() {
+        let mut mv = make_valid_move();
+        mv.total = Some(25);
+        mv.hitboxes[0].frames = (7, 25);
+        assert!(validate_move(&mv).is_ok());
+    }
+
+    #[test]
+    fn test_hurtbox_invalid_frame_order_fails() {
+        let mut mv = make_valid_move();
+        mv.hurtboxes = vec![FrameHitbox {
+            frames: (10, 5),
+            r#box: Rect {
+                x: 0,
+                y: -40,
+                w: 30,
+                h: 16,
+            },
+        }];
+
+        let result = validate_move(&mv);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.field == "hurtboxes[0].frames"));
     }
 
     // ========== v2 Schema Tests ==========

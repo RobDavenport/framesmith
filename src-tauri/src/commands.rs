@@ -11,6 +11,13 @@ fn validate_asset_relative_path(relative_path: &str) -> Result<PathBuf, String> 
         return Err("Invalid asset path".to_string());
     }
 
+    #[cfg(windows)]
+    {
+        // Reject ':' to avoid Windows drive-relative paths (e.g. "C:foo") and NTFS ADS ("file:stream").
+        if relative_path.contains(':') {
+            return Err("Invalid asset path".to_string());
+        }
+    }
     let path = Path::new(relative_path);
     if path.is_absolute() {
         return Err("Invalid asset path".to_string());
@@ -249,7 +256,8 @@ pub fn read_character_asset_base64(
         return Err("Invalid asset path".to_string());
     }
 
-    let bytes = fs::read(&requested_canon).map_err(|e| format!("Failed to read asset file: {}", e))?;
+    let bytes =
+        fs::read(&requested_canon).map_err(|e| format!("Failed to read asset file: {}", e))?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
@@ -816,13 +824,16 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, "Invalid asset path");
 
-        let err = read_character_asset_base64(
-            characters_dir,
-            "test-char".to_string(),
-            "..\\x".to_string(),
-        )
-        .unwrap_err();
-        assert_eq!(err, "Invalid asset path");
+        #[cfg(windows)]
+        {
+            let err = read_character_asset_base64(
+                characters_dir,
+                "test-char".to_string(),
+                "..\\x".to_string(),
+            )
+            .unwrap_err();
+            assert_eq!(err, "Invalid asset path");
+        }
     }
 
     #[test]

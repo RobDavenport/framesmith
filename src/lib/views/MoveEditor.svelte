@@ -6,6 +6,8 @@
     selectMove,
     saveMove,
   } from "$lib/stores/character.svelte";
+  import { getAssets, getAssetsError, isAssetsLoading } from "$lib/stores/assets.svelte";
+  import MoveAnimationPreview from "$lib/components/MoveAnimationPreview.svelte";
   import type { Move, MoveType, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
 
   const moveTypeOptions: MoveType[] = ["normal", "command_normal", "special", "super", "movement", "throw"];
@@ -15,6 +17,10 @@
   const moves = $derived(characterData?.moves ?? []);
   const selectedMoveInput = $derived(getSelectedMoveInput());
   const selectedMove = $derived(getSelectedMove());
+  const characterId = $derived(characterData?.character.id ?? null);
+  const assets = $derived(getAssets());
+  const assetsLoading = $derived(isAssetsLoading());
+  const assetsError = $derived(getAssetsError());
 
   // Local editing state - copy of the move data
   let editingMove = $state<Move | null>(null);
@@ -573,10 +579,15 @@
 
       <!-- Right Panel: Preview Placeholder -->
       <div class="preview-panel">
-        <div class="preview-placeholder">
-          <span class="placeholder-text">Animation Preview</span>
-          <span class="placeholder-subtext">Coming in future update</span>
-        </div>
+        <MoveAnimationPreview
+          characterId={characterId}
+          selectionKey={selectedMoveInput}
+          move={editingMove}
+          onMoveChange={(m) => (editingMove = m)}
+          assets={assets}
+          assetsLoading={assetsLoading}
+          assetsError={assetsError}
+        />
       </div>
     </div>
   </div>
@@ -753,26 +764,8 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     display: flex;
-    align-items: center;
-    justify-content: center;
     min-height: 400px;
-  }
-
-  .preview-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-secondary);
-  }
-
-  .placeholder-text {
-    font-size: 16px;
-    font-weight: 600;
-  }
-
-  .placeholder-subtext {
-    font-size: 12px;
+    overflow: hidden;
   }
 
   .no-move {

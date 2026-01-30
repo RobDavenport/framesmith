@@ -603,6 +603,7 @@ name = "d-developmentnethercore-projectframesmith"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "framesmith-fspack",
  "rmcp",
  "schemars 1.2.0",

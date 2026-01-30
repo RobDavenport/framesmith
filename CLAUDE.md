@@ -44,7 +44,6 @@ Notes:
 |---------|--------|----------|
 | `json-blob` | Single JSON file | Runtime loading / debugging |
 | `zx-fspack` | `.fspk` binary pack | Nethercore ZX (`no_std`/WASM-friendly) |
-| `breakpoint-rust` | Rust constants | Reserved name (currently not implemented) |
 
 ZX FSPK details: `docs/zx-fspack.md`.
 

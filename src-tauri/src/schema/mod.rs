@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+mod assets;
+pub use assets::*;
+
 /// Custom schema for (u8, u8) tuple to fix schemars 1.0 missing `items` field
 fn frame_range_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::from_value(serde_json::json!({

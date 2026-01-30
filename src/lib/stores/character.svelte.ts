@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { CharacterData, CharacterSummary, Move } from "$lib/types";
-import { getProjectPath, isProjectOpen } from "./project.svelte";
+import { loadAssets, resetAssetsState } from "./assets.svelte";
+import { getProjectPath } from "./project.svelte";
 
 // Reactive state using Svelte 5 runes
 let characterList = $state<CharacterSummary[]>([]);
@@ -8,6 +9,18 @@ let currentCharacter = $state<CharacterData | null>(null);
 let selectedMoveInput = $state<string | null>(null);
 let loading = $state(false);
 let error = $state<string | null>(null);
+
+let selectSeq = 0;
+
+function formatError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
 
 function getCharactersDir(): string | null {
   const projectPath = getProjectPath();
@@ -64,22 +77,38 @@ export async function selectCharacter(characterId: string): Promise<void> {
   const charactersDir = getCharactersDir();
   if (!charactersDir) {
     error = "No project open";
+    resetAssetsState();
     return;
   }
 
+  if (currentCharacter?.character.id === characterId) {
+    return;
+  }
+
+  const seq = ++selectSeq;
   loading = true;
   error = null;
   selectedMoveInput = null;
+  resetAssetsState();
   try {
-    currentCharacter = await invoke<CharacterData>("load_character", {
+    const nextCharacter = await invoke<CharacterData>("load_character", {
       charactersDir,
       characterId,
     });
+
+    if (seq !== selectSeq) return;
+
+    currentCharacter = nextCharacter;
+    void loadAssets(characterId);
   } catch (e) {
-    error = String(e);
+    if (seq !== selectSeq) return;
+    error = formatError(e);
     currentCharacter = null;
+    resetAssetsState();
   } finally {
-    loading = false;
+    if (seq === selectSeq) {
+      loading = false;
+    }
   }
 }
 
@@ -88,15 +117,19 @@ export function selectMove(input: string): void {
 }
 
 export function clearSelection(): void {
+  selectSeq++;
   currentCharacter = null;
   selectedMoveInput = null;
+  resetAssetsState();
 }
 
 export function resetCharacterState(): void {
+  selectSeq++;
   characterList = [];
   currentCharacter = null;
   selectedMoveInput = null;
   error = null;
+  resetAssetsState();
 }
 
 export async function saveMove(mv: Move): Promise<void> {
@@ -209,6 +242,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
   if (currentCharacter?.character.id === characterId) {
     currentCharacter = null;
     selectedMoveInput = null;
+    resetAssetsState();
   }
 
   // Reload character list

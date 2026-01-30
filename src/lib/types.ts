@@ -408,3 +408,30 @@ export interface CharacterSummary {
   archetype: string;
   move_count: number;
 }
+
+// =============================================================================
+// Character Assets
+// =============================================================================
+
+export type AnimationClip =
+  | {
+      mode: "sprite";
+      texture: string;
+      frame_size: { w: number; h: number };
+      frames: number;
+      pivot: { x: number; y: number };
+    }
+  | {
+      mode: "gltf";
+      model: string;
+      clip: string;
+      fps: number;
+      pivot: { x: number; y: number; z: number };
+    };
+
+export interface CharacterAssets {
+  version: number;
+  textures: Record<string, string>;
+  models: Record<string, string>;
+  animations: Record<string, AnimationClip>;
+}

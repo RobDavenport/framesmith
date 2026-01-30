@@ -25,7 +25,8 @@ Notes:
 
 - `framesmith.rules.json` is required at the project root.
 - `characters/` is required.
-- Files like `assets.json` / `hurtboxes.json` may exist in some projects, but are currently ignored by the backend.
+- `assets.json` is used by the UI animation preview (and can be loaded via backend commands).
+- Files like `hurtboxes.json` may exist in some projects, but are currently ignored by the backend.
 
 ## `characters/<id>/character.json`
 
@@ -50,6 +51,48 @@ Character identity + global properties.
 ```
 
 `resources[]` is optional; if omitted it defaults to `[]`.
+
+## `characters/<id>/assets.json`
+
+Per-character asset manifest for the Move Editor preview.
+
+`move.animation` typically references a key in `assets.json` -> `animations`.
+
+```json
+{
+  "version": 1,
+  "textures": {
+    "glitch_atlas": "assets/textures/glitch.png"
+  },
+  "models": {
+    "glitch": "assets/models/glitch.glb"
+  },
+  "animations": {
+    "stand_light": {
+      "mode": "sprite",
+      "texture": "glitch_atlas",
+      "frame_size": { "w": 256, "h": 256 },
+      "frames": 18,
+      "pivot": { "x": 128, "y": 192 }
+    },
+    "stand_light_3d": {
+      "mode": "gltf",
+      "model": "glitch",
+      "clip": "stand_light",
+      "fps": 60,
+      "pivot": { "x": 0, "y": 0, "z": 0 }
+    }
+  }
+}
+```
+
+Notes:
+
+- `textures` values are paths relative to `characters/<id>/`.
+- `models` values are paths relative to `characters/<id>/`.
+- `animations[*].mode`:
+  - `sprite`: grid spritesheet playback.
+  - `gltf`: glTF/GLB model playback (GLB recommended).
 
 ## `characters/<id>/moves/<input>.json`
 
