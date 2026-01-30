@@ -102,6 +102,22 @@ pub const KEY_NONE: u16 = 0xFFFF;
 pub const OFFSET_NONE: u32 = 0xFFFF_FFFF;
 
 // =============================================================================
+// Cancel Flag Constants (MoveRecord.flags byte)
+// =============================================================================
+
+/// Move has chain cancel routes in CANCELS_U16
+pub const CANCEL_FLAG_CHAIN: u8 = 0x01;
+
+/// Move can cancel into special moves
+pub const CANCEL_FLAG_SPECIAL: u8 = 0x02;
+
+/// Move can cancel into super moves
+pub const CANCEL_FLAG_SUPER: u8 = 0x04;
+
+/// Move can cancel into jump
+pub const CANCEL_FLAG_JUMP: u8 = 0x08;
+
+// =============================================================================
 // Shape Kind Constants
 // =============================================================================
 
