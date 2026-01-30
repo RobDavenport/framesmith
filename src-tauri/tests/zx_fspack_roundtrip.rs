@@ -436,3 +436,106 @@ fn zx_fspack_exports_move_input_notation() {
         .expect("input notation string");
     assert_eq!(input, "5L");
 }
+
+/// Full round-trip test for cancel table data with test_char.
+///
+/// Verifies:
+/// 1. Cancel flags (chain/special/super/jump) match cancel_table
+/// 2. Chain cancel routes in CANCELS_U16 match cancel_table.chains
+#[test]
+fn zx_fspack_cancel_table_roundtrips() {
+    let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
+        .expect("load test_char character");
+
+    // Export
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+
+    // Parse
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+    let moves = pack.moves().expect("moves");
+    let extras = pack.move_extras().expect("extras");
+    let cancels = pack.cancels().expect("cancels section should exist");
+
+    // Build input->index map for verification
+    let input_to_idx: std::collections::HashMap<&str, usize> = char_data
+        .moves
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.input.as_str(), i))
+        .collect();
+
+    // Verify cancel flags for each move
+    for (i, mv) in char_data.moves.iter().enumerate() {
+        let packed_mv = moves.get(i).expect("move");
+        let flags = packed_mv.cancel_flags();
+
+        let expected_chain = char_data.cancel_table.chains.contains_key(&mv.input);
+        let expected_special = char_data.cancel_table.special_cancels.contains(&mv.input);
+        let expected_super = char_data.cancel_table.super_cancels.contains(&mv.input);
+        let expected_jump = char_data.cancel_table.jump_cancels.contains(&mv.input);
+
+        assert_eq!(
+            flags.chain, expected_chain,
+            "chain flag mismatch for {} (expected {}, got {})",
+            mv.input, expected_chain, flags.chain
+        );
+        assert_eq!(
+            flags.special, expected_special,
+            "special flag mismatch for {} (expected {}, got {})",
+            mv.input, expected_special, flags.special
+        );
+        assert_eq!(
+            flags.super_cancel, expected_super,
+            "super flag mismatch for {} (expected {}, got {})",
+            mv.input, expected_super, flags.super_cancel
+        );
+        assert_eq!(
+            flags.jump, expected_jump,
+            "jump flag mismatch for {} (expected {}, got {})",
+            mv.input, expected_jump, flags.jump
+        );
+    }
+
+    // Verify chain routes
+    for (source, targets) in &char_data.cancel_table.chains {
+        let source_idx = *input_to_idx
+            .get(source.as_str())
+            .expect(&format!("source move {} should exist", source));
+        let ex = extras.get(source_idx).expect("extras");
+        let (off, len) = ex.cancels();
+
+        assert_eq!(
+            len as usize,
+            targets.len(),
+            "cancel count mismatch for {} (expected {}, got {})",
+            source,
+            targets.len(),
+            len
+        );
+
+        for (j, target) in targets.iter().enumerate() {
+            let target_idx = *input_to_idx
+                .get(target.as_str())
+                .expect(&format!("target move {} should exist", target)) as u16;
+            let packed_target = cancels.get_at(off, j).expect("cancel target");
+            assert_eq!(
+                packed_target, target_idx,
+                "cancel target mismatch for {} -> {} (expected index {}, got {})",
+                source, target, target_idx, packed_target
+            );
+        }
+    }
+
+    // Verify moves without chain routes have 0 cancel length
+    for (i, mv) in char_data.moves.iter().enumerate() {
+        if !char_data.cancel_table.chains.contains_key(&mv.input) {
+            let ex = extras.get(i).expect("extras");
+            let (_off, len) = ex.cancels();
+            assert_eq!(
+                len, 0,
+                "move {} should have 0 cancel targets but has {}",
+                mv.input, len
+            );
+        }
+    }
+}
