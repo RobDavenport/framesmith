@@ -147,7 +147,7 @@ pub struct Move {
     pub input: String,
     pub name: String,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: Vec<Tag>,
     pub startup: u8,
     pub active: u8,
     pub recovery: u8,
@@ -767,5 +767,56 @@ mod tests {
     #[test]
     fn tag_rejects_special_chars() {
         assert!(Tag::new("normal!").is_err());
+    }
+
+    #[test]
+    fn move_with_tags_deserializes() {
+        let json = r#"{
+          "input": "5L",
+          "name": "Light",
+          "tags": ["normal", "light"],
+          "startup": 5,
+          "active": 2,
+          "recovery": 10,
+          "damage": 500,
+          "hitstun": 15,
+          "blockstun": 10,
+          "hitstop": 10,
+          "guard": "mid",
+          "hitboxes": [],
+          "hurtboxes": [],
+          "pushback": { "hit": 5, "block": 8 },
+          "meter_gain": { "hit": 100, "whiff": 20 },
+          "animation": "5L"
+        }"#;
+
+        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        assert_eq!(mv.tags.len(), 2);
+        assert_eq!(mv.tags[0].as_str(), "normal");
+        assert_eq!(mv.tags[1].as_str(), "light");
+    }
+
+    #[test]
+    fn move_without_tags_deserializes_empty() {
+        let json = r#"{
+          "input": "5L",
+          "name": "Light",
+          "startup": 5,
+          "active": 2,
+          "recovery": 10,
+          "damage": 500,
+          "hitstun": 15,
+          "blockstun": 10,
+          "hitstop": 10,
+          "guard": "mid",
+          "hitboxes": [],
+          "hurtboxes": [],
+          "pushback": { "hit": 5, "block": 8 },
+          "meter_gain": { "hit": 100, "whiff": 20 },
+          "animation": "5L"
+        }"#;
+
+        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        assert!(mv.tags.is_empty());
     }
 }

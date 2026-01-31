@@ -334,7 +334,7 @@ pub fn matches_move(spec: &MatchSpec, mv: &crate::schema::Move) -> bool {
     }
 
     if let Some(tags) = &spec.tags {
-        if !tags.iter().all(|t| mv.tags.contains(t)) {
+        if !tags.iter().all(|t| mv.tags.iter().any(|tag| tag.as_str() == t)) {
             return false;
         }
     }
@@ -1327,7 +1327,10 @@ mod tests {
     fn test_matches_move_tags_and() {
         let mut mv = crate::schema::Move::default();
         mv.input = "5L".to_string();
-        mv.tags = vec!["starter".to_string(), "reversal".to_string()];
+        mv.tags = vec![
+            crate::schema::Tag::new("starter").unwrap(),
+            crate::schema::Tag::new("reversal").unwrap(),
+        ];
 
         let spec = MatchSpec {
             r#type: None,
