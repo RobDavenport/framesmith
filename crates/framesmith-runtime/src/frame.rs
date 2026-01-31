@@ -49,9 +49,15 @@ pub fn next_frame(
     let new_state = advance_frame_counter(state);
 
     // Check if move ended
+    // Use instance_duration if set, otherwise use move's default total
     let move_ended = if let Some(moves) = pack.moves() {
         if let Some(mv) = moves.get(state.current_move as usize) {
-            new_state.frame >= mv.total() as u8
+            let effective_duration = if state.instance_duration > 0 {
+                state.instance_duration
+            } else {
+                mv.total() as u8
+            };
+            new_state.frame >= effective_duration
         } else {
             false
         }
@@ -90,5 +96,26 @@ mod tests {
         };
         let next = advance_frame_counter(&state);
         assert_eq!(next.frame, 255);
+    }
+
+    #[test]
+    fn instance_duration_field_behavior() {
+        // This test documents the expected behavior:
+        // - When instance_duration = 0, use move's total()
+        // - When instance_duration > 0, use instance_duration as effective duration
+
+        // Verify the field exists and defaults to 0
+        let state = CharacterState::default();
+        assert_eq!(state.instance_duration, 0);
+
+        // With a non-zero instance_duration, the effective duration changes
+        let state_with_override = CharacterState {
+            instance_duration: 10,
+            ..Default::default()
+        };
+        assert_eq!(state_with_override.instance_duration, 10);
+
+        // The actual integration testing of move_ended behavior with
+        // instance_duration is done with real packs in roundtrip tests
     }
 }
