@@ -39,3 +39,11 @@ export {
   type FrameAdvantageInput,
   type FrameAdvantageResult,
 } from './FrameAdvantage';
+export {
+  TrainingSync,
+  createMainWindowSync,
+  createDetachedWindowSync,
+  type SyncMode,
+  type TrainingSyncMessage,
+  type TrainingSyncCallbacks,
+} from './TrainingSync';

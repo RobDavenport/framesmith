@@ -1,16 +1,17 @@
 <script lang="ts">
   /**
-   * TrainingMode - Main training mode view for testing character moves.
+   * Detached Training Mode Page
    *
-   * This view initializes the WASM runtime with character FSPK data and
-   * provides a game loop for simulating character interactions.
+   * This route is opened in a separate Tauri window and receives character
+   * data via BroadcastChannel from the main editor window.
    */
 
   import { onMount, onDestroy } from 'svelte';
+  import { page } from '$app/stores';
   import { invoke } from '@tauri-apps/api/core';
+  import "$lib/../app.css";
   import TrainingViewport, {
     type HitboxData,
-    type CollisionBox,
   } from '$lib/components/training/TrainingViewport.svelte';
   import TrainingHUD from '$lib/components/training/TrainingHUD.svelte';
   import InputHistory from '$lib/components/training/InputHistory.svelte';
@@ -19,11 +20,9 @@
   import {
     TrainingSession,
     initWasm,
-    isWasmReady,
     NO_INPUT,
     type CharacterState,
     type FrameResult,
-    type HitResult,
   } from '$lib/training/TrainingSession';
   import {
     InputManager,
@@ -31,22 +30,25 @@
     MoveResolver,
     DummyController,
     calculateSimpleFrameAdvantage,
+    createDetachedWindowSync,
     type TrainingInputConfig,
     type MoveList,
     type MoveDefinition,
     type InputSnapshot,
+    type SyncMode,
   } from '$lib/training';
-  import { getCurrentCharacter, getRulesRegistry, getTrainingSync } from '$lib/stores/character.svelte';
-  import { getProjectPath } from '$lib/stores/project.svelte';
+  import type { CharacterData } from '$lib/types';
 
-  // Props
-  interface Props {
-    onExit?: () => void;
-  }
+  // Get URL params
+  let characterId = $derived($page.url.searchParams.get('character') ?? '');
+  let isDetached = $derived($page.url.searchParams.get('detached') === 'true');
 
-  let { onExit }: Props = $props();
+  // Sync settings
+  let syncMode = $state<SyncMode>('live');
+  let projectPath = $state<string | null>(null);
+  let currentCharacter = $state<CharacterData | null>(null);
 
-  // State
+  // Training state
   let session: TrainingSession | null = $state(null);
   let inputManager: InputManager | null = $state(null);
   let inputBuffer: InputBuffer | null = $state(null);
@@ -61,18 +63,13 @@
   let playerState = $state<CharacterState | null>(null);
   let dummyState = $state<CharacterState | null>(null);
 
-  // Character display state
-  // TODO: Position updates will come from WASM in a future phase. Currently these
-  // are static placeholder values. The WASM runtime will eventually provide position
-  // data as part of CharacterState, and these values will be updated each frame.
+  // Character positions
   let playerX = $state(200);
   let playerY = $state(0);
   let dummyX = $state(600);
   let dummyY = $state(0);
 
-  // Health tracking (separate from WASM state for reset functionality)
-  // Note: Player damage is not yet implemented because the dummy cannot attack.
-  // Once dummy AI or playback is added, player health will decrease from hits.
+  // Health tracking
   let playerHealth = $state(10000);
   let dummyHealth = $state(10000);
   let maxHealth = $state(10000);
@@ -81,9 +78,9 @@
   let comboHits = $state(0);
   let comboDamage = $state(0);
   let comboResetTimer = $state(0);
-  const COMBO_RESET_FRAMES = 60; // Reset combo after 1 second of no hits
+  const COMBO_RESET_FRAMES = 60;
 
-  // Input history (stores recent snapshots for display)
+  // Input history
   let inputHistory = $state<InputSnapshot[]>([]);
   const INPUT_HISTORY_MAX = 30;
 
@@ -96,14 +93,10 @@
   let showHitboxes = $state(false);
   let dummySettingsCollapsed = $state(false);
 
-  // Current character data
-  const currentCharacter = $derived(getCurrentCharacter());
-  const registry = $derived(getRulesRegistry());
+  // Training sync
+  let trainingSync = $state<ReturnType<typeof createDetachedWindowSync> | null>(null);
 
-  // Training sync for communicating with detached windows
-  let trainingSync = $state<ReturnType<typeof getTrainingSync> | null>(null);
-
-  // Default input configuration
+  // Default input config
   const defaultInputConfig: TrainingInputConfig = {
     directions: {
       up: 'KeyW',
@@ -130,7 +123,6 @@
       return { moves, moveNameToIndex };
     }
 
-    // Sort moves by type priority (specials/supers first, then normals)
     const sortedMoves = [...currentCharacter.moves].sort((a, b) => {
       const priorityA = getMoveTypePriority(a.type);
       const priorityB = getMoveTypePriority(b.type);
@@ -153,7 +145,6 @@
     return { moves, moveNameToIndex };
   }
 
-  // Get priority for a move type
   function getMoveTypePriority(type: string | undefined): number {
     switch (type) {
       case 'super':
@@ -172,9 +163,7 @@
     }
   }
 
-  // Parse input notation to MoveInput
   function parseInputNotation(input: string): MoveDefinition['input'] | null {
-    // Simple patterns: 5L, 2M, 6H, etc.
     const simpleMatch = input.match(/^([1-9])([LMHPKS])$/);
     if (simpleMatch) {
       return {
@@ -184,7 +173,6 @@
       };
     }
 
-    // Motion patterns: 236P, 214K, 623H, etc.
     const motionMatch = input.match(/^(\d{3,})([LMHPKS])$/);
     if (motionMatch) {
       const sequence = motionMatch[1].split('').map(d => parseInt(d));
@@ -198,50 +186,51 @@
     return null;
   }
 
-  // Initialize training mode
-  async function initialize() {
-    isInitializing = true;
-    initError = null;
+  // Handle character update from sync
+  async function handleCharacterUpdate(character: CharacterData) {
+    console.log('Received character update:', character.character.id);
+    currentCharacter = character;
+
+    // Reinitialize session with new character data
+    if (session) {
+      await reinitializeSession();
+    }
+  }
+
+  // Initialize or reinitialize the training session
+  async function reinitializeSession() {
+    if (!currentCharacter || !projectPath) return;
 
     try {
-      // Initialize WASM module
-      await initWasm();
-
-      // Get FSPK data for current character
-      const projectPath = getProjectPath();
-      if (!projectPath) {
-        throw new Error('No project open');
-      }
-      if (!currentCharacter) {
-        throw new Error('No character selected');
+      // Stop current game loop
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
       }
 
+      // Free old session
+      session?.free();
+
+      // Get FSPK bytes
       const charactersDir = `${projectPath}/characters`;
-      const characterId = currentCharacter.character.id;
-
-      // Get FSPK bytes from Tauri
       const fspkBase64 = await invoke<string>('get_character_fspk', {
         charactersDir,
-        characterId,
+        characterId: currentCharacter.character.id,
       });
 
-      // Decode base64 to Uint8Array
       const binaryString = atob(fspkBase64);
       const fspkBytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         fspkBytes[i] = binaryString.charCodeAt(i);
       }
 
-      // Create training session (using same character for player and dummy)
+      // Create new session
       session = await TrainingSession.create(fspkBytes, fspkBytes);
 
-      // Initialize input system
-      inputManager = new InputManager(defaultInputConfig);
-      inputBuffer = new InputBuffer();
+      // Update move resolver
       moveResolver = new MoveResolver(buildMoveList());
-      dummyController = new DummyController();
 
-      // Set initial health from character data
+      // Reset health
       maxHealth = currentCharacter.character.health;
       playerHealth = maxHealth;
       dummyHealth = maxHealth;
@@ -250,31 +239,60 @@
       playerState = session.playerState();
       dummyState = session.dummyState();
 
-      // Start game loop
+      // Restart game loop
       startGameLoop();
-
-      // Initialize training sync for detached windows
-      trainingSync = getTrainingSync();
-
-      isInitializing = false;
     } catch (e) {
-      console.error('Failed to initialize training mode:', e);
+      console.error('Failed to reinitialize session:', e);
       initError = e instanceof Error ? e.message : String(e);
-      isInitializing = false;
     }
   }
 
-  // Open detached training window
-  async function openDetachedWindow() {
-    if (!currentCharacter) return;
+  // Initialize training mode
+  async function initialize() {
+    isInitializing = true;
+    initError = null;
 
     try {
-      await invoke('open_training_window', {
-        characterId: currentCharacter.character.id,
-      });
+      // Initialize WASM
+      await initWasm();
+
+      // Create sync channel
+      trainingSync = createDetachedWindowSync(
+        handleCharacterUpdate,
+        (path) => {
+          projectPath = path;
+        },
+        syncMode
+      );
+
+      // Request initial data from main window
+      trainingSync.requestSync();
+
+      // Initialize input system
+      inputManager = new InputManager(defaultInputConfig);
+      inputBuffer = new InputBuffer();
+      dummyController = new DummyController();
+      moveResolver = new MoveResolver(buildMoveList());
+
+      // Wait a bit for sync response, then try to load directly if we have characterId
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (!currentCharacter && characterId) {
+        // Try to load directly if sync didn't provide data
+        // This can happen if the main window is not ready
+        console.log('No sync data received, waiting for main window...');
+      }
+
+      isInitializing = false;
+
+      // If we have character data, start the game loop
+      if (currentCharacter) {
+        await reinitializeSession();
+      }
     } catch (e) {
-      console.error('Failed to open detached window:', e);
+      console.error('Failed to initialize:', e);
       initError = e instanceof Error ? e.message : String(e);
+      isInitializing = false;
     }
   }
 
@@ -287,27 +305,21 @@
         return;
       }
 
-      // Handle playback speed
       if (!isPlaying) {
-        // Still schedule next frame but don't tick
         animationFrameId = requestAnimationFrame(gameLoop);
         lastTime = currentTime;
         return;
       }
 
-      // Speed control (0 = frame-by-frame, handled separately)
       if (playbackSpeed === 0) {
         animationFrameId = requestAnimationFrame(gameLoop);
         lastTime = currentTime;
         return;
       }
 
-      // Accumulate time for sub-speed playback
       const deltaTime = currentTime - lastTime;
       lastTime = currentTime;
 
-      // Calculate how many frames to run based on speed
-      // At 60fps, one frame is ~16.67ms
       const frameTime = 16.67;
       frameAccumulator += deltaTime * playbackSpeed;
 
@@ -316,76 +328,59 @@
         return;
       }
 
-      // Run one frame (don't accumulate multiple to keep it smooth)
       frameAccumulator = Math.min(frameAccumulator - frameTime, frameTime);
-
       tickOneFrame();
 
-      // Schedule next frame
       animationFrameId = requestAnimationFrame(gameLoop);
     }
 
     animationFrameId = requestAnimationFrame(gameLoop);
   }
 
-  // Tick one frame of simulation
   function tickOneFrame() {
     if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
       return;
     }
 
-    // Get input snapshot and add to buffer
     const snapshot = inputManager.getSnapshot();
     inputBuffer.push(snapshot);
-
-    // Store input in history for display
     inputHistory = [...inputHistory.slice(-(INPUT_HISTORY_MAX - 1)), snapshot];
 
-    // Resolve move from input
     const newlyPressed = inputManager.newlyPressedButtons;
     const resolved = moveResolver.resolve(inputBuffer, newlyPressed, session.availableCancels());
     inputManager.consumeNewlyPressed();
 
-    // Get move index or NO_INPUT
     const playerInput = resolved ? resolved.index : NO_INPUT;
-
-    // Get dummy state
     const wasmDummyState = dummyController.getWasmState();
 
-    // Tick simulation with error handling for WASM errors
     let result: FrameResult;
     try {
       result = session.tick(playerInput, wasmDummyState);
     } catch (e) {
       console.error('WASM tick error:', e);
-      // Stop the game loop on WASM error to prevent spam
-      stopGameLoop();
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
       initError = `WASM error: ${e instanceof Error ? e.message : String(e)}`;
       return;
     }
 
-    // Update state
     playerState = result.player;
     dummyState = result.dummy;
 
-    // Process hits and track combos
     const hits = result.hits;
     if (hits.length > 0) {
       for (const hit of hits) {
-        // Apply damage to dummy (player attacking)
         dummyHealth = Math.max(0, dummyHealth - hit.damage);
-        // Track combo
         comboHits++;
         comboDamage += hit.damage;
       }
-      // Reset combo timer on hit
       comboResetTimer = COMBO_RESET_FRAMES;
     } else {
-      // Decrease combo timer
       if (comboResetTimer > 0) {
         comboResetTimer--;
         if (comboResetTimer === 0) {
-          // Reset combo
           comboHits = 0;
           comboDamage = 0;
         }
@@ -395,43 +390,23 @@
     frameCount++;
   }
 
-  // Stop game loop
-  function stopGameLoop() {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
-  }
-
-  // Handle keyboard events
+  // Keyboard handlers
   function handleKeyDown(event: KeyboardEvent) {
     if (!inputManager) return;
 
-    // Handle special keys
-    if (event.code === 'Escape') {
-      onExit?.();
-      return;
-    }
     if (event.code === 'KeyR') {
       resetHealth();
       return;
     }
-    // Playback controls
     if (event.code === 'Space') {
       event.preventDefault();
       togglePlayPause();
       return;
     }
     if (event.code === 'Period') {
-      // Step forward
       stepForward();
       return;
     }
-    if (event.code === 'Comma') {
-      // Step back (not implemented - would need state history)
-      return;
-    }
-    // Hitbox toggle
     if (event.code === 'KeyH') {
       showHitboxes = !showHitboxes;
       return;
@@ -440,7 +415,12 @@
     inputManager.handleKeyDown(event.code);
   }
 
-  // Playback control functions
+  function handleKeyUp(event: KeyboardEvent) {
+    if (!inputManager) return;
+    inputManager.handleKeyUp(event.code);
+  }
+
+  // Playback controls
   function togglePlayPause() {
     isPlaying = !isPlaying;
   }
@@ -453,32 +433,46 @@
   }
 
   function stepBack() {
-    // Step back requires state history/rollback - not implemented yet
-    // This would be a feature for Phase 6 (sequence recorder)
+    // Not implemented - requires state history
   }
 
   function setPlaybackSpeed(speed: PlaybackSpeed) {
     playbackSpeed = speed;
   }
 
-  function handleKeyUp(event: KeyboardEvent) {
-    if (!inputManager) return;
-    inputManager.handleKeyUp(event.code);
-  }
-
-  // Reset health
   function resetHealth() {
     playerHealth = maxHealth;
     dummyHealth = maxHealth;
     session?.reset();
   }
 
+  // Sync mode toggle
+  function handleSyncModeChange(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    syncMode = target.value as SyncMode;
+
+    // Recreate sync with new mode
+    trainingSync?.destroy();
+    trainingSync = createDetachedWindowSync(
+      handleCharacterUpdate,
+      (path) => {
+        projectPath = path;
+      },
+      syncMode
+    );
+  }
+
   // Cleanup
   function cleanup() {
-    stopGameLoop();
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
     inputManager?.reset();
     session?.free();
     session = null;
+    trainingSync?.destroy();
+    trainingSync = null;
   }
 
   // Lifecycle
@@ -549,15 +543,10 @@
     const move = currentCharacter.moves.find(m => m.input === moveDef.name);
     if (!move) return null;
 
-    // Calculate frame advantage
     const totalFrames = move.startup + move.active + move.recovery;
-
-    // Get hitstun/blockstun from move data
-    // First try v2 hits array, then fall back to legacy fields
     const hitData = move.hits?.[0];
     const hitstun = hitData?.hitstun ?? move.hitstun ?? 15;
     const blockstun = hitData?.blockstun ?? move.blockstun ?? 10;
-
     const advantage = calculateSimpleFrameAdvantage(move.recovery, hitstun, blockstun);
 
     return {
@@ -572,17 +561,15 @@
     };
   });
 
-  // Available cancels as move names
   const availableCancelNames = $derived.by(() => {
     if (!session || !moveResolver) return [];
     const cancelIndices = session.availableCancels();
-    const resolver = moveResolver; // Capture in local variable for TypeScript
+    const resolver = moveResolver;
     return cancelIndices
       .map(idx => resolver.getMove(idx)?.name)
       .filter((name): name is string => name !== undefined);
   });
 
-  // Combo info
   const comboInfo = $derived.by(() => ({
     hitCount: comboHits,
     totalDamage: comboDamage,
@@ -612,21 +599,45 @@
         return state;
     }
   }
+
+  const availableMoveNames = $derived(currentCharacter?.moves.map(m => m.input) ?? []);
 </script>
 
-<div class="training-mode">
+<div class="training-page">
+  <!-- Sync mode indicator (only in detached mode) -->
+  {#if isDetached}
+    <div class="sync-indicator">
+      <span class="sync-label">Sync:</span>
+      <select value={syncMode} onchange={handleSyncModeChange}>
+        <option value="live">Live</option>
+        <option value="on-save">On Save</option>
+      </select>
+      <span class="character-label">
+        {currentCharacter ? currentCharacter.character.name : 'Waiting for data...'}
+      </span>
+    </div>
+  {/if}
+
   {#if isInitializing}
     <div class="loading">
       <p>Initializing training mode...</p>
+      {#if isDetached}
+        <p class="hint">Waiting for data from main window...</p>
+      {/if}
     </div>
   {:else if initError}
     <div class="error">
       <h3>Failed to initialize training mode</h3>
       <p>{initError}</p>
-      <button onclick={() => onExit?.()}>Back</button>
+    </div>
+  {:else if !currentCharacter}
+    <div class="waiting">
+      <h3>Waiting for character data</h3>
+      <p>Make sure the main Framesmith window is open with a character selected.</p>
+      <p class="hint">Sync mode: {syncMode === 'live' ? 'Live (updates on every change)' : 'On Save (updates when you save)'}</p>
     </div>
   {:else}
-    <!-- HUD at top -->
+    <!-- HUD -->
     <TrainingHUD
       player={playerStatus}
       dummy={dummyStatusState}
@@ -637,9 +648,8 @@
       onResetHealth={resetHealth}
     />
 
-    <!-- Main content area with viewport and sidebar -->
+    <!-- Main content -->
     <div class="main-content">
-      <!-- Viewport -->
       <div class="viewport-container">
         <TrainingViewport
           player={playerDisplay}
@@ -650,13 +660,12 @@
         />
       </div>
 
-      <!-- Right sidebar with input history and dummy settings -->
       <div class="sidebar">
         <InputHistory inputs={inputHistory} maxDisplay={15} />
         {#if dummyController}
           <DummySettings
             config={dummyController.config}
-            availableMoves={currentCharacter?.moves.map(m => m.input) ?? []}
+            availableMoves={availableMoveNames}
             onStateChange={(state) => dummyController?.setState(state)}
             onRecoveryChange={(recovery) => dummyController?.setRecovery(recovery)}
             onReversalMoveChange={(move) => dummyController?.setReversalMove(move)}
@@ -668,7 +677,7 @@
       </div>
     </div>
 
-    <!-- Bottom bar with playback controls and keyboard help -->
+    <!-- Bottom bar -->
     <div class="bottom-bar">
       <PlaybackControls
         isPlaying={isPlaying}
@@ -679,12 +688,6 @@
         onSpeedChange={setPlaybackSpeed}
       />
 
-      <!-- Detach button -->
-      <button class="detach-btn" onclick={openDetachedWindow} title="Open in new window">
-        Detach
-      </button>
-
-      <!-- Controls info -->
       <div class="controls-info">
         <div class="control-group">
           <span class="control-label">Movement:</span>
@@ -702,14 +705,9 @@
           <span class="control-label">Reset:</span>
           <span class="control-keys">R</span>
         </div>
-        <div class="control-group">
-          <span class="control-label">Exit:</span>
-          <span class="control-keys">Esc</span>
-        </div>
       </div>
     </div>
 
-    <!-- Frame counter (debug) -->
     <div class="frame-counter">
       Frame: {frameCount}
     </div>
@@ -717,32 +715,73 @@
 </div>
 
 <style>
-  .training-mode {
+  .training-page {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    height: 100vh;
     gap: 8px;
     padding: 8px;
+    background: var(--bg-primary);
+  }
+
+  .sync-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .sync-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .sync-indicator select {
+    font-size: 12px;
+    padding: 2px 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-primary);
+  }
+
+  .character-label {
+    font-size: 12px;
+    color: var(--text-primary);
+    margin-left: auto;
   }
 
   .loading,
-  .error {
+  .error,
+  .waiting {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 16px;
+    gap: 12px;
   }
 
   .error h3 {
     color: var(--accent);
   }
 
-  .error p {
+  .error p,
+  .waiting p {
     color: var(--text-secondary);
     max-width: 400px;
     text-align: center;
+  }
+
+  .hint {
+    font-size: 12px;
+    font-style: italic;
+    opacity: 0.7;
   }
 
   .main-content {
@@ -763,7 +802,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 140px;
+    width: 180px;
   }
 
   .bottom-bar {
@@ -803,26 +842,10 @@
     color: var(--text-primary);
   }
 
-  .detach-btn {
-    padding: 6px 12px;
-    font-size: 11px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .detach-btn:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent);
-  }
-
   .frame-counter {
     position: absolute;
     bottom: 50px;
-    right: 160px;
+    right: 200px;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
     color: var(--text-secondary);

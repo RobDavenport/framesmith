@@ -2,6 +2,46 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CharacterData, CharacterSummary, Move, MergedRegistry } from "$lib/types";
 import { loadAssets, resetAssetsState } from "./assets.svelte";
 import { getProjectPath } from "./project.svelte";
+import { TrainingSync, createMainWindowSync } from "$lib/training";
+
+// Training sync instance (created lazily)
+let trainingSync: TrainingSync | null = null;
+
+/**
+ * Get or create the training sync instance.
+ * This is used by the main window to send updates to detached training windows.
+ */
+export function getTrainingSync(): TrainingSync {
+  if (!trainingSync) {
+    trainingSync = createMainWindowSync(
+      () => currentCharacter,
+      () => getProjectPath()
+    );
+  }
+  return trainingSync;
+}
+
+/** Clean up training sync on app shutdown. */
+export function destroyTrainingSync(): void {
+  if (trainingSync) {
+    trainingSync.destroy();
+    trainingSync = null;
+  }
+}
+
+/** Notify training windows of a character change (for live sync). */
+function notifyCharacterChange(): void {
+  if (currentCharacter && trainingSync) {
+    trainingSync.sendCharacterChange(currentCharacter);
+  }
+}
+
+/** Notify training windows of a character save (for sync-on-save). */
+function notifyCharacterSave(): void {
+  if (currentCharacter && trainingSync) {
+    trainingSync.sendCharacterSave(currentCharacter);
+  }
+}
 
 // Reactive state using Svelte 5 runes
 let characterList = $state<CharacterSummary[]>([]);
@@ -113,6 +153,9 @@ export async function selectCharacter(characterId: string): Promise<void> {
     currentCharacter = nextCharacter;
     rulesRegistry = registry;
     void loadAssets(characterId);
+
+    // Notify training windows of character change
+    notifyCharacterChange();
   } catch (e) {
     if (seq !== selectSeq) return;
     error = formatError(e);
@@ -171,6 +214,9 @@ export async function saveMove(mv: Move): Promise<void> {
     if (index >= 0) {
       currentCharacter.moves[index] = mv;
     }
+
+    // Notify training windows of save
+    notifyCharacterSave();
   } catch (e) {
     error = String(e);
     throw e;

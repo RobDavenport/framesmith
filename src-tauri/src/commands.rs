@@ -878,6 +878,41 @@ pub fn create_move(
     Ok(mv)
 }
 
+/// Open a detached training mode window.
+///
+/// Creates a new browser window for training mode that can run independently
+/// of the main editor window.
+#[tauri::command]
+pub async fn open_training_window(
+    app: tauri::AppHandle,
+    character_id: String,
+) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
+
+    // Build the URL with query params for the training route
+    let url = format!("/training?character={}&detached=true", character_id);
+
+    let window = WebviewWindowBuilder::new(
+        &app,
+        "training-detached",
+        WebviewUrl::App(url.into()),
+    )
+    .title("Framesmith - Training Mode")
+    .inner_size(1024.0, 768.0)
+    .min_inner_size(800.0, 600.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| format!("Failed to create training window: {}", e))?;
+
+    // Focus the new window
+    window
+        .set_focus()
+        .map_err(|e| format!("Failed to focus training window: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
