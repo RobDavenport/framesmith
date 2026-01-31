@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getCurrentCharacter, getRulesRegistry } from "$lib/stores/character.svelte";
-  import type { Move, CancelTable } from "$lib/types";
+  import type { State, CancelTable } from "$lib/types";
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
@@ -43,13 +43,13 @@
     return match ? match[1].toUpperCase() : null;
   }
 
-  // Check if a move has a specific tag (tags are resolved by rules)
-  function hasTag(move: Move, tag: string): boolean {
+  // Check if a state has a specific tag (tags are resolved by rules)
+  function hasTag(move: State, tag: string): boolean {
     return (move as any).tags?.includes(tag) ?? false;
   }
 
-  // Check if move is a special type
-  function isSpecialType(move: Move): boolean {
+  // Check if state is a special type
+  function isSpecialType(move: State): boolean {
     if (move.type) {
       return specialTypes.includes(move.type);
     }
@@ -57,8 +57,8 @@
     return /\d{3,}/.test(move.input);
   }
 
-  // Check if move is a super type
-  function isSuperType(move: Move): boolean {
+  // Check if state is a super type
+  function isSuperType(move: State): boolean {
     if (move.type) {
       return superTypes.includes(move.type);
     }
@@ -173,7 +173,7 @@
 
     // Tag-based edge derivation (when cancel table is empty)
     // Build index of moves by button for chain lookup
-    const movesByButton = new Map<string, Move[]>();
+    const movesByButton = new Map<string, State[]>();
     for (const move of moves) {
       const button = extractButton(move.input);
       if (button) {

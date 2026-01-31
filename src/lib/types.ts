@@ -2,7 +2,7 @@
 // Core Enums / Literal Types
 // =============================================================================
 
-// MoveType is now a flexible string - custom types can be defined per-project via rules registry.
+// StateType is now a flexible string - custom types can be defined per-project via rules registry.
 // Common built-in types: "normal", "command_normal", "special", "super", "movement", "throw"
 // Custom types examples: "ex", "rekka", "install", etc.
 
@@ -12,7 +12,7 @@ export type GuardType = "high" | "mid" | "low" | "unblockable";
 
 export type HurtboxFlag = "strike_invuln" | "throw_invuln" | "projectile_invuln" | "full_invuln" | "armor";
 
-// Tag for state/move categorization (validated on backend as lowercase alphanumeric with underscores)
+// Tag for state categorization (validated on backend as lowercase alphanumeric with underscores)
 export type Tag = string;
 
 // =============================================================================
@@ -331,10 +331,13 @@ export interface Character {
 }
 
 // =============================================================================
-// Move Interface (Updated with v2 Schema Fields)
+// State Interface (Updated with v2 Schema Fields)
 // =============================================================================
+// Note: Previously called "Move", renamed to "State" for consistency with
+// the runtime engine. The JSON field in CharacterData is still "moves" for
+// backward compatibility.
 
-export interface Move {
+export interface State {
   // Core identification
   input: string;
   name: string;
@@ -404,7 +407,7 @@ export interface CancelTable {
 
 export interface CharacterData {
   character: Character;
-  moves: Move[];
+  moves: State[];  // JSON field name preserved for backward compatibility
   cancel_table: CancelTable;
 }
 
@@ -446,13 +449,13 @@ export interface CharacterAssets {
 // Rules Registry Types (for filtering and cancel graph)
 // =============================================================================
 
-export interface MoveTypesConfig {
+export interface StateTypesConfig {
   types: string[];
   filter_groups: Record<string, string[]>;
 }
 
 export interface MergedRegistry {
   resources: string[];
-  move_types?: MoveTypesConfig;
+  move_types?: StateTypesConfig;  // Field name preserved for backward compatibility
   chain_order?: string[];
 }

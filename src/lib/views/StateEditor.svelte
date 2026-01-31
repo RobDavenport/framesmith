@@ -8,7 +8,7 @@
   } from "$lib/stores/character.svelte";
   import { getAssets, getAssetsError, isAssetsLoading } from "$lib/stores/assets.svelte";
   import MoveAnimationPreview from "$lib/components/MoveAnimationPreview.svelte";
-  import type { Move, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
+  import type { State, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
 
   // Common move types - custom types can be entered directly
   const commonMoveTypes = ["normal", "command_normal", "special", "super", "movement", "throw", "ex", "rekka"];
@@ -23,8 +23,8 @@
   const assetsLoading = $derived(isAssetsLoading());
   const assetsError = $derived(getAssetsError());
 
-  // Local editing state - copy of the move data
-  let editingMove = $state<Move | null>(null);
+  // Local editing state - copy of the state data
+  let editingMove = $state<State | null>(null);
 
   // Collapsible section states
   let showPreconditions = $state(false);
@@ -68,7 +68,7 @@
     return value >= 0 ? `+${value}` : String(value);
   }
 
-  const guardOptions: Move["guard"][] = ["high", "mid", "low", "unblockable"];
+  const guardOptions: State["guard"][] = ["high", "mid", "low", "unblockable"];
 
   let saveStatus = $state<string | null>(null);
 

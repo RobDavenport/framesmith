@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getCurrentCharacter, getRulesRegistry, selectMove } from "$lib/stores/character.svelte";
   import CreateMoveModal from "$lib/components/CreateMoveModal.svelte";
-  import type { Move } from "$lib/types";
+  import type { State } from "$lib/types";
 
   interface Props {
     onEditMove: (input: string) => void;
@@ -56,8 +56,8 @@
     return options;
   });
 
-  // Check if move matches a filter group
-  function matchesFilterGroup(move: Move, groupName: string): boolean {
+  // Check if state matches a filter group
+  function matchesFilterGroup(move: State, groupName: string): boolean {
     const groups = registry?.move_types?.filter_groups;
     const types = groups?.[groupName] ?? (groupName === "normals" ? defaultNormalTypes : groupName === "specials" ? defaultSpecialTypes : []);
 
@@ -74,15 +74,15 @@
     return false;
   }
 
-  function getTotal(move: Move): number {
+  function getTotal(move: State): number {
     return move.startup + move.active + move.recovery;
   }
 
-  function getAdvantageHit(move: Move): number {
+  function getAdvantageHit(move: State): number {
     return move.hitstun - move.recovery;
   }
 
-  function getAdvantageBlock(move: Move): number {
+  function getAdvantageBlock(move: State): number {
     return move.blockstun - move.recovery;
   }
 
@@ -129,7 +129,7 @@
     }
   }
 
-  function handleRowClick(move: Move) {
+  function handleRowClick(move: State) {
     selectMove(move.input);
     onEditMove(move.input);
   }

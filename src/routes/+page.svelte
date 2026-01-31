@@ -6,7 +6,7 @@
   import Toast from "$lib/components/Toast.svelte";
   import CharacterOverview from "$lib/views/CharacterOverview.svelte";
   import FrameDataTable from "$lib/views/FrameDataTable.svelte";
-  import MoveEditor from "$lib/views/MoveEditor.svelte";
+  import StateEditor from "$lib/views/StateEditor.svelte";
   import CancelGraph from "$lib/views/CancelGraph.svelte";
   import TrainingMode from "$lib/views/TrainingMode.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
@@ -19,7 +19,7 @@
   }
 
   function handleEditMove(input: string) {
-    currentView = "move-editor";
+    currentView = "state-editor";
   }
 
   const currentCharacter = $derived(getCurrentCharacter());
@@ -40,8 +40,8 @@
       <CharacterOverview />
     {:else if currentView === "frame-data"}
       <FrameDataTable onEditMove={handleEditMove} />
-    {:else if currentView === "move-editor"}
-      <MoveEditor />
+    {:else if currentView === "state-editor"}
+      <StateEditor />
     {:else if currentView === "cancel-graph"}
       <CancelGraph />
     {:else if currentView === "training"}

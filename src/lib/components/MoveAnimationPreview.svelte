@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnimationClip, CharacterAssets, FrameHitbox, Move, Rect } from "$lib/types";
+  import type { AnimationClip, CharacterAssets, FrameHitbox, State, Rect } from "$lib/types";
   import SpritePreview from "$lib/components/preview/SpritePreview.svelte";
   import GltfPreview from "$lib/components/preview/GltfPreview.svelte";
 
@@ -35,11 +35,11 @@
   type Props = {
     characterId: string | null;
     selectionKey?: string | null;
-    move: Move | null;
+    move: State | null;
     assets: CharacterAssets | null;
     assetsLoading?: boolean;
     assetsError?: string | null;
-    onMoveChange?: (next: Move) => void;
+    onMoveChange?: (next: State) => void;
   };
 
   const speedOptions = [0.25, 0.5, 1, 2] as const;
@@ -254,7 +254,7 @@
     return { x, y, w, h };
   }
 
-  function getLayerArray(m: Move, layer: Layer): FrameHitbox[] {
+  function getLayerArray(m: State, layer: Layer): FrameHitbox[] {
     const raw = (m as any)[layer];
     return Array.isArray(raw) ? raw : [];
   }
@@ -266,7 +266,7 @@
     const nextArr = updater(prevArr);
     const next: any = { ...move };
     next[layer] = nextArr;
-    onMoveChange(next as Move);
+    onMoveChange(next as State);
   }
 
   function ensureSelectionValid(): void {

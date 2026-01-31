@@ -22,7 +22,7 @@
   const views = [
     { id: "overview", label: "Overview" },
     { id: "frame-data", label: "Frame Data" },
-    { id: "move-editor", label: "Move Editor" },
+    { id: "state-editor", label: "State Editor" },
     { id: "cancel-graph", label: "Cancel Graph" },
     { id: "training", label: "Training" },
   ];

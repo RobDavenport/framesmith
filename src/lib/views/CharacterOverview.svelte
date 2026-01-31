@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getCurrentCharacter, getRulesRegistry, exportCharacter } from "$lib/stores/character.svelte";
   import DeleteCharacterModal from "$lib/components/DeleteCharacterModal.svelte";
-  import type { Move, CancelTable } from "$lib/types";
+  import type { State, CancelTable } from "$lib/types";
 
   let exportAdapter = $state("json-blob");
   let exportPretty = $state(true);
@@ -26,8 +26,8 @@
     registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
   );
 
-  // Move categorization helpers using move.type field
-  function isNormalMove(move: Move): boolean {
+  // State categorization helpers using move.type field
+  function isNormalMove(move: State): boolean {
     if (move.type) {
       return normalTypes.includes(move.type);
     }
@@ -35,7 +35,7 @@
     return !/\d{3,}/.test(move.input);
   }
 
-  function isSpecialMove(move: Move): boolean {
+  function isSpecialMove(move: State): boolean {
     if (move.type) {
       return specialTypes.includes(move.type);
     }

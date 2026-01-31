@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CharacterData, CharacterSummary, Move, MergedRegistry } from "$lib/types";
+import type { CharacterData, CharacterSummary, State, MergedRegistry } from "$lib/types";
 import { loadAssets, resetAssetsState } from "./assets.svelte";
 import { getProjectPath } from "./project.svelte";
 import { TrainingSync, createMainWindowSync } from "$lib/training";
@@ -81,7 +81,7 @@ export function getRulesRegistry() {
   return rulesRegistry;
 }
 
-export function getSelectedMove(): Move | null {
+export function getSelectedMove(): State | null {
   if (!currentCharacter || !selectedMoveInput) return null;
   return currentCharacter.moves.find((m) => m.input === selectedMoveInput) ?? null;
 }
@@ -191,7 +191,7 @@ export function resetCharacterState(): void {
   resetAssetsState();
 }
 
-export async function saveMove(mv: Move): Promise<void> {
+export async function saveMove(mv: State): Promise<void> {
   const charactersDir = getCharactersDir();
   if (!charactersDir) {
     throw new Error("No project open");
@@ -311,7 +311,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
   await loadCharacterList();
 }
 
-export async function createMove(input: string, name: string): Promise<Move> {
+export async function createMove(input: string, name: string): Promise<State> {
   const charactersDir = getCharactersDir();
   if (!charactersDir) {
     throw new Error("No project open");
@@ -320,7 +320,7 @@ export async function createMove(input: string, name: string): Promise<Move> {
     throw new Error("No character selected");
   }
 
-  const mv = await invoke<Move>("create_move", {
+  const mv = await invoke<State>("create_move", {
     charactersDir,
     characterId: currentCharacter.character.id,
     input,
