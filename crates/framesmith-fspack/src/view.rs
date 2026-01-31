@@ -1278,7 +1278,7 @@ impl<'a> HitWindowsView<'a> {
     }
 }
 
-/// Zero-copy view over a single HitWindow24 record (24 bytes).
+/// Zero-copy view over a single HitWindow24 record (24 bytes minimum).
 ///
 /// Layout:
 /// - 0: start_f (u8)
@@ -1295,6 +1295,9 @@ impl<'a> HitWindowsView<'a> {
 /// - 16-17: shapes_len (u16)
 /// - 18-21: cancels_off (u32)
 /// - 22-23: cancels_len (u16)
+/// Optional extended fields (backwards-compatible):
+/// - 24-25: hit_pushback (i16, Q12.4 fixed-point)
+/// - 26-27: block_pushback (i16, Q12.4 fixed-point)
 #[derive(Clone, Copy)]
 pub struct HitWindowView<'a> {
     data: &'a [u8],
@@ -1359,6 +1362,34 @@ impl<'a> HitWindowView<'a> {
     /// Number of cancel targets for this hit window.
     pub fn cancels_len(&self) -> u16 {
         read_u16_le(self.data, 22).unwrap_or(0)
+    }
+
+    /// Hit pushback (Q12.4 fixed-point). Returns 0 if not present.
+    pub fn hit_pushback_raw(&self) -> i16 {
+        if self.data.len() >= 26 {
+            read_u16_le(self.data, 24).unwrap_or(0) as i16
+        } else {
+            0
+        }
+    }
+
+    /// Block pushback (Q12.4 fixed-point). Returns 0 if not present.
+    pub fn block_pushback_raw(&self) -> i16 {
+        if self.data.len() >= 28 {
+            read_u16_le(self.data, 26).unwrap_or(0) as i16
+        } else {
+            0
+        }
+    }
+
+    /// Hit pushback in pixels.
+    pub fn hit_pushback_px(&self) -> i32 {
+        (self.hit_pushback_raw() as i32) >> 4
+    }
+
+    /// Block pushback in pixels.
+    pub fn block_pushback_px(&self) -> i32 {
+        (self.block_pushback_raw() as i32) >> 4
     }
 }
 
@@ -2721,5 +2752,62 @@ mod tests {
 
         let all: std::vec::Vec<u16> = cancels.iter().collect();
         assert!(all.is_empty());
+    }
+
+    #[test]
+    fn hit_window_has_pushback_accessors() {
+        // Build a HitWindow with 28 bytes (extended with pushback data)
+        let mut data = [0u8; 28];
+        // Set hit_pushback at offset 24 (Q12.4: 32 = 2.0 pixels)
+        data[24] = 32;
+        data[25] = 0;
+        // Set block_pushback at offset 26 (Q12.4: 16 = 1.0 pixel)
+        data[26] = 16;
+        data[27] = 0;
+
+        let view = HitWindowView { data: &data };
+
+        // Test raw values
+        assert_eq!(view.hit_pushback_raw(), 32);
+        assert_eq!(view.block_pushback_raw(), 16);
+
+        // Test pixel values (Q12.4 >> 4)
+        assert_eq!(view.hit_pushback_px(), 2);
+        assert_eq!(view.block_pushback_px(), 1);
+    }
+
+    #[test]
+    fn hit_window_pushback_backwards_compatible() {
+        // Build a standard 24-byte HitWindow (no pushback fields)
+        let data = [0u8; 24];
+        let view = HitWindowView { data: &data };
+
+        // Should return 0 for missing fields
+        assert_eq!(view.hit_pushback_raw(), 0);
+        assert_eq!(view.block_pushback_raw(), 0);
+        assert_eq!(view.hit_pushback_px(), 0);
+        assert_eq!(view.block_pushback_px(), 0);
+    }
+
+    #[test]
+    fn hit_window_pushback_negative_values() {
+        // Build a HitWindow with negative pushback (e.g., pull towards attacker)
+        let mut data = [0u8; 28];
+        // Set hit_pushback at offset 24 (Q12.4: -32 = -2.0 pixels)
+        let neg32: i16 = -32;
+        data[24..26].copy_from_slice(&(neg32 as u16).to_le_bytes());
+        // Set block_pushback at offset 26 (Q12.4: -16 = -1.0 pixel)
+        let neg16: i16 = -16;
+        data[26..28].copy_from_slice(&(neg16 as u16).to_le_bytes());
+
+        let view = HitWindowView { data: &data };
+
+        // Test raw values (signed)
+        assert_eq!(view.hit_pushback_raw(), -32);
+        assert_eq!(view.block_pushback_raw(), -16);
+
+        // Test pixel values (Q12.4 >> 4)
+        assert_eq!(view.hit_pushback_px(), -2);
+        assert_eq!(view.block_pushback_px(), -1);
     }
 }
