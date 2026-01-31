@@ -36,8 +36,7 @@ pub fn next_frame(
             new_state.frame = 0;
             new_state.hit_confirmed = false;
             new_state.block_confirmed = false;
-            // Note: Resource costs are not deducted here. The game is responsible
-            // for deducting resources (meter, etc.) when executing moves.
+            // TODO: Apply resource costs
             return FrameResult {
                 state: new_state,
                 move_ended: false,

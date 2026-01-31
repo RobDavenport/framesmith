@@ -56,8 +56,7 @@ pub fn shapes_overlap(
         return aabb_overlap(&aabb_a, &aabb_b);
     }
 
-    // Only AABB shapes are currently supported. Other shape types (circle,
-    // capsule, rotated rect) will return false (no overlap).
+    // TODO: Handle other shape types (circle, capsule, rotated rect)
     false
 }
 

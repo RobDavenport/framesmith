@@ -39,9 +39,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
                 for i in 0..len as usize {
                     if let Some(cancel_target) = cancels.get_at(off, i) {
                         if cancel_target == target {
-                            // Note: Timing windows and preconditions are not currently checked.
-                            // The cancel table only specifies allowed transitions; games should
-                            // implement additional validation for timing-sensitive cancels.
+                            // TODO: Check timing windows and preconditions
                             return true;
                         }
                     }
@@ -63,7 +61,7 @@ fn check_action_cancel(
     _pack: &PackView,
     _action_id: u16,
 ) -> bool {
-    // Action cancels are delegated to the game for validation
+    // TODO: Check cancel flags on current move
     true
 }
 
@@ -80,9 +78,7 @@ pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec:
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {
                     if let Some(target) = cancels.get_at(off, i) {
-                        // Note: All cancel targets are returned without filtering.
-                        // Timing windows and preconditions are not currently evaluated;
-                        // the game should filter results as needed.
+                        // TODO: Filter by timing window and preconditions
                         result.push(target);
                     }
                 }
