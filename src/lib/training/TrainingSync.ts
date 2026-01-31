@@ -62,6 +62,7 @@ export class TrainingSync {
   private channel: BroadcastChannel | null = null;
   private callbacks: TrainingSyncCallbacks;
   private isDestroyed = false;
+  private pongResolvers: Array<() => void> = [];
 
   constructor(callbacks: TrainingSyncCallbacks = {}) {
     this.callbacks = callbacks;
@@ -96,7 +97,11 @@ export class TrainingSync {
         this.sendMessage({ type: 'pong' });
         break;
       case 'pong':
-        // Acknowledgment received, no action needed
+        // Resolve all pending pong waiters
+        for (const resolve of this.pongResolvers) {
+          resolve();
+        }
+        this.pongResolvers = [];
         break;
     }
   }
@@ -130,6 +135,54 @@ export class TrainingSync {
   /** Check if another training window is open by sending a ping. */
   ping(): void {
     this.sendMessage({ type: 'ping' });
+  }
+
+  /**
+   * Wait for a pong response with timeout.
+   *
+   * @param timeoutMs - Maximum time to wait for a pong (default 100ms)
+   * @returns Promise that resolves to true if pong received, false if timed out
+   */
+  waitForPong(timeoutMs = 100): Promise<boolean> {
+    if (this.isDestroyed || !this.channel) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        // Remove from resolvers list on timeout
+        const idx = this.pongResolvers.indexOf(pongHandler);
+        if (idx !== -1) {
+          this.pongResolvers.splice(idx, 1);
+        }
+        resolve(false);
+      }, timeoutMs);
+
+      const pongHandler = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+
+      this.pongResolvers.push(pongHandler);
+      this.ping();
+    });
+  }
+
+  /**
+   * Wait for the main window to respond, with retries.
+   *
+   * @param maxRetries - Maximum number of ping attempts (default 5)
+   * @param intervalMs - Time between retries in ms (default 100)
+   * @returns Promise that resolves to true if main window responded, false otherwise
+   */
+  async waitForMainWindow(maxRetries = 5, intervalMs = 100): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      const gotPong = await this.waitForPong(intervalMs);
+      if (gotPong) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Update callbacks after construction. */
@@ -180,20 +233,16 @@ export function createDetachedWindowSync(
   onProjectPath: (path: string | null) => void,
   syncMode: SyncMode = 'live'
 ): TrainingSync {
-  const handleUpdate = (character: CharacterData) => {
-    onCharacterUpdate(character);
-  };
-
   const callbacks: TrainingSyncCallbacks =
     syncMode === 'live'
       ? {
-          onCharacterChange: handleUpdate,
-          onCharacterSave: handleUpdate,
+          onCharacterChange: onCharacterUpdate,
+          onCharacterSave: onCharacterUpdate,
           onProjectPath,
         }
       : {
           // In sync-on-save mode, only respond to save events
-          onCharacterSave: handleUpdate,
+          onCharacterSave: onCharacterUpdate,
           onProjectPath,
         };
 

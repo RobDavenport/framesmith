@@ -274,13 +274,15 @@
       dummyController = new DummyController();
       moveResolver = new MoveResolver(buildMoveList());
 
-      // Wait a bit for sync response, then try to load directly if we have characterId
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for main window to respond using ping/pong retry mechanism
+      const mainWindowReady = await trainingSync.waitForMainWindow(5, 100);
 
       if (!currentCharacter && characterId) {
-        // Try to load directly if sync didn't provide data
-        // This can happen if the main window is not ready
-        console.log('No sync data received, waiting for main window...');
+        if (!mainWindowReady) {
+          console.log('No sync data received, main window may not be ready...');
+        } else {
+          console.log('Main window responded but no character data yet, waiting...');
+        }
       }
 
       isInitializing = false;
@@ -460,6 +462,9 @@
       },
       syncMode
     );
+
+    // Request fresh data with the new sync mode
+    trainingSync.requestSync();
   }
 
   // Cleanup
