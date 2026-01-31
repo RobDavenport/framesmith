@@ -87,11 +87,10 @@ export class InputBuffer {
    * Add an input snapshot to the buffer.
    */
   push(snapshot: InputSnapshot): void {
-    this.buffer.push(snapshot);
-    // Remove oldest inputs if over capacity
-    while (this.buffer.length > this.capacity) {
+    if (this.buffer.length >= this.capacity) {
       this.buffer.shift();
     }
+    this.buffer.push(snapshot);
   }
 
   /**
