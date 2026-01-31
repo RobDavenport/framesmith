@@ -13,7 +13,7 @@ pub mod state;
 pub use state::{CharacterState, FrameInput, FrameResult, MAX_RESOURCES};
 pub use state::{report_block, report_hit};
 pub use frame::next_frame;
-pub use cancel::{available_cancels_buf, can_cancel_to};
+pub use cancel::{available_cancels_buf, can_cancel_to, ACTION_CHAIN, ACTION_SPECIAL, ACTION_SUPER, ACTION_JUMP};
 #[cfg(feature = "alloc")]
 pub use cancel::available_cancels;
 pub use collision::{aabb_overlap, check_hits, shapes_overlap, Aabb, CheckHitsResult, HitResult, MAX_HIT_RESULTS};

@@ -1,6 +1,13 @@
 use crate::state::CharacterState;
 use framesmith_fspack::PackView;
 
+/// Action cancel IDs (offset from move_count).
+/// These map to CancelFlags on the current move.
+pub const ACTION_CHAIN: u16 = 0;
+pub const ACTION_SPECIAL: u16 = 1;
+pub const ACTION_SUPER: u16 = 2;
+pub const ACTION_JUMP: u16 = 3;
+
 /// Check if a cancel from current state to target move is valid.
 ///
 /// This checks:
@@ -54,18 +61,30 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
     false
 }
 
-/// Check if an action cancel is allowed (jump, dash, etc.).
-///
-/// Action cancels are always permitted at the runtime level. The game is
-/// responsible for validating whether the action is valid in the current
-/// context (e.g., checking meter costs, cooldowns, or move-specific flags).
+/// Check if an action cancel is allowed based on current move's cancel flags.
 fn check_action_cancel(
-    _state: &CharacterState,
-    _pack: &PackView,
-    _action_id: u16,
+    state: &CharacterState,
+    pack: &PackView,
+    action_id: u16,
 ) -> bool {
-    // TODO: Check cancel flags on current move
-    true
+    let moves = match pack.moves() {
+        Some(m) => m,
+        None => return false,
+    };
+    let current_move = match moves.get(state.current_move as usize) {
+        Some(m) => m,
+        None => return false,
+    };
+
+    let flags = current_move.cancel_flags();
+
+    match action_id {
+        ACTION_CHAIN => flags.chain,
+        ACTION_SPECIAL => flags.special,
+        ACTION_SUPER => flags.super_cancel,
+        ACTION_JUMP => flags.jump,
+        _ => true, // Unknown actions delegated to game
+    }
 }
 
 /// Get all valid cancel targets from current state.
@@ -124,9 +143,20 @@ pub fn available_cancels_buf(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn cancel_module_compiles() {
         // Basic smoke test
         assert!(true);
+    }
+
+    #[test]
+    fn action_cancel_constants_defined() {
+        // Action IDs map to cancel flags
+        assert_eq!(ACTION_CHAIN, 0);
+        assert_eq!(ACTION_SPECIAL, 1);
+        assert_eq!(ACTION_SUPER, 2);
+        assert_eq!(ACTION_JUMP, 3);
     }
 }
