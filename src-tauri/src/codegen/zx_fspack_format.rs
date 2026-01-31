@@ -91,6 +91,12 @@ pub const SECTION_MOVE_RESOURCE_PRECONDITIONS: u32 = 15;
 /// Array of MoveResourceDelta16 structs
 pub const SECTION_MOVE_RESOURCE_DELTAS: u32 = 16;
 
+/// Array of StateTagRange8 structs (one per move): offset(4) + count(2) + padding(2)
+pub const SECTION_STATE_TAG_RANGES: u32 = 17;
+
+/// Array of StrRef for state tags (indexed by ranges)
+pub const SECTION_STATE_TAGS: u32 = 18;
+
 // =============================================================================
 // Sentinel Values
 // =============================================================================
@@ -281,6 +287,8 @@ mod tests {
             SECTION_MOVE_RESOURCE_COSTS,
             SECTION_MOVE_RESOURCE_PRECONDITIONS,
             SECTION_MOVE_RESOURCE_DELTAS,
+            SECTION_STATE_TAG_RANGES,
+            SECTION_STATE_TAGS,
         ];
         let mut sorted = kinds;
         sorted.sort();

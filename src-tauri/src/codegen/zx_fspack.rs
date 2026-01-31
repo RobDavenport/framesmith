@@ -13,7 +13,8 @@ use super::zx_fspack_format::{
     SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS,
     SECTION_MOVES, SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
     SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
-    SECTION_SHAPES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
+    SECTION_SHAPES, SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE,
+    SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
 };
 
 fn checked_u16(value: usize, what: &str) -> Result<u16, String> {
@@ -1006,6 +1007,29 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         // no-op
     }
 
+    // Build state tag sections (one range entry per move, tags are StrRefs)
+    let mut state_tag_ranges_data: Vec<u8> = Vec::new();
+    let mut state_tags_data: Vec<u8> = Vec::new();
+    let any_tags = char_data.moves.iter().any(|m| !m.tags.is_empty());
+
+    if any_tags {
+        for mv in &char_data.moves {
+            let tag_offset = checked_u32(state_tags_data.len(), "state_tags_offset")?;
+            let tag_count = checked_u16(mv.tags.len(), "state_tags_count")?;
+
+            // Write range entry: offset(4) + count(2) + padding(2)
+            write_u32_le(&mut state_tag_ranges_data, tag_offset);
+            write_u16_le(&mut state_tag_ranges_data, tag_count);
+            write_u16_le(&mut state_tag_ranges_data, 0); // padding
+
+            // Write tag StrRefs
+            for tag in &mv.tags {
+                let (str_off, str_len) = strings.intern(tag.as_str())?;
+                write_strref(&mut state_tags_data, (str_off, str_len));
+            }
+        }
+    }
+
     let string_table_data = strings.into_bytes();
 
     struct SectionData {
@@ -1115,10 +1139,22 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             bytes: move_resource_deltas_data,
         });
     }
+    if !state_tag_ranges_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_STATE_TAG_RANGES,
+            align: 4,
+            bytes: state_tag_ranges_data,
+        });
+        sections.push(SectionData {
+            kind: SECTION_STATE_TAGS,
+            align: 4,
+            bytes: state_tags_data,
+        });
+    }
 
-    if sections.len() > 16 {
+    if sections.len() > 24 {
         return Err(format!(
-            "Too many sections ({}), MAX_SECTIONS is 16",
+            "Too many sections ({}), MAX_SECTIONS is 24",
             sections.len()
         ));
     }
