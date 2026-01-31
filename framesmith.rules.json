@@ -1,5 +1,21 @@
 {
   "version": 1,
+  "training_inputs": {
+    "directions": {
+      "up": "KeyW",
+      "down": "KeyS",
+      "left": "KeyA",
+      "right": "KeyD"
+    },
+    "buttons": {
+      "L": "KeyU",
+      "M": "KeyI",
+      "H": "KeyO",
+      "P": "KeyJ",
+      "K": "KeyK",
+      "S": "KeyL"
+    }
+  },
   "registry": {
     "resources": ["heat", "ammo"],
     "events": {

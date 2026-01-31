@@ -29,4 +29,10 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  // Vitest configuration
+  test: {
+    include: ["src/**/*.{test,spec}.ts"],
+    environment: "node",
+  },
 }));
