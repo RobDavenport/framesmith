@@ -39,7 +39,10 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
                 for i in 0..len as usize {
                     if let Some(cancel_target) = cancels.get_at(off, i) {
                         if cancel_target == target {
-                            // TODO: Check timing windows and preconditions
+                            // Check resource preconditions
+                            if !crate::resource::check_resource_preconditions(state, pack, target) {
+                                continue;
+                            }
                             return true;
                         }
                     }

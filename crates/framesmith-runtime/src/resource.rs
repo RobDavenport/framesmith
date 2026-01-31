@@ -67,6 +67,69 @@ pub fn apply_resource_costs(
     all_paid
 }
 
+/// Check if a resource value satisfies a precondition.
+#[inline]
+pub fn check_precondition_value(value: u16, min: Option<u16>, max: Option<u16>) -> bool {
+    if let Some(m) = min {
+        if value < m {
+            return false;
+        }
+    }
+    if let Some(m) = max {
+        if value > m {
+            return false;
+        }
+    }
+    true
+}
+
+/// Check all resource preconditions for a move.
+///
+/// Returns true if all preconditions are satisfied.
+pub fn check_resource_preconditions(
+    state: &CharacterState,
+    pack: &framesmith_fspack::PackView,
+    move_index: u16,
+) -> bool {
+    let extras = match pack.move_extras() {
+        Some(e) => e,
+        None => return true,
+    };
+    let extra = match extras.get(move_index as usize) {
+        Some(e) => e,
+        None => return true,
+    };
+    let preconditions_view = match pack.move_resource_preconditions() {
+        Some(p) => p,
+        None => return true,
+    };
+    let resource_defs = match pack.resource_defs() {
+        Some(d) => d,
+        None => return true,
+    };
+
+    let (off, len) = extra.resource_preconditions();
+
+    for i in 0..len as usize {
+        if let Some(precond) = preconditions_view.get_at(off, i) {
+            // Find resource index by name
+            for res_idx in 0..resource_defs.len().min(MAX_RESOURCES) {
+                if let Some(def) = resource_defs.get(res_idx) {
+                    if def.name_off() == precond.name_off() && def.name_len() == precond.name_len() {
+                        let current = resource(state, res_idx as u8);
+                        if !check_precondition_value(current, precond.min(), precond.max()) {
+                            return false;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    true
+}
+
 /// Initialize resources from pack's resource definitions.
 pub fn init_resources(state: &mut CharacterState, pack: &framesmith_fspack::PackView) {
     // Reset all to zero first
@@ -85,6 +148,26 @@ pub fn init_resources(state: &mut CharacterState, pack: &framesmith_fspack::Pack
 mod tests {
     use super::*;
     use crate::state::CharacterState;
+
+    #[test]
+    fn check_preconditions_passes_when_met() {
+        // Precondition: resource must be >= 25
+        assert!(check_precondition_value(50, Some(25), None));
+        // Precondition: resource must be <= 100
+        assert!(check_precondition_value(50, None, Some(100)));
+        // Precondition: resource must be between 25 and 100
+        assert!(check_precondition_value(50, Some(25), Some(100)));
+        // No preconditions
+        assert!(check_precondition_value(50, None, None));
+    }
+
+    #[test]
+    fn check_preconditions_fails_when_not_met() {
+        assert!(!check_precondition_value(20, Some(25), None)); // below min
+        assert!(!check_precondition_value(150, None, Some(100))); // above max
+        assert!(!check_precondition_value(20, Some(25), Some(100))); // below min
+        assert!(!check_precondition_value(150, Some(25), Some(100))); // above max
+    }
 
     #[test]
     fn get_and_set_resource() {
