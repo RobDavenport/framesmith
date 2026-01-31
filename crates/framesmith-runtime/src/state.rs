@@ -21,6 +21,24 @@ pub struct CharacterState {
     pub resources: [u16; MAX_RESOURCES],
 }
 
+/// Input for a single frame of simulation.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameInput {
+    /// Move to transition to, if cancel is valid.
+    /// `None` means continue current move.
+    pub requested_move: Option<u16>,
+}
+
+/// Result of simulating one frame.
+#[derive(Clone, Copy, Debug)]
+pub struct FrameResult {
+    /// The new character state after this frame.
+    pub state: CharacterState,
+    /// True if the move reached its final frame.
+    /// Game decides whether to loop or transition.
+    pub move_ended: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,5 +57,20 @@ mod tests {
     fn character_state_size_is_small() {
         // State should be small enough for cheap copies (rollback netcode)
         assert!(core::mem::size_of::<CharacterState>() <= 32);
+    }
+
+    #[test]
+    fn frame_input_default_has_no_requested_move() {
+        let input = FrameInput::default();
+        assert!(input.requested_move.is_none());
+    }
+
+    #[test]
+    fn frame_result_can_hold_events() {
+        let result = FrameResult {
+            state: CharacterState::default(),
+            move_ended: false,
+        };
+        assert!(!result.move_ended);
     }
 }
