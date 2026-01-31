@@ -3,6 +3,73 @@ use serde::{Deserialize, Serialize};
 mod assets;
 pub use assets::*;
 
+/// Error type for invalid tags
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TagError {
+    Empty,
+    InvalidChars,
+}
+
+impl std::fmt::Display for TagError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagError::Empty => write!(f, "tag cannot be empty"),
+            TagError::InvalidChars => write!(f, "tag must be lowercase alphanumeric with underscores"),
+        }
+    }
+}
+
+impl std::error::Error for TagError {}
+
+/// Validated tag for state categorization.
+///
+/// Tags are lowercase alphanumeric strings with underscores.
+/// Games use tags for cancel rules and filtering.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Tag(String);
+
+impl Tag {
+    /// Create a new tag, validating the format.
+    pub fn new(s: impl Into<String>) -> Result<Self, TagError> {
+        let s = s.into();
+        if s.is_empty() {
+            return Err(TagError::Empty);
+        }
+        if !s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+            return Err(TagError::InvalidChars);
+        }
+        Ok(Tag(s))
+    }
+
+    /// Get the tag as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Serialize for Tag {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Tag {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Tag::new(s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl schemars::JsonSchema for Tag {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Tag")
+    }
+
+    fn json_schema(gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        gen.subschema_for::<String>()
+    }
+}
+
 /// Custom schema for (u8, u8) tuple to fix schemars 1.0 missing `items` field
 fn frame_range_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::from_value(serde_json::json!({
@@ -662,5 +729,43 @@ mod tests {
         assert_eq!(mv.notifies[0].frame, 7);
         assert_eq!(mv.notifies[0].events.len(), 1);
         assert_eq!(mv.notifies[0].events[0].id, "vfx.swing_trail");
+    }
+
+    #[test]
+    fn tag_valid_lowercase() {
+        let tag = Tag::new("normal").unwrap();
+        assert_eq!(tag.as_str(), "normal");
+    }
+
+    #[test]
+    fn tag_valid_with_underscore() {
+        let tag = Tag::new("on_hit").unwrap();
+        assert_eq!(tag.as_str(), "on_hit");
+    }
+
+    #[test]
+    fn tag_valid_with_numbers() {
+        let tag = Tag::new("rekka1").unwrap();
+        assert_eq!(tag.as_str(), "rekka1");
+    }
+
+    #[test]
+    fn tag_rejects_empty() {
+        assert!(Tag::new("").is_err());
+    }
+
+    #[test]
+    fn tag_rejects_uppercase() {
+        assert!(Tag::new("Normal").is_err());
+    }
+
+    #[test]
+    fn tag_rejects_spaces() {
+        assert!(Tag::new("on hit").is_err());
+    }
+
+    #[test]
+    fn tag_rejects_special_chars() {
+        assert!(Tag::new("normal!").is_err());
     }
 }
