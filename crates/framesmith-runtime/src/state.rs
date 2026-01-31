@@ -39,6 +39,22 @@ pub struct FrameResult {
     pub move_ended: bool,
 }
 
+/// Report that the current move connected with a hit.
+///
+/// This opens on-hit cancel windows.
+#[inline]
+pub fn report_hit(state: &mut CharacterState) {
+    state.hit_confirmed = true;
+}
+
+/// Report that the current move was blocked.
+///
+/// This opens on-block cancel windows.
+#[inline]
+pub fn report_block(state: &mut CharacterState) {
+    state.block_confirmed = true;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,5 +88,23 @@ mod tests {
             move_ended: false,
         };
         assert!(!result.move_ended);
+    }
+
+    #[test]
+    fn report_hit_sets_flag() {
+        let mut state = CharacterState::default();
+        assert!(!state.hit_confirmed);
+
+        report_hit(&mut state);
+        assert!(state.hit_confirmed);
+    }
+
+    #[test]
+    fn report_block_sets_flag() {
+        let mut state = CharacterState::default();
+        assert!(!state.block_confirmed);
+
+        report_block(&mut state);
+        assert!(state.block_confirmed);
     }
 }
