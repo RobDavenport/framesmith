@@ -100,8 +100,10 @@ pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec:
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {
                     if let Some(target) = cancels.get_at(off, i) {
-                        // TODO: Filter by timing window and preconditions
-                        result.push(target);
+                        // Filter by resource preconditions (timing windows not yet implemented)
+                        if crate::resource::check_resource_preconditions(state, pack, target) {
+                            result.push(target);
+                        }
                     }
                 }
             }
@@ -130,8 +132,11 @@ pub fn available_cancels_buf(
                         break;
                     }
                     if let Some(target) = cancels.get_at(off, i) {
-                        buf[count] = target;
-                        count += 1;
+                        // Filter by resource preconditions (timing windows not yet implemented)
+                        if crate::resource::check_resource_preconditions(state, pack, target) {
+                            buf[count] = target;
+                            count += 1;
+                        }
                     }
                 }
             }
