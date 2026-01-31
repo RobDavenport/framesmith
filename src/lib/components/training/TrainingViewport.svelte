@@ -66,6 +66,12 @@
   ></div>
 
   <!-- Player character -->
+  <!--
+    Note on coordinate system:
+    - X uses screen coordinates via playerScreen.x (camera-adjusted)
+    - Y uses CSS `bottom` positioning where 0 = ground level, not screen coordinates.
+      This is intentional: higher Y values = character higher off the ground.
+  -->
   <div
     class="character player"
     class:facing-left={!player.facingRight}

@@ -53,12 +53,17 @@
   let dummyState = $state<CharacterState | null>(null);
 
   // Character display state
+  // TODO: Position updates will come from WASM in a future phase. Currently these
+  // are static placeholder values. The WASM runtime will eventually provide position
+  // data as part of CharacterState, and these values will be updated each frame.
   let playerX = $state(200);
   let playerY = $state(0);
   let dummyX = $state(600);
   let dummyY = $state(0);
 
   // Health tracking (separate from WASM state for reset functionality)
+  // Note: Player damage is not yet implemented because the dummy cannot attack.
+  // Once dummy AI or playback is added, player health will decrease from hits.
   let playerHealth = $state(10000);
   let dummyHealth = $state(10000);
   let maxHealth = $state(10000);
@@ -247,8 +252,17 @@
       // Get dummy state
       const wasmDummyState = dummyController.getWasmState();
 
-      // Tick simulation
-      const result: FrameResult = session.tick(playerInput, wasmDummyState);
+      // Tick simulation with error handling for WASM errors
+      let result: FrameResult;
+      try {
+        result = session.tick(playerInput, wasmDummyState);
+      } catch (e) {
+        console.error('WASM tick error:', e);
+        // Stop the game loop on WASM error to prevent spam
+        stopGameLoop();
+        initError = `WASM error: ${e instanceof Error ? e.message : String(e)}`;
+        return;
+      }
 
       // Update state
       playerState = result.player;
