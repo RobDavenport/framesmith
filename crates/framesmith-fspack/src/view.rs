@@ -23,7 +23,7 @@ pub const HEADER_SECTION_COUNT_OFF: usize = 12;
 pub const SECTION_HEADER_SIZE: usize = 16;
 
 /// Maximum number of sections supported.
-pub const MAX_SECTIONS: usize = 16;
+pub const MAX_SECTIONS: usize = 24;  // Increased for tag and cancel rule sections
 
 // =============================================================================
 // Section Kind Constants
@@ -77,6 +77,12 @@ pub const SECTION_MOVE_RESOURCE_PRECONDITIONS: u32 = 15;
 /// Array of MoveResourceDelta16 structs
 pub const SECTION_MOVE_RESOURCE_DELTAS: u32 = 16;
 
+/// Array of StateTagRange8 structs (parallel to MOVES)
+pub const SECTION_STATE_TAG_RANGES: u32 = 17;
+
+/// Array of StrRef pointing to tag strings
+pub const SECTION_STATE_TAGS: u32 = 18;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
@@ -110,6 +116,9 @@ pub const MOVE_RESOURCE_PRECONDITION_SIZE: usize = 12;
 
 /// MoveResourceDelta record size
 pub const MOVE_RESOURCE_DELTA_SIZE: usize = 16;
+
+/// StateTagRange record size: off(4) + count(2) + pad(2) = 8 bytes
+pub const STATE_TAG_RANGE_SIZE: usize = 8;
 
 /// HitWindow record size (24 bytes)
 pub const HIT_WINDOW_SIZE: usize = 24;
