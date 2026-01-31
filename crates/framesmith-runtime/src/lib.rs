@@ -11,7 +11,9 @@ pub mod resource;
 
 pub use state::{CharacterState, FrameInput, FrameResult};
 pub use frame::next_frame;
-pub use cancel::{can_cancel_to, available_cancels};
+pub use cancel::{can_cancel_to, available_cancels_buf};
+#[cfg(feature = "alloc")]
+pub use cancel::available_cancels;
 pub use collision::{check_hits, shapes_overlap, HitResult};
 pub use resource::{resource, set_resource};
 
