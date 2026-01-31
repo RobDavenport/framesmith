@@ -16,8 +16,8 @@ A Framesmith project is a folder containing:
     <character-id>/
       character.json
       cancel_table.json
-      moves/
-        <move-input>.json
+      states/
+        <state-input>.json
       rules.json                (optional character-level rules)
 ```
 
@@ -94,17 +94,17 @@ Notes:
   - `sprite`: grid spritesheet playback.
   - `gltf`: glTF/GLB model playback (GLB recommended).
 
-## `characters/<id>/moves/<input>.json`
+## `characters/<id>/states/<input>.json`
 
-One file per move.
+One file per state.
 
 Practical guidance:
 
 - The filename is typically `${input}.json`.
 - Avoid filesystem-hostile characters in `input` (especially on Windows: `<>:"/\\|?*`).
-- The UI “Create Move” flow enforces a conservative subset; MCP/manual creation can still use additional characters as long as the OS supports the filename.
+- The UI "Create State" flow enforces a conservative subset; MCP/manual creation can still use additional characters as long as the OS supports the filename.
 
-### Minimal (Core) Move
+### Minimal (Core) State
 
 These “core” fields are what the current UI surfaces and what the current exporters primarily use.
 

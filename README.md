@@ -22,7 +22,7 @@ my-game/
     test_char/
       character.json
       cancel_table.json
-      moves/
+      states/
         5L.json
         236P.json
       rules.json          (optional character overrides)

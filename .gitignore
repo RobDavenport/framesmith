@@ -13,3 +13,4 @@ vite.config.ts.timestamp-*
 # Export output directory (keep .gitkeep)
 /exports/*
 !/exports/.gitkeep
+nul

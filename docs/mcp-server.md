@@ -1,7 +1,7 @@
 # Framesmith MCP Server
 
 **Status:** Active
-**Last reviewed:** 2026-01-30
+**Last reviewed:** 2026-02-01
 
 Framesmith ships an MCP server binary at `src-tauri/src/bin/mcp.rs`. It exposes tools for inspecting and editing character data on disk, with the same validation pipeline used by the app/exporters.
 
@@ -88,13 +88,13 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 | Tool | Description |
 |------|-------------|
 | `ping` | Verify the MCP server is running |
-| `list_characters` | List all characters with IDs, names, and move counts |
-| `get_character` | Get complete character data (properties, moves, cancel table) |
-| `list_moves` | List moves with basic stats |
-| `get_move` | Get a single move’s complete JSON |
-| `create_move` | Create a move by writing a full move object (validates before save) |
-| `update_move` | Update a move by overwriting with a full move object (validates before save) |
-| `delete_move` | Delete a move file |
+| `list_characters` | List all characters with IDs, names, and state counts |
+| `get_character` | Get complete character data (properties, states, cancel table) |
+| `list_states` | List states with basic stats |
+| `get_state` | Get a single state's complete JSON |
+| `create_state` | Create a state by writing a full state object (validates before save) |
+| `update_state` | Update a state by overwriting with a full state object (validates before save) |
+| `delete_state` | Delete a state file |
 | `get_cancel_table` | Get cancel relationships |
 | `get_frame_data_table` | Get a compact computed frame-data table |
 | `get_rules_schema` | Get JSON Schema for rules files (for IDE autocomplete) |
@@ -111,7 +111,7 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 
 ## Validation Behavior
 
-- `create_move` and `update_move` validate using project rules (`<project>/framesmith.rules.json`) plus optional character rules (`<project>/characters/<id>/rules.json`).
+- `create_state` and `update_state` validate using project rules (`<project>/framesmith.rules.json`) plus optional character rules (`<project>/characters/<id>/rules.json`).
 - Registry-aware checks run (resources/events must match the rules registry).
 - On validation errors, the tool returns `INVALID_PARAMS`.
 
