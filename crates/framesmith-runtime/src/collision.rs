@@ -253,7 +253,7 @@ pub fn check_hits(
     let defender_frame = defender_state.frame;
 
     // Get attacker's active hitboxes
-    let attacker_moves = match attacker_pack.moves() {
+    let attacker_moves = match attacker_pack.states() {
         Some(m) => m,
         None => return result,
     };
@@ -263,7 +263,7 @@ pub fn check_hits(
     };
 
     // Get defender's active hurtboxes
-    let defender_moves = match defender_pack.moves() {
+    let defender_moves = match defender_pack.states() {
         Some(m) => m,
         None => return result,
     };

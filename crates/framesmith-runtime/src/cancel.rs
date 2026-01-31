@@ -36,7 +36,7 @@ fn state_has_tag(pack: &PackView, state_idx: u16, tag: &str) -> bool {
 /// `true` if the cancel is valid right now.
 #[must_use]
 pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bool {
-    let moves = match pack.moves() {
+    let moves = match pack.states() {
         Some(m) => m,
         None => return false,
     };
@@ -56,7 +56,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
     }
 
     // 2. Check explicit chain cancels from move extras (rekkas, target combos)
-    if let Some(extras) = pack.move_extras() {
+    if let Some(extras) = pack.state_extras() {
         if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();
@@ -135,7 +135,7 @@ fn check_action_cancel(
     pack: &PackView,
     action_id: u16,
 ) -> bool {
-    let moves = match pack.moves() {
+    let moves = match pack.states() {
         Some(m) => m,
         None => return false,
     };
@@ -162,7 +162,7 @@ fn check_action_cancel(
 pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec::Vec<u16> {
     let mut result = alloc::vec::Vec::new();
 
-    if let Some(extras) = pack.move_extras() {
+    if let Some(extras) = pack.state_extras() {
         if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();
@@ -191,7 +191,7 @@ pub fn available_cancels_buf(
 ) -> usize {
     let mut count = 0;
 
-    if let Some(extras) = pack.move_extras() {
+    if let Some(extras) = pack.state_extras() {
         if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();

@@ -38,8 +38,8 @@ pub const SECTION_MESH_KEYS: u32 = 2;
 /// Array of StrRef pointing to keyframes asset keys
 pub const SECTION_KEYFRAMES_KEYS: u32 = 3;
 
-/// Array of MoveRecord structs
-pub const SECTION_MOVES: u32 = 4;
+/// Array of StateRecord structs
+pub const SECTION_STATES: u32 = 4;
 
 /// Array of HitWindow24 structs
 pub const SECTION_HIT_WINDOWS: u32 = 5;
@@ -56,8 +56,8 @@ pub const SECTION_CANCELS_U16: u32 = 8;
 /// Array of ResourceDef12 structs
 pub const SECTION_RESOURCE_DEFS: u32 = 9;
 
-/// Array of MoveExtras structs (parallel to MOVES)
-pub const SECTION_MOVE_EXTRAS: u32 = 10;
+/// Array of StateExtras structs (parallel to STATES)
+pub const SECTION_STATE_EXTRAS: u32 = 10;
 
 /// Array of EventEmit16 structs
 pub const SECTION_EVENT_EMITS: u32 = 11;
@@ -96,14 +96,14 @@ pub const SECTION_CANCEL_DENIES: u32 = 20;
 /// String reference size: off(4) + len(2) + pad(2)
 pub const STRREF_SIZE: usize = 8;
 
-/// Move record size (see MoveRecord in module docs)
-pub const MOVE_RECORD_SIZE: usize = 32;
+/// State record size (see StateRecord in module docs)
+pub const STATE_RECORD_SIZE: usize = 32;
 
 /// ResourceDef record size
 pub const RESOURCE_DEF_SIZE: usize = 12;
 
-/// MoveExtras record size (expanded from 64 to 72 for cancel offset/length)
-pub const MOVE_EXTRAS_SIZE: usize = 72;
+/// StateExtras record size (expanded from 64 to 72 for cancel offset/length)
+pub const STATE_EXTRAS_SIZE: usize = 72;
 
 /// EventEmit record size
 pub const EVENT_EMIT_SIZE: usize = 16;
@@ -346,12 +346,12 @@ impl<'a> PackView<'a> {
         Some(KeyframesKeysView { data })
     }
 
-    /// Get moves section as a typed view.
+    /// Get states section as a typed view.
     ///
-    /// Returns `None` if no moves section exists.
-    pub fn moves(&self) -> Option<MovesView<'a>> {
-        let data = self.get_section(SECTION_MOVES)?;
-        Some(MovesView { data })
+    /// Returns `None` if no states section exists.
+    pub fn states(&self) -> Option<StatesView<'a>> {
+        let data = self.get_section(SECTION_STATES)?;
+        Some(StatesView { data })
     }
 
     /// Get resource definitions as a typed view.
@@ -360,25 +360,25 @@ impl<'a> PackView<'a> {
         Some(ResourceDefsView { data })
     }
 
-    /// Get per-move extras as a typed view.
-    pub fn move_extras(&self) -> Option<MoveExtrasView<'a>> {
-        let data = self.get_section(SECTION_MOVE_EXTRAS)?;
-        Some(MoveExtrasView { data })
+    /// Get per-state extras as a typed view.
+    pub fn state_extras(&self) -> Option<StateExtrasView<'a>> {
+        let data = self.get_section(SECTION_STATE_EXTRAS)?;
+        Some(StateExtrasView { data })
     }
 
-    /// Find a move by input notation (e.g., "5L", "236P").
+    /// Find a state by input notation (e.g., "5L", "236P").
     ///
-    /// Returns the move index and view if found.
-    pub fn find_move_by_input(&self, input: &str) -> Option<(usize, MoveView<'a>)> {
-        let moves = self.moves()?;
-        let extras = self.move_extras()?;
+    /// Returns the state index and view if found.
+    pub fn find_state_by_input(&self, input: &str) -> Option<(usize, StateView<'a>)> {
+        let states = self.states()?;
+        let extras = self.state_extras()?;
 
-        for i in 0..moves.len() {
+        for i in 0..states.len() {
             let ex = extras.get(i)?;
             let (off, len) = ex.input();
-            if let Some(move_input) = self.string(off, len) {
-                if move_input == input {
-                    return Some((i, moves.get(i)?));
+            if let Some(state_input) = self.string(off, len) {
+                if state_input == input {
+                    return Some((i, states.get(i)?));
                 }
             }
         }
@@ -594,47 +594,47 @@ impl<'a> KeyframesKeysView<'a> {
     }
 }
 
-/// Zero-copy view over the moves section.
+/// Zero-copy view over the states section.
 ///
-/// Each entry is a MoveRecord (32 bytes).
+/// Each entry is a StateRecord (32 bytes).
 #[derive(Clone, Copy)]
-pub struct MovesView<'a> {
+pub struct StatesView<'a> {
     data: &'a [u8],
 }
 
-impl<'a> MovesView<'a> {
-    /// Returns the number of moves in this section.
+impl<'a> StatesView<'a> {
+    /// Returns the number of states in this section.
     pub fn len(&self) -> usize {
-        self.data.len() / MOVE_RECORD_SIZE
+        self.data.len() / STATE_RECORD_SIZE
     }
 
-    /// Returns true if there are no moves.
+    /// Returns true if there are no states.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Get a view of the move record at the given index.
+    /// Get a view of the state record at the given index.
     ///
     /// Returns `None` if the index is out of bounds.
-    pub fn get(&self, index: usize) -> Option<MoveView<'a>> {
-        let base = index.checked_mul(MOVE_RECORD_SIZE)?;
-        let end = base.checked_add(MOVE_RECORD_SIZE)?;
+    pub fn get(&self, index: usize) -> Option<StateView<'a>> {
+        let base = index.checked_mul(STATE_RECORD_SIZE)?;
+        let end = base.checked_add(STATE_RECORD_SIZE)?;
         if end > self.data.len() {
             return None;
         }
-        Some(MoveView {
+        Some(StateView {
             data: &self.data[base..end],
         })
     }
 }
 
-/// Zero-copy view over a single move record (32 bytes).
+/// Zero-copy view over a single state record (32 bytes).
 ///
 /// Layout:
-/// - 0-1: move_id (u16)
+/// - 0-1: state_id (u16)
 /// - 2-3: mesh_key (u16)
 /// - 4-5: keyframes_key (u16)
-/// - 6: move_type (u8)
+/// - 6: state_type (u8)
 /// - 7: trigger (u8)
 /// - 8: guard (u8)
 /// - 9: flags (u8)
@@ -653,11 +653,11 @@ impl<'a> MovesView<'a> {
 /// - 28-29: hurt_windows_off (u16) - note: compressed to fit 32 bytes
 /// - 30-31: hurt_windows_len (u16)
 #[derive(Clone, Copy)]
-pub struct MoveView<'a> {
+pub struct StateView<'a> {
     data: &'a [u8],
 }
 
-/// Decoded cancel flags from move flags byte.
+/// Decoded cancel flags from state flags byte.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CancelFlags {
     pub chain: bool,
@@ -667,9 +667,9 @@ pub struct CancelFlags {
     pub self_gatling: bool,
 }
 
-impl<'a> MoveView<'a> {
-    /// Returns the move ID (index in the moves array).
-    pub fn move_id(&self) -> u16 {
+impl<'a> StateView<'a> {
+    /// Returns the state ID (index in the states array).
+    pub fn state_id(&self) -> u16 {
         read_u16_le(self.data, 0).unwrap_or(0)
     }
 
@@ -683,8 +683,8 @@ impl<'a> MoveView<'a> {
         read_u16_le(self.data, 4).unwrap_or(KEY_NONE)
     }
 
-    /// Returns the move type.
-    pub fn move_type(&self) -> u8 {
+    /// Returns the state type.
+    pub fn state_type(&self) -> u8 {
         read_u8(self.data, 6).unwrap_or(0)
     }
 
@@ -698,7 +698,7 @@ impl<'a> MoveView<'a> {
         read_u8(self.data, 8).unwrap_or(0)
     }
 
-    /// Returns the move flags.
+    /// Returns the state flags.
     pub fn flags(&self) -> u8 {
         read_u8(self.data, 9).unwrap_or(0)
     }
@@ -839,39 +839,39 @@ impl<'a> ResourceDefView<'a> {
     }
 }
 
-/// Zero-copy view over per-move extras (parallel to MOVES).
+/// Zero-copy view over per-state extras (parallel to STATES).
 #[derive(Clone, Copy)]
-pub struct MoveExtrasView<'a> {
+pub struct StateExtrasView<'a> {
     data: &'a [u8],
 }
 
-impl<'a> MoveExtrasView<'a> {
+impl<'a> StateExtrasView<'a> {
     pub fn len(&self) -> usize {
-        self.data.len() / MOVE_EXTRAS_SIZE
+        self.data.len() / STATE_EXTRAS_SIZE
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn get(&self, index: usize) -> Option<MoveExtrasRecordView<'a>> {
-        let base = index.checked_mul(MOVE_EXTRAS_SIZE)?;
-        let end = base.checked_add(MOVE_EXTRAS_SIZE)?;
+    pub fn get(&self, index: usize) -> Option<StateExtrasRecordView<'a>> {
+        let base = index.checked_mul(STATE_EXTRAS_SIZE)?;
+        let end = base.checked_add(STATE_EXTRAS_SIZE)?;
         if end > self.data.len() {
             return None;
         }
-        Some(MoveExtrasRecordView {
+        Some(StateExtrasRecordView {
             data: &self.data[base..end],
         })
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct MoveExtrasRecordView<'a> {
+pub struct StateExtrasRecordView<'a> {
     data: &'a [u8],
 }
 
-impl<'a> MoveExtrasRecordView<'a> {
+impl<'a> StateExtrasRecordView<'a> {
     pub fn on_use_emits(&self) -> (u32, u16) {
         read_range(self.data, 0).unwrap_or((0, 0))
     }
@@ -2181,7 +2181,7 @@ mod tests {
             8,
             4,
         ));
-        data.extend_from_slice(&build_section_header(SECTION_MOVES, moves_off, 32, 4));
+        data.extend_from_slice(&build_section_header(SECTION_STATES, moves_off, 32, 4));
 
         // String table data
         data.extend_from_slice(string_data);
@@ -2242,14 +2242,14 @@ mod tests {
         let pack_data = build_minimal_typed_pack();
         let pack = PackView::parse(&pack_data).expect("should parse typed pack");
 
-        let moves = pack.moves().expect("should have moves section");
+        let moves = pack.states().expect("should have moves section");
         assert_eq!(moves.len(), 1);
 
         let mv = moves.get(0).expect("should get move 0");
-        assert_eq!(mv.move_id(), 0);
+        assert_eq!(mv.state_id(), 0);
         assert_eq!(mv.mesh_key(), 0);
         assert_eq!(mv.keyframes_key(), KEY_NONE);
-        assert_eq!(mv.move_type(), 1);
+        assert_eq!(mv.state_type(), 1);
         assert_eq!(mv.trigger(), 2);
         assert_eq!(mv.guard(), 3);
         assert_eq!(mv.flags(), 4);
@@ -2266,15 +2266,15 @@ mod tests {
     #[test]
     fn move_view_cancel_flags_decode() {
         // Pack with a single MOVES section.
-        let total_len: u32 = (HEADER_SIZE + SECTION_HEADER_SIZE + MOVE_RECORD_SIZE) as u32;
+        let total_len: u32 = (HEADER_SIZE + SECTION_HEADER_SIZE + STATE_RECORD_SIZE) as u32;
         let moves_off: u32 = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
 
         let mut data = std::vec::Vec::new();
         data.extend_from_slice(&build_header(0, total_len, 1));
         data.extend_from_slice(&build_section_header(
-            SECTION_MOVES,
+            SECTION_STATES,
             moves_off,
-            MOVE_RECORD_SIZE as u32,
+            STATE_RECORD_SIZE as u32,
             4,
         ));
 
@@ -2304,7 +2304,7 @@ mod tests {
         assert_eq!(data.len(), total_len as usize);
 
         let pack = PackView::parse(&data).expect("should parse pack");
-        let mv = pack.moves().expect("moves").get(0).expect("move 0");
+        let mv = pack.states().expect("moves").get(0).expect("move 0");
         let flags = mv.cancel_flags();
         assert!(flags.chain);
         assert!(flags.special);
@@ -2318,7 +2318,7 @@ mod tests {
         let pack_data = build_minimal_typed_pack();
         let pack = PackView::parse(&pack_data).expect("should parse typed pack");
 
-        let moves = pack.moves().expect("should have moves section");
+        let moves = pack.states().expect("should have moves section");
         let mv = moves.get(0).expect("should get move 0");
         let mesh_key_idx = mv.mesh_key();
 
@@ -2341,7 +2341,7 @@ mod tests {
         let mesh_keys = pack.mesh_keys().expect("should have mesh keys section");
         assert!(mesh_keys.get(1).is_none()); // Only 1 key at index 0
 
-        let moves = pack.moves().expect("should have moves section");
+        let moves = pack.states().expect("should have moves section");
         assert!(moves.get(1).is_none()); // Only 1 move at index 0
 
         // Invalid string offset
@@ -2366,7 +2366,7 @@ mod tests {
             1,
         ));
         data.extend_from_slice(&build_section_header(SECTION_MESH_KEYS, 68, 0, 4)); // empty
-        data.extend_from_slice(&build_section_header(SECTION_MOVES, 68, 0, 4)); // empty
+        data.extend_from_slice(&build_section_header(SECTION_STATES, 68, 0, 4)); // empty
         data.extend_from_slice(string_data);
 
         let pack = PackView::parse(&data).expect("should parse pack with empty sections");
@@ -2376,7 +2376,7 @@ mod tests {
         assert!(mesh_keys.is_empty());
         assert!(mesh_keys.get(0).is_none());
 
-        let moves = pack.moves().expect("should have moves section");
+        let moves = pack.states().expect("should have moves section");
         assert_eq!(moves.len(), 0);
         assert!(moves.is_empty());
         assert!(moves.get(0).is_none());
@@ -2422,7 +2422,7 @@ mod tests {
     }
 
     #[test]
-    fn find_move_by_input_notation() {
+    fn find_state_by_input_notation() {
         fn align_up(v: u32, align: u32) -> u32 {
             if align <= 1 {
                 return v;
@@ -2480,13 +2480,13 @@ mod tests {
             1,
         ));
         data.extend_from_slice(&build_section_header(
-            SECTION_MOVES,
+            SECTION_STATES,
             moves_off,
             moves_len,
             4,
         ));
         data.extend_from_slice(&build_section_header(
-            SECTION_MOVE_EXTRAS,
+            SECTION_STATE_EXTRAS,
             extras_off,
             extras_len,
             4,
@@ -2528,17 +2528,17 @@ mod tests {
 
         let pack = PackView::parse(&data).expect("should parse pack");
 
-        let extras = pack.move_extras().expect("move extras");
+        let extras = pack.state_extras().expect("move extras");
         let ex0 = extras.get(0).expect("extras 0");
         let (off, len) = ex0.input();
         assert_eq!(pack.string(off, len), Some("5L"));
 
         let (idx, mv) = pack
-            .find_move_by_input("5L")
+            .find_state_by_input("5L")
             .expect("expected to find move by input");
         assert_eq!(idx, 0);
-        assert_eq!(mv.move_id(), 0);
-        assert!(pack.find_move_by_input("2M").is_none());
+        assert_eq!(mv.state_id(), 0);
+        assert!(pack.find_state_by_input("2M").is_none());
     }
 
     fn build_move_extras_record(
@@ -2712,13 +2712,13 @@ mod tests {
             1,
         ));
         data.extend_from_slice(&build_section_header(
-            SECTION_MOVES,
+            SECTION_STATES,
             moves_off,
             moves_len,
             4,
         ));
         data.extend_from_slice(&build_section_header(
-            SECTION_MOVE_EXTRAS,
+            SECTION_STATE_EXTRAS,
             extras_off,
             extras_len,
             4,
@@ -2851,7 +2851,7 @@ mod tests {
         assert_eq!(r0.start(), 0);
         assert_eq!(r0.max(), 10);
 
-        let extras = pack.move_extras().expect("move extras view");
+        let extras = pack.state_extras().expect("move extras view");
         let ex0 = extras.get(0).expect("extras 0");
         let (hit_off, hit_len) = ex0.on_hit_emits();
         assert_eq!(hit_off, 0);

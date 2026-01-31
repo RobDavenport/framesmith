@@ -50,7 +50,7 @@ pub fn next_frame(
 
     // Check if state ended
     // Use instance_duration if set, otherwise use state's default total
-    let move_ended = if let Some(moves) = pack.moves() {
+    let move_ended = if let Some(moves) = pack.states() {
         if let Some(mv) = moves.get(state.current_state as usize) {
             let effective_duration = if state.instance_duration > 0 {
                 state.instance_duration

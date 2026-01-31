@@ -16,7 +16,7 @@ fn zx_fspack_export_roundtrips_through_reader() {
         "pack should contain a string table"
     );
 
-    let moves = pack.moves().expect("pack should contain a moves section");
+    let moves = pack.states().expect("pack should contain a moves section");
     assert_eq!(moves.len(), char_data.moves.len());
 
     let mesh_keys = pack.mesh_keys().expect("pack should contain mesh keys");
@@ -108,7 +108,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
     let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
-    let moves = pack.moves().expect("moves section");
+    let moves = pack.states().expect("moves section");
     assert_eq!(moves.len(), 1);
 
     let mv = moves.get(0).expect("move 0");
@@ -117,8 +117,8 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
     // MoveType: normal=0, command_normal=1, special=2, super=3, movement=4, throw=5
     // Trigger: press=0, release=1, hold=2
     // Guard: high=0, mid=1, low=2, unblockable=3
-    assert_eq!(mv.move_id(), 0);
-    assert_eq!(mv.move_type(), 0);
+    assert_eq!(mv.state_id(), 0);
+    assert_eq!(mv.state_type(), 0);
     assert_eq!(mv.trigger(), 0);
     assert_eq!(mv.guard(), 1);
     assert_eq!(mv.flags(), 0);
@@ -275,7 +275,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     assert_eq!(res0.max(), 10);
 
     // Per-move extras exist and point into backing arrays
-    let extras = pack.move_extras().expect("expected MOVE_EXTRAS section");
+    let extras = pack.state_extras().expect("expected MOVE_EXTRAS section");
     assert_eq!(extras.len(), 3);
 
     let emits = pack.event_emits().expect("expected EVENT_EMITS section");
@@ -408,7 +408,7 @@ fn zx_fspack_exports_move_input_notation() {
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     let extras_data = pack
-        .get_section(framesmith_fspack::SECTION_MOVE_EXTRAS)
+        .get_section(framesmith_fspack::SECTION_STATE_EXTRAS)
         .expect("expected MOVE_EXTRAS section");
     assert_eq!(extras_data.len(), 72, "expected one 72-byte extras record");
 
@@ -437,8 +437,8 @@ fn zx_fspack_cancel_table_roundtrips() {
 
     // Parse
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
-    let moves = pack.moves().expect("moves");
-    let extras = pack.move_extras().expect("extras");
+    let moves = pack.states().expect("moves");
+    let extras = pack.state_extras().expect("extras");
     let cancels = pack.cancels().expect("cancels section should exist");
 
     // Build input->index map for verification

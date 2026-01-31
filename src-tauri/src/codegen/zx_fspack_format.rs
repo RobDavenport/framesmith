@@ -52,8 +52,8 @@ pub const SECTION_MESH_KEYS: u32 = 2;
 /// Array of StrRef pointing to keyframes asset keys
 pub const SECTION_KEYFRAMES_KEYS: u32 = 3;
 
-/// Array of MoveRecord structs
-pub const SECTION_MOVES: u32 = 4;
+/// Array of StateRecord structs
+pub const SECTION_STATES: u32 = 4;
 
 /// Array of HitWindow24 structs
 pub const SECTION_HIT_WINDOWS: u32 = 5;
@@ -70,8 +70,8 @@ pub const SECTION_CANCELS_U16: u32 = 8;
 /// Array of ResourceDef12 structs
 pub const SECTION_RESOURCE_DEFS: u32 = 9;
 
-/// Array of MoveExtras56 structs (parallel to MOVES)
-pub const SECTION_MOVE_EXTRAS: u32 = 10;
+/// Array of StateExtras56 structs (parallel to STATES)
+pub const SECTION_STATE_EXTRAS: u32 = 10;
 
 /// Array of EventEmit16 structs
 pub const SECTION_EVENT_EMITS: u32 = 11;
@@ -167,14 +167,14 @@ pub const HIT_WINDOW24_SIZE: usize = 24;
 /// Hurt window size (see HurtWindow12 struct in module docs)
 pub const HURT_WINDOW12_SIZE: usize = 12;
 
-/// Move record size (see MoveRecord struct in module docs)
-pub const MOVE_RECORD_SIZE: usize = 32;
+/// State record size (see StateRecord struct in module docs)
+pub const STATE_RECORD_SIZE: usize = 32;
 
 /// ResourceDef record size
 pub const RESOURCE_DEF12_SIZE: usize = 12;
 
-/// MoveExtras record size (expanded from 64 to 72 for cancel offset/length)
-pub const MOVE_EXTRAS72_SIZE: usize = 72;
+/// StateExtras record size (expanded from 64 to 72 for cancel offset/length)
+pub const STATE_EXTRAS72_SIZE: usize = 72;
 
 /// EventEmit record size
 pub const EVENT_EMIT16_SIZE: usize = 16;
@@ -280,13 +280,13 @@ mod tests {
             SECTION_STRING_TABLE,
             SECTION_MESH_KEYS,
             SECTION_KEYFRAMES_KEYS,
-            SECTION_MOVES,
+            SECTION_STATES,
             SECTION_HIT_WINDOWS,
             SECTION_HURT_WINDOWS,
             SECTION_SHAPES,
             SECTION_CANCELS_U16,
             SECTION_RESOURCE_DEFS,
-            SECTION_MOVE_EXTRAS,
+            SECTION_STATE_EXTRAS,
             SECTION_EVENT_EMITS,
             SECTION_EVENT_ARGS,
             SECTION_MOVE_NOTIFIES,
@@ -317,7 +317,7 @@ mod tests {
         assert_eq!(SHAPE12_SIZE, 12, "Shape12 size must be 12 bytes");
         assert_eq!(HIT_WINDOW24_SIZE, 24, "HitWindow24 size must be 24 bytes");
         assert_eq!(HURT_WINDOW12_SIZE, 12, "HurtWindow12 size must be 12 bytes");
-        assert_eq!(MOVE_RECORD_SIZE, 32, "MoveRecord size must be 32 bytes");
+        assert_eq!(STATE_RECORD_SIZE, 32, "StateRecord size must be 32 bytes");
     }
 
     #[test]

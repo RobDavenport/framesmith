@@ -8,13 +8,14 @@ use std::collections::HashMap;
 
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
-    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_EXTRAS72_SIZE, MOVE_RECORD_SIZE,
-    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CANCELS_U16, SECTION_EVENT_ARGS,
-    SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS,
-    SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVES, SECTION_MOVE_EXTRAS,
-    SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS, SECTION_MOVE_RESOURCE_DELTAS,
-    SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS, SECTION_SHAPES, SECTION_STATE_TAGS,
-    SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
+    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, SECTION_CANCEL_DENIES,
+    SECTION_CANCEL_TAG_RULES, SECTION_CANCELS_U16, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
+    SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
+    SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
+    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
+    SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_TAGS,
+    SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB,
+    STATE_EXTRAS72_SIZE, STATE_RECORD_SIZE, STRREF_SIZE,
 };
 
 fn checked_u16(value: usize, what: &str) -> Result<u16, String> {
@@ -273,8 +274,8 @@ fn pack_move_record(
     hurt_windows_off: u16,
     hurt_windows_len: u16,
     flags: u8,
-) -> [u8; MOVE_RECORD_SIZE] {
-    let mut buf = [0u8; MOVE_RECORD_SIZE];
+) -> [u8; STATE_RECORD_SIZE] {
+    let mut buf = [0u8; STATE_RECORD_SIZE];
 
     buf[0..2].copy_from_slice(&move_id.to_le_bytes()); // move_id
     buf[2..4].copy_from_slice(&mesh_key.to_le_bytes()); // mesh_key
@@ -987,7 +988,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
 
     let mut move_extras_data: Vec<u8> = Vec::new();
     if any_move_extras {
-        move_extras_data.reserve(move_extras_records.len() * MOVE_EXTRAS72_SIZE);
+        move_extras_data.reserve(move_extras_records.len() * STATE_EXTRAS72_SIZE);
         for rec in &move_extras_records {
             for (off, len) in rec {
                 write_range(&mut move_extras_data, *off, *len);
@@ -1113,7 +1114,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         bytes: keyframes_keys_data,
     });
     sections.push(SectionData {
-        kind: SECTION_MOVES,
+        kind: SECTION_STATES,
         align: 4,
         bytes: packed.moves,
     });
@@ -1148,7 +1149,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     }
     if any_move_extras {
         sections.push(SectionData {
-            kind: SECTION_MOVE_EXTRAS,
+            kind: SECTION_STATE_EXTRAS,
             align: 4,
             bytes: move_extras_data,
         });
@@ -1680,7 +1681,7 @@ mod tests {
             bytes[extras_kind_off + 2],
             bytes[extras_kind_off + 3],
         ]);
-        assert_eq!(extras_kind, SECTION_MOVE_EXTRAS);
+        assert_eq!(extras_kind, SECTION_STATE_EXTRAS);
     }
 
     #[test]
@@ -1935,7 +1936,7 @@ mod tests {
         let mv = make_move_with_hitboxes();
         let mr = pack_move_record(42, KEY_NONE, KEY_NONE, &mv, 100, 2, 200, 3, 0);
 
-        assert_eq!(mr.len(), MOVE_RECORD_SIZE);
+        assert_eq!(mr.len(), STATE_RECORD_SIZE);
 
         // 0-1: move_id
         let move_id = u16::from_le_bytes([mr[0], mr[1]]);
@@ -2007,11 +2008,11 @@ mod tests {
         let packed = pack_moves(&moves, None, None).unwrap();
 
         // Move count matches input
-        let move_count = packed.moves.len() / MOVE_RECORD_SIZE;
+        let move_count = packed.moves.len() / STATE_RECORD_SIZE;
         assert_eq!(move_count, 2);
 
         // MOVES section length is correct
-        assert_eq!(packed.moves.len(), 2 * MOVE_RECORD_SIZE);
+        assert_eq!(packed.moves.len(), 2 * STATE_RECORD_SIZE);
     }
 
     #[test]
@@ -2021,7 +2022,7 @@ mod tests {
         let packed = pack_moves(&moves, None, None).unwrap();
 
         // 1 move with 1 hitbox and 1 hurtbox
-        assert_eq!(packed.moves.len(), 1 * MOVE_RECORD_SIZE);
+        assert_eq!(packed.moves.len(), 1 * STATE_RECORD_SIZE);
         assert_eq!(packed.shapes.len(), 2 * SHAPE12_SIZE); // 1 hit + 1 hurt shape
         assert_eq!(packed.hit_windows.len(), 1 * HIT_WINDOW24_SIZE);
         assert_eq!(packed.hurt_windows.len(), 1 * HURT_WINDOW12_SIZE);
@@ -2035,8 +2036,8 @@ mod tests {
 
         // Verify each move record has valid references
         for i in 0..2 {
-            let offset = i * MOVE_RECORD_SIZE;
-            let record = &packed.moves[offset..offset + MOVE_RECORD_SIZE];
+            let offset = i * STATE_RECORD_SIZE;
+            let record = &packed.moves[offset..offset + STATE_RECORD_SIZE];
 
             // Extract hit_windows offset (22-25) and length (26-27)
             let hit_off = u32::from_le_bytes([record[22], record[23], record[24], record[25]]);
@@ -2135,13 +2136,13 @@ mod tests {
 
         let packed = pack_moves(&[mv], None, None).unwrap();
 
-        assert_eq!(packed.moves.len(), MOVE_RECORD_SIZE);
+        assert_eq!(packed.moves.len(), STATE_RECORD_SIZE);
         assert_eq!(packed.shapes.len(), 0);
         assert_eq!(packed.hit_windows.len(), 0);
         assert_eq!(packed.hurt_windows.len(), 0);
 
         // Move record should have zero-length references
-        let record = &packed.moves[0..MOVE_RECORD_SIZE];
+        let record = &packed.moves[0..STATE_RECORD_SIZE];
         let hit_len = u16::from_le_bytes([record[26], record[27]]);
         let hurt_len = u16::from_le_bytes([record[30], record[31]]);
         assert_eq!(hit_len, 0);
@@ -2209,7 +2210,7 @@ mod tests {
         assert_eq!(pack.section_count(), 9);
 
         // Verify move count matches
-        let moves = pack.moves().expect("should have MOVES section");
+        let moves = pack.states().expect("should have MOVES section");
         assert_eq!(moves.len(), 3, "move count should match");
 
         // Verify keyframes keys exist (since all moves have animations)
@@ -2258,12 +2259,12 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // Verify move count
-        let moves = pack.moves().expect("should have MOVES section");
+        let moves = pack.states().expect("should have MOVES section");
         assert_eq!(moves.len(), 1);
 
         // Get the move via the typed view
         let mv = moves.get(0).expect("should get move 0");
-        assert_eq!(mv.move_id(), 0);
+        assert_eq!(mv.state_id(), 0);
 
         // Verify the move has a valid mesh/keyframes key (not KEY_NONE since it has an animation)
         // The move "make_move_with_hitboxes" has animation "stand_light"
@@ -2322,7 +2323,7 @@ mod tests {
         assert_eq!(pack.section_count(), 8);
 
         // Verify moves section is empty
-        let moves = pack.moves().expect("should have MOVES section");
+        let moves = pack.states().expect("should have MOVES section");
         assert_eq!(moves.len(), 0);
         assert!(moves.is_empty());
 
@@ -2355,7 +2356,7 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // Verify we have 4 moves
-        let moves = pack.moves().expect("should have MOVES section");
+        let moves = pack.states().expect("should have MOVES section");
         assert_eq!(moves.len(), 4);
 
         // But only 2 unique animations (stand_light, stand_medium)
@@ -2395,7 +2396,7 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // Verify we have 2 moves
-        let moves = pack.moves().expect("should have MOVES section");
+        let moves = pack.states().expect("should have MOVES section");
         assert_eq!(moves.len(), 2);
 
         // But only 1 keyframes key (stand_light)
@@ -2467,7 +2468,7 @@ mod tests {
 
         let bytes = export_zx_fspack(&char_data).unwrap();
         let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
-        let moves = pack.moves().unwrap();
+        let moves = pack.states().unwrap();
 
         // 5L should have: chain + special + jump flags
         let mv0 = moves.get(0).unwrap();
@@ -2656,7 +2657,7 @@ mod tests {
         let bytes = export_zx_fspack(&char_data).unwrap();
         let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
 
-        let extras = pack.move_extras().expect("MOVE_EXTRAS section");
+        let extras = pack.state_extras().expect("MOVE_EXTRAS section");
         assert_eq!(extras.len(), 3);
 
         // 5L (index 0) has 2 chain targets at offset 0

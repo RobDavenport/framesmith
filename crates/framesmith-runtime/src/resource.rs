@@ -27,7 +27,7 @@ pub fn apply_resource_costs(
     pack: &framesmith_fspack::PackView,
     move_index: u16,
 ) -> bool {
-    let extras = match pack.move_extras() {
+    let extras = match pack.state_extras() {
         Some(e) => e,
         None => return true,
     };
@@ -91,7 +91,7 @@ pub fn check_resource_preconditions(
     pack: &framesmith_fspack::PackView,
     move_index: u16,
 ) -> bool {
-    let extras = match pack.move_extras() {
+    let extras = match pack.state_extras() {
         Some(e) => e,
         None => return true,
     };

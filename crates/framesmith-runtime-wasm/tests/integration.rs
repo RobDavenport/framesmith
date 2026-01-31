@@ -19,8 +19,8 @@ fn can_parse_real_fspk() {
 
     let pack = pack.unwrap();
     // Verify it has moves
-    assert!(pack.moves().is_some(), "Should have moves section");
-    let moves = pack.moves().unwrap();
+    assert!(pack.states().is_some(), "Should have moves section");
+    let moves = pack.states().unwrap();
     assert!(moves.len() > 0, "Should have at least one move");
 }
 
