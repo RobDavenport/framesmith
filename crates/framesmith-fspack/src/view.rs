@@ -83,6 +83,12 @@ pub const SECTION_STATE_TAG_RANGES: u32 = 17;
 /// Array of StrRef pointing to tag strings
 pub const SECTION_STATE_TAGS: u32 = 18;
 
+/// Section containing tag-based cancel rules
+pub const SECTION_CANCEL_TAG_RULES: u32 = 19;
+
+/// Section containing explicit deny pairs
+pub const SECTION_CANCEL_DENIES: u32 = 20;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
@@ -119,6 +125,12 @@ pub const MOVE_RESOURCE_DELTA_SIZE: usize = 16;
 
 /// StateTagRange record size: off(4) + count(2) + pad(2) = 8 bytes
 pub const STATE_TAG_RANGE_SIZE: usize = 8;
+
+/// CancelTagRule record size (24 bytes)
+pub const CANCEL_TAG_RULE_SIZE: usize = 24;
+
+/// CancelDeny record size (4 bytes: from u16, to u16)
+pub const CANCEL_DENY_SIZE: usize = 4;
 
 /// HitWindow record size (24 bytes)
 pub const HIT_WINDOW_SIZE: usize = 24;
@@ -475,6 +487,40 @@ impl<'a> PackView<'a> {
             }
             core::str::from_utf8(&string_table[start..end]).ok()
         }))
+    }
+
+    /// Get the cancel tag rules section as a typed view.
+    ///
+    /// Returns `None` if no CANCEL_TAG_RULES section exists.
+    pub fn cancel_tag_rules(&'a self) -> Option<CancelTagRulesView<'a>> {
+        let data = self.get_section(SECTION_CANCEL_TAG_RULES)?;
+        Some(CancelTagRulesView { data, pack: self })
+    }
+
+    /// Get the cancel denies section as raw bytes.
+    ///
+    /// Returns `None` if no CANCEL_DENIES section exists.
+    pub fn cancel_denies(&self) -> Option<&'a [u8]> {
+        self.get_section(SECTION_CANCEL_DENIES)
+    }
+
+    /// Check if a specific cancel is denied.
+    ///
+    /// Searches the deny list for a matching (from, to) pair.
+    pub fn has_cancel_deny(&self, from: u16, to: u16) -> bool {
+        let Some(denies) = self.cancel_denies() else {
+            return false;
+        };
+        let count = denies.len() / CANCEL_DENY_SIZE;
+        for i in 0..count {
+            let off = i * CANCEL_DENY_SIZE;
+            let deny_from = read_u16_le(denies, off).unwrap_or(0xFFFF);
+            let deny_to = read_u16_le(denies, off + 2).unwrap_or(0xFFFF);
+            if deny_from == from && deny_to == to {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -1768,6 +1814,103 @@ impl<'a> StateTagRangesView<'a> {
     /// Returns true if there are no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+// =============================================================================
+// Cancel Tag Rules View
+// =============================================================================
+
+/// View into a single cancel tag rule.
+///
+/// Binary layout (24 bytes):
+/// - from_tag StrRef: offset(4) + len(2) + pad(2) = 8 bytes (0xFFFFFFFF offset = "any")
+/// - to_tag StrRef: offset(4) + len(2) + pad(2) = 8 bytes
+/// - condition: u8 (0=always, 1=hit, 2=block, 3=whiff)
+/// - min_frame: u8
+/// - max_frame: u8
+/// - flags: u8
+/// - padding: 4 bytes
+pub struct CancelTagRuleView<'a> {
+    data: &'a [u8],
+    pack: &'a PackView<'a>,
+}
+
+impl<'a> CancelTagRuleView<'a> {
+    /// Get the source tag. Returns None if "any" (sentinel 0xFFFFFFFF).
+    pub fn from_tag(&self) -> Option<&'a str> {
+        let off = read_u32_le(self.data, 0)?;
+        let len = read_u16_le(self.data, 4)?;
+        if off == 0xFFFFFFFF {
+            return None;
+        } // "any"
+        self.pack.string(off, len)
+    }
+
+    /// Get the target tag. Returns None if "any".
+    pub fn to_tag(&self) -> Option<&'a str> {
+        let off = read_u32_le(self.data, 8)?;
+        let len = read_u16_le(self.data, 12)?;
+        if off == 0xFFFFFFFF {
+            return None;
+        }
+        self.pack.string(off, len)
+    }
+
+    /// Get the condition (0=always, 1=hit, 2=block, 3=whiff).
+    pub fn condition(&self) -> u8 {
+        read_u8(self.data, 16).unwrap_or(0)
+    }
+
+    /// Get the minimum frame for this cancel.
+    pub fn min_frame(&self) -> u8 {
+        read_u8(self.data, 17).unwrap_or(0)
+    }
+
+    /// Get the maximum frame for this cancel.
+    pub fn max_frame(&self) -> u8 {
+        read_u8(self.data, 18).unwrap_or(0)
+    }
+
+    /// Get the flags byte.
+    pub fn flags(&self) -> u8 {
+        read_u8(self.data, 19).unwrap_or(0)
+    }
+}
+
+/// View into cancel tag rules section.
+#[derive(Clone, Copy)]
+pub struct CancelTagRulesView<'a> {
+    data: &'a [u8],
+    pack: &'a PackView<'a>,
+}
+
+impl<'a> CancelTagRulesView<'a> {
+    /// Get a cancel tag rule by index.
+    pub fn get(&self, index: usize) -> Option<CancelTagRuleView<'a>> {
+        let offset = index * CANCEL_TAG_RULE_SIZE;
+        if offset + CANCEL_TAG_RULE_SIZE > self.data.len() {
+            return None;
+        }
+        Some(CancelTagRuleView {
+            data: &self.data[offset..offset + CANCEL_TAG_RULE_SIZE],
+            pack: self.pack,
+        })
+    }
+
+    /// Returns the number of cancel tag rules.
+    pub fn len(&self) -> usize {
+        self.data.len() / CANCEL_TAG_RULE_SIZE
+    }
+
+    /// Returns true if there are no cancel tag rules.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns an iterator over all cancel tag rules.
+    pub fn iter(&self) -> impl Iterator<Item = CancelTagRuleView<'a>> + '_ {
+        (0..self.len()).filter_map(move |i| self.get(i))
     }
 }
 
