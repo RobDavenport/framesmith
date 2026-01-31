@@ -1,5 +1,5 @@
 use crate::state::CharacterState;
-use framesmith_fspack::{PackView, ShapeView, SHAPE_KIND_AABB};
+use framesmith_fspack::{PackView, ShapeView, SHAPE_KIND_AABB, SHAPE_KIND_CIRCLE};
 
 /// Maximum number of hit results that can be stored.
 pub const MAX_HIT_RESULTS: usize = 8;
@@ -25,6 +25,25 @@ impl Aabb {
     }
 }
 
+/// Circle for collision detection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Circle {
+    pub x: i32,
+    pub y: i32,
+    pub r: u32,
+}
+
+impl Circle {
+    /// Create a Circle from a ShapeView at a given position offset.
+    pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
+        Circle {
+            x: shape.x_px() + offset_x,
+            y: shape.y_px() + offset_y,
+            r: shape.radius_px(),
+        }
+    }
+}
+
 /// Check if two AABBs overlap.
 ///
 /// Edge-touching is NOT considered overlap.
@@ -39,9 +58,36 @@ pub fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
     a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
 }
 
-/// Check if two shapes overlap.
+/// Check if two circles overlap.
 ///
-/// Currently only supports AABB shapes.
+/// Edge-touching is NOT considered overlap.
+#[must_use]
+#[inline]
+pub fn circle_overlap(a: &Circle, b: &Circle) -> bool {
+    let dx = (a.x as i64) - (b.x as i64);
+    let dy = (a.y as i64) - (b.y as i64);
+    let dist_sq = dx * dx + dy * dy;
+    let radii_sum = (a.r as i64) + (b.r as i64);
+    dist_sq < radii_sum * radii_sum
+}
+
+/// Check if an AABB and circle overlap.
+#[must_use]
+#[inline]
+pub fn aabb_circle_overlap(aabb: &Aabb, circle: &Circle) -> bool {
+    // Find closest point on AABB to circle center
+    let closest_x = circle.x.clamp(aabb.x, aabb.x.saturating_add(aabb.w as i32));
+    let closest_y = circle.y.clamp(aabb.y, aabb.y.saturating_add(aabb.h as i32));
+
+    let dx = (circle.x as i64) - (closest_x as i64);
+    let dy = (circle.y as i64) - (closest_y as i64);
+    let dist_sq = dx * dx + dy * dy;
+    let r = circle.r as i64;
+
+    dist_sq < r * r
+}
+
+/// Check if two shapes overlap.
 #[must_use]
 pub fn shapes_overlap(
     a: &ShapeView,
@@ -49,15 +95,29 @@ pub fn shapes_overlap(
     b: &ShapeView,
     b_offset: (i32, i32),
 ) -> bool {
-    // For now, only handle AABB
-    if a.kind() == SHAPE_KIND_AABB && b.kind() == SHAPE_KIND_AABB {
-        let aabb_a = Aabb::from_shape(a, a_offset.0, a_offset.1);
-        let aabb_b = Aabb::from_shape(b, b_offset.0, b_offset.1);
-        return aabb_overlap(&aabb_a, &aabb_b);
+    match (a.kind(), b.kind()) {
+        (SHAPE_KIND_AABB, SHAPE_KIND_AABB) => {
+            let aabb_a = Aabb::from_shape(a, a_offset.0, a_offset.1);
+            let aabb_b = Aabb::from_shape(b, b_offset.0, b_offset.1);
+            aabb_overlap(&aabb_a, &aabb_b)
+        }
+        (SHAPE_KIND_CIRCLE, SHAPE_KIND_CIRCLE) => {
+            let circle_a = Circle::from_shape(a, a_offset.0, a_offset.1);
+            let circle_b = Circle::from_shape(b, b_offset.0, b_offset.1);
+            circle_overlap(&circle_a, &circle_b)
+        }
+        (SHAPE_KIND_AABB, SHAPE_KIND_CIRCLE) => {
+            let aabb = Aabb::from_shape(a, a_offset.0, a_offset.1);
+            let circle = Circle::from_shape(b, b_offset.0, b_offset.1);
+            aabb_circle_overlap(&aabb, &circle)
+        }
+        (SHAPE_KIND_CIRCLE, SHAPE_KIND_AABB) => {
+            let circle = Circle::from_shape(a, a_offset.0, a_offset.1);
+            let aabb = Aabb::from_shape(b, b_offset.0, b_offset.1);
+            aabb_circle_overlap(&aabb, &circle)
+        }
+        _ => false, // Capsule and rotated rect not yet supported
     }
-
-    // TODO: Handle other shape types (circle, capsule, rotated rect)
-    false
 }
 
 /// Result of a hit interaction.
@@ -324,6 +384,44 @@ mod tests {
             h: 10,
         };
         assert!(!aabb_overlap(&a, &b));
+    }
+
+    #[test]
+    fn circle_overlap_detects_intersection() {
+        // Two overlapping circles
+        let a = Circle { x: 0, y: 0, r: 10 };
+        let b = Circle { x: 15, y: 0, r: 10 };
+        assert!(circle_overlap(&a, &b)); // distance 15 < 10+10
+    }
+
+    #[test]
+    fn circle_overlap_detects_no_intersection() {
+        // Two non-overlapping circles
+        let a = Circle { x: 0, y: 0, r: 10 };
+        let b = Circle { x: 25, y: 0, r: 10 };
+        assert!(!circle_overlap(&a, &b)); // distance 25 > 10+10
+    }
+
+    #[test]
+    fn circle_overlap_edge_touching_is_not_overlap() {
+        // Circles exactly touching
+        let a = Circle { x: 0, y: 0, r: 10 };
+        let b = Circle { x: 20, y: 0, r: 10 };
+        assert!(!circle_overlap(&a, &b)); // distance 20 == 10+10
+    }
+
+    #[test]
+    fn aabb_circle_overlap_detects_intersection() {
+        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
+        let circle = Circle { x: 25, y: 10, r: 10 };
+        assert!(aabb_circle_overlap(&aabb, &circle)); // circle touches right edge
+    }
+
+    #[test]
+    fn aabb_circle_overlap_detects_no_intersection() {
+        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
+        let circle = Circle { x: 35, y: 10, r: 5 };
+        assert!(!aabb_circle_overlap(&aabb, &circle)); // too far right
     }
 
     #[test]
