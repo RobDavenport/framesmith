@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "wasm:build": "wasm-pack build crates/framesmith-runtime-wasm --target web --out-dir ../../src/lib/wasm",
+    "wasm:build:dev": "wasm-pack build crates/framesmith-runtime-wasm --target web --out-dir ../../src/lib/wasm --dev"
   },
   "license": "MIT",
   "dependencies": {
