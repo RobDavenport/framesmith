@@ -9,15 +9,15 @@ pub const MAX_RESOURCES: usize = 8;
 /// - Predictable simulation (no floats, no randomness)
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct CharacterState {
-    /// Current move index (0 = idle by convention).
-    pub current_move: u16,
-    /// Current frame within the move (0-indexed).
+    /// Current state index (0 = idle by convention).
+    pub current_state: u16,
+    /// Current frame within the state (0-indexed).
     pub frame: u8,
     /// Instance-specific duration override. 0 = use state's default total().
     pub instance_duration: u8,
-    /// Move connected with a hit (opens on-hit cancel windows).
+    /// State connected with a hit (opens on-hit cancel windows).
     pub hit_confirmed: bool,
-    /// Move was blocked (opens on-block cancel windows).
+    /// State was blocked (opens on-block cancel windows).
     pub block_confirmed: bool,
     /// Resource pool values (meter, heat, ammo, etc.).
     pub resources: [u16; MAX_RESOURCES],
@@ -26,9 +26,9 @@ pub struct CharacterState {
 /// Input for a single frame of simulation.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameInput {
-    /// Move to transition to, if cancel is valid.
-    /// `None` means continue current move.
-    pub requested_move: Option<u16>,
+    /// State to transition to, if cancel is valid.
+    /// `None` means continue current state.
+    pub requested_state: Option<u16>,
 }
 
 /// Result of simulating one frame.
@@ -41,7 +41,7 @@ pub struct FrameResult {
     pub move_ended: bool,
 }
 
-/// Report that the current move connected with a hit.
+/// Report that the current state connected with a hit.
 ///
 /// This opens on-hit cancel windows.
 #[inline]
@@ -49,7 +49,7 @@ pub fn report_hit(state: &mut CharacterState) {
     state.hit_confirmed = true;
 }
 
-/// Report that the current move was blocked.
+/// Report that the current state was blocked.
 ///
 /// This opens on-block cancel windows.
 #[inline]
@@ -65,7 +65,7 @@ mod tests {
     fn character_state_is_copy_and_default() {
         let state = CharacterState::default();
         let copy = state; // Copy
-        assert_eq!(state.current_move, copy.current_move);
+        assert_eq!(state.current_state, copy.current_state);
         assert_eq!(state.frame, 0);
         assert!(!state.hit_confirmed);
         assert!(!state.block_confirmed);
@@ -79,9 +79,9 @@ mod tests {
     }
 
     #[test]
-    fn frame_input_default_has_no_requested_move() {
+    fn frame_input_default_has_no_requested_state() {
         let input = FrameInput::default();
-        assert!(input.requested_move.is_none());
+        assert!(input.requested_state.is_none());
     }
 
     #[test]

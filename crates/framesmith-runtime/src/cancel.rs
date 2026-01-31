@@ -51,13 +51,13 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
     }
 
     // 1. Explicit deny always wins - block this cancel entirely
-    if pack.has_cancel_deny(state.current_move, target) {
+    if pack.has_cancel_deny(state.current_state, target) {
         return false;
     }
 
     // 2. Check explicit chain cancels from move extras (rekkas, target combos)
     if let Some(extras) = pack.move_extras() {
-        if let Some(extra) = extras.get(state.current_move as usize) {
+        if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {
@@ -80,7 +80,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
         for rule in rules.iter() {
             // Check from_tag matches (None means "any")
             let from_matches = match rule.from_tag() {
-                Some(tag) => state_has_tag(pack, state.current_move, tag),
+                Some(tag) => state_has_tag(pack, state.current_state, tag),
                 None => true, // "any" matches all moves
             };
             if !from_matches {
@@ -139,12 +139,12 @@ fn check_action_cancel(
         Some(m) => m,
         None => return false,
     };
-    let current_move = match moves.get(state.current_move as usize) {
+    let current = match moves.get(state.current_state as usize) {
         Some(m) => m,
         None => return false,
     };
 
-    let flags = current_move.cancel_flags();
+    let flags = current.cancel_flags();
 
     match action_id {
         ACTION_CHAIN => flags.chain,
@@ -163,7 +163,7 @@ pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec:
     let mut result = alloc::vec::Vec::new();
 
     if let Some(extras) = pack.move_extras() {
-        if let Some(extra) = extras.get(state.current_move as usize) {
+        if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {
@@ -192,7 +192,7 @@ pub fn available_cancels_buf(
     let mut count = 0;
 
     if let Some(extras) = pack.move_extras() {
-        if let Some(extra) = extras.get(state.current_move as usize) {
+        if let Some(extra) = extras.get(state.current_state as usize) {
             if let Some(cancels) = pack.cancels() {
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {

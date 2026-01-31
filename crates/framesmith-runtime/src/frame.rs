@@ -18,7 +18,7 @@ fn advance_frame_counter(state: &CharacterState) -> CharacterState {
 /// # Arguments
 /// * `state` - Current character state
 /// * `pack` - Character data pack (moves, cancels, etc.)
-/// * `input` - Frame input (requested move, etc.)
+/// * `input` - Frame input (requested state, etc.)
 ///
 /// # Returns
 /// New state and whether the move ended this frame.
@@ -28,11 +28,11 @@ pub fn next_frame(
     pack: &PackView,
     input: &FrameInput,
 ) -> FrameResult {
-    // Try to transition if a move was requested
-    if let Some(target) = input.requested_move {
+    // Try to transition if a state was requested
+    if let Some(target) = input.requested_state {
         if crate::cancel::can_cancel_to(state, pack, target) {
             let mut new_state = *state;
-            new_state.current_move = target;
+            new_state.current_state = target;
             new_state.frame = 0;
             new_state.hit_confirmed = false;
             new_state.block_confirmed = false;
@@ -48,10 +48,10 @@ pub fn next_frame(
     // Advance frame
     let new_state = advance_frame_counter(state);
 
-    // Check if move ended
-    // Use instance_duration if set, otherwise use move's default total
+    // Check if state ended
+    // Use instance_duration if set, otherwise use state's default total
     let move_ended = if let Some(moves) = pack.moves() {
-        if let Some(mv) = moves.get(state.current_move as usize) {
+        if let Some(mv) = moves.get(state.current_state as usize) {
             let effective_duration = if state.instance_duration > 0 {
                 state.instance_duration
             } else {
@@ -78,14 +78,14 @@ mod tests {
     #[test]
     fn next_frame_advances_frame_counter() {
         let state = CharacterState {
-            current_move: 0,
+            current_state: 0,
             frame: 5,
             ..Default::default()
         };
 
         let next = advance_frame_counter(&state);
         assert_eq!(next.frame, 6);
-        assert_eq!(next.current_move, 0);
+        assert_eq!(next.current_state, 0);
     }
 
     #[test]

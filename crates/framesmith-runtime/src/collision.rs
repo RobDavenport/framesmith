@@ -257,7 +257,7 @@ pub fn check_hits(
         Some(m) => m,
         None => return result,
     };
-    let attacker_move = match attacker_moves.get(attacker_state.current_move as usize) {
+    let attacker_move = match attacker_moves.get(attacker_state.current_state as usize) {
         Some(m) => m,
         None => return result,
     };
@@ -267,7 +267,7 @@ pub fn check_hits(
         Some(m) => m,
         None => return result,
     };
-    let defender_move = match defender_moves.get(defender_state.current_move as usize) {
+    let defender_move = match defender_moves.get(defender_state.current_state as usize) {
         Some(m) => m,
         None => return result,
     };
@@ -323,7 +323,7 @@ pub fn check_hits(
                 defender_pos,
             ) {
                 result.push(HitResult {
-                    attacker_move: attacker_state.current_move,
+                    attacker_move: attacker_state.current_state,
                     window_index: hw_idx as u16,
                     damage: hw.damage(),
                     chip_damage: hw.chip_damage(),
