@@ -1293,12 +1293,7 @@ mod tests {
 
     /// Create an empty cancel table.
     fn make_empty_cancel_table() -> CancelTable {
-        CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        }
+        CancelTable::default()
     }
 
     #[test]
@@ -2396,6 +2391,7 @@ mod tests {
                 special_cancels: vec!["5L".to_string()],
                 super_cancels: vec!["5M".to_string()],
                 jump_cancels: vec!["5L".to_string()],
+                ..Default::default()
             },
         };
 
@@ -2495,9 +2491,7 @@ mod tests {
             ],
             cancel_table: CancelTable {
                 chains,
-                special_cancels: vec![],
-                super_cancels: vec![],
-                jump_cancels: vec![],
+                ..Default::default()
             },
         };
 
@@ -2585,9 +2579,7 @@ mod tests {
             ],
             cancel_table: CancelTable {
                 chains,
-                special_cancels: vec![],
-                super_cancels: vec![],
-                jump_cancels: vec![],
+                ..Default::default()
             },
         };
 

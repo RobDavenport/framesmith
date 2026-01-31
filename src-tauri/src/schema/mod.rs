@@ -288,12 +288,57 @@ pub struct MeterGain {
     pub whiff: u16,
 }
 
-/// Cancel table defining all move relationships
+/// Condition for when a cancel rule applies
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CancelCondition {
+    #[default]
+    Always,
+    Hit,
+    Block,
+    Whiff,
+}
+
+/// Tag-based cancel rule
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CancelTagRule {
+    /// Source state must have this tag (or "any")
+    pub from: String,
+    /// Target state must have this tag (or "any")
+    pub to: String,
+    /// When the cancel is allowed
+    #[serde(default)]
+    pub on: CancelCondition,
+    /// Minimum frame to allow cancel (0 = no minimum)
+    #[serde(default)]
+    pub after_frame: u8,
+    /// Maximum frame to allow cancel (255 = no maximum)
+    #[serde(default = "default_max_frame")]
+    pub before_frame: u8,
+}
+
+fn default_max_frame() -> u8 {
+    255
+}
+
+/// Cancel table defining all state relationships
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
 pub struct CancelTable {
+    /// Tag-based cancel rules (general patterns)
+    #[serde(default)]
+    pub tag_rules: Vec<CancelTagRule>,
+    /// Explicit chain routes (target combos, rekkas)
+    #[serde(default)]
     pub chains: std::collections::HashMap<String, Vec<String>>,
+    /// Explicit deny overrides
+    #[serde(default)]
+    pub deny: std::collections::HashMap<String, Vec<String>>,
+    // Legacy fields for backward compat during migration
+    #[serde(default)]
     pub special_cancels: Vec<String>,
+    #[serde(default)]
     pub super_cancels: Vec<String>,
+    #[serde(default)]
     pub jump_cancels: Vec<String>,
 }
 
@@ -818,5 +863,23 @@ mod tests {
 
         let mv: Move = serde_json::from_str(json).expect("move should parse");
         assert!(mv.tags.is_empty());
+    }
+
+    #[test]
+    fn cancel_table_with_tag_rules_deserializes() {
+        let json = r#"{
+          "tag_rules": [
+            { "from": "normal", "to": "special", "on": "hit" },
+            { "from": "hitstun", "to": "burst" }
+          ],
+          "chains": { "5L": ["5M", "5H"] },
+          "deny": { "2H": ["jump"] }
+        }"#;
+
+        let ct: CancelTable = serde_json::from_str(json).expect("should parse");
+        assert_eq!(ct.tag_rules.len(), 2);
+        assert_eq!(ct.tag_rules[0].from, "normal");
+        assert_eq!(ct.tag_rules[0].to, "special");
+        assert_eq!(ct.deny.get("2H"), Some(&vec!["jump".to_string()]));
     }
 }

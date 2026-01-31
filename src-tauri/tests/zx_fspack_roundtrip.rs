@@ -102,12 +102,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             notifies: vec![],
             advanced_hurtboxes: None,
         }],
-        cancel_table: CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        },
+        cancel_table: CancelTable::default(),
     };
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
@@ -260,12 +255,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
                 ..mv2
             },
         ],
-        cancel_table: CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        },
+        cancel_table: CancelTable::default(),
     };
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
@@ -411,12 +401,7 @@ fn zx_fspack_exports_move_input_notation() {
             meter_gain: MeterGain { hit: 0, whiff: 0 },
             ..Default::default()
         }],
-        cancel_table: CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        },
+        cancel_table: CancelTable::default(),
     };
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
@@ -590,12 +575,7 @@ fn tags_survive_roundtrip() {
                 ..Default::default()
             },
         ],
-        cancel_table: CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        },
+        cancel_table: CancelTable::default(),
     };
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export");
@@ -652,12 +632,7 @@ fn empty_tags_roundtrip() {
             meter_gain: MeterGain { hit: 0, whiff: 0 },
             ..Default::default()
         }],
-        cancel_table: CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        },
+        cancel_table: CancelTable::default(),
     };
 
     let bytes = codegen::export_zx_fspack(&char_data).expect("export");

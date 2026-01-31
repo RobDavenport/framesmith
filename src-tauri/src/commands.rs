@@ -89,12 +89,7 @@ fn load_character_files(
         serde_json::from_str(&content)
             .map_err(|e| format!("Invalid cancel_table.json format: {}", e))?
     } else {
-        CancelTable {
-            chains: HashMap::new(),
-            special_cancels: vec![],
-            super_cancels: vec![],
-            jump_cancels: vec![],
-        }
+        CancelTable::default()
     };
 
     Ok((char_path, character, moves, cancel_table))
@@ -679,12 +674,7 @@ pub fn create_character(
         .map_err(|e| format!("Failed to create moves directory: {}", e))?;
 
     // Create cancel_table.json with empty chains
-    let cancel_table = CancelTable {
-        chains: HashMap::new(),
-        special_cancels: vec![],
-        super_cancels: vec![],
-        jump_cancels: vec![],
-    };
+    let cancel_table = CancelTable::default();
 
     let cancel_json = serde_json::to_string_pretty(&cancel_table)
         .map_err(|e| format!("Failed to serialize cancel table: {}", e))?;
