@@ -71,8 +71,8 @@ mod tests {
 
     #[test]
     fn character_state_size_is_small() {
-        // State should be small enough for cheap copies (rollback netcode)
-        assert!(core::mem::size_of::<CharacterState>() <= 32);
+        // Exact size verification for rollback netcode efficiency
+        assert_eq!(core::mem::size_of::<CharacterState>(), 22);
     }
 
     #[test]

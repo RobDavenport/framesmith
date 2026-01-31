@@ -15,6 +15,7 @@ use framesmith_fspack::PackView;
 ///
 /// # Returns
 /// `true` if the cancel is valid right now.
+#[must_use]
 pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bool {
     let moves = match pack.moves() {
         Some(m) => m,
@@ -38,7 +39,9 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
                 for i in 0..len as usize {
                     if let Some(cancel_target) = cancels.get_at(off, i) {
                         if cancel_target == target {
-                            // TODO: Check timing windows and preconditions
+                            // Note: Timing windows and preconditions are not currently checked.
+                            // The cancel table only specifies allowed transitions; games should
+                            // implement additional validation for timing-sensitive cancels.
                             return true;
                         }
                     }
@@ -51,13 +54,16 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
 }
 
 /// Check if an action cancel is allowed (jump, dash, etc.).
+///
+/// Action cancels are always permitted at the runtime level. The game is
+/// responsible for validating whether the action is valid in the current
+/// context (e.g., checking meter costs, cooldowns, or move-specific flags).
 fn check_action_cancel(
     _state: &CharacterState,
     _pack: &PackView,
     _action_id: u16,
 ) -> bool {
-    // TODO: Check cancel flags on current move
-    // For now, delegate to game (return true and let game validate)
+    // Action cancels are delegated to the game for validation
     true
 }
 
@@ -74,7 +80,9 @@ pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec:
                 let (off, len) = extra.cancels();
                 for i in 0..len as usize {
                     if let Some(target) = cancels.get_at(off, i) {
-                        // TODO: Filter by timing window and preconditions
+                        // Note: All cancel targets are returned without filtering.
+                        // Timing windows and preconditions are not currently evaluated;
+                        // the game should filter results as needed.
                         result.push(target);
                     }
                 }

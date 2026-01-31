@@ -2,23 +2,6 @@
 
 use framesmith_runtime::*;
 
-// This test requires a test fixture - skip for now if not available
-#[test]
-#[ignore = "requires test fixture"]
-fn roundtrip_with_test_character() {
-    // TODO: Load test_char.fspk fixture
-    // let pack_data = include_bytes!("../fixtures/test_char.fspk");
-    // let pack = PackView::parse(pack_data).unwrap();
-    //
-    // let mut state = CharacterState::default();
-    // init_resources(&mut state, &pack);
-    //
-    // // Simulate a few frames
-    // let input = FrameInput::default();
-    // let result = next_frame(&state, &pack, &input);
-    // assert!(!result.move_ended);
-}
-
 #[test]
 fn state_is_deterministic() {
     let state = CharacterState {

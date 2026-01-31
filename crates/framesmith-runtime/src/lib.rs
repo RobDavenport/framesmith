@@ -16,7 +16,7 @@ pub use frame::next_frame;
 pub use cancel::{available_cancels_buf, can_cancel_to};
 #[cfg(feature = "alloc")]
 pub use cancel::available_cancels;
-pub use collision::{aabb_overlap, check_hits, shapes_overlap, Aabb, CheckHitsResult, HitResult};
+pub use collision::{aabb_overlap, check_hits, shapes_overlap, Aabb, CheckHitsResult, HitResult, MAX_HIT_RESULTS};
 pub use resource::{init_resources, resource, set_resource};
 
 // Re-export fspack for convenience

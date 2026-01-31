@@ -1,6 +1,9 @@
 use crate::state::CharacterState;
 use framesmith_fspack::{PackView, ShapeView, SHAPE_KIND_AABB};
 
+/// Maximum number of hit results that can be stored.
+pub const MAX_HIT_RESULTS: usize = 8;
+
 /// Axis-aligned bounding box for collision detection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Aabb {
@@ -26,6 +29,7 @@ impl Aabb {
 ///
 /// Edge-touching is NOT considered overlap.
 #[inline]
+#[must_use]
 pub fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
     let a_right = a.x.saturating_add(a.w as i32);
     let a_bottom = a.y.saturating_add(a.h as i32);
@@ -38,6 +42,7 @@ pub fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
 /// Check if two shapes overlap.
 ///
 /// Currently only supports AABB shapes.
+#[must_use]
 pub fn shapes_overlap(
     a: &ShapeView,
     a_offset: (i32, i32),
@@ -51,7 +56,8 @@ pub fn shapes_overlap(
         return aabb_overlap(&aabb_a, &aabb_b);
     }
 
-    // TODO: Handle other shape types (circle, capsule, rotated rect)
+    // Only AABB shapes are currently supported. Other shape types (circle,
+    // capsule, rotated rect) will return false (no overlap).
     false
 }
 
@@ -83,6 +89,7 @@ pub struct HitResult {
 /// Check all hitbox vs hurtbox interactions between two characters.
 ///
 /// Returns hit results for the game to process.
+#[must_use]
 pub fn check_hits(
     attacker_state: &CharacterState,
     attacker_pack: &PackView,
@@ -219,20 +226,20 @@ fn check_window_overlap(
 
 /// Fixed-capacity result buffer for hit checks (no_std friendly).
 pub struct CheckHitsResult {
-    hits: [Option<HitResult>; 8],
+    hits: [Option<HitResult>; MAX_HIT_RESULTS],
     count: usize,
 }
 
 impl CheckHitsResult {
     pub fn new() -> Self {
         Self {
-            hits: [None; 8],
+            hits: [None; MAX_HIT_RESULTS],
             count: 0,
         }
     }
 
     pub fn push(&mut self, hit: HitResult) {
-        if self.count < 8 {
+        if self.count < MAX_HIT_RESULTS {
             self.hits[self.count] = Some(hit);
             self.count += 1;
         }
