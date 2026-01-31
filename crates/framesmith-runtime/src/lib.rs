@@ -3,19 +3,36 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod state;
-pub mod frame;
 pub mod cancel;
 pub mod collision;
+pub mod frame;
 pub mod resource;
+pub mod state;
 
-pub use state::{CharacterState, FrameInput, FrameResult};
+// Re-export main types
+pub use state::{CharacterState, FrameInput, FrameResult, MAX_RESOURCES};
+pub use state::{report_block, report_hit};
 pub use frame::next_frame;
-pub use cancel::{can_cancel_to, available_cancels_buf};
+pub use cancel::{available_cancels_buf, can_cancel_to};
 #[cfg(feature = "alloc")]
 pub use cancel::available_cancels;
-pub use collision::{check_hits, shapes_overlap, HitResult};
-pub use resource::{resource, set_resource};
+pub use collision::{aabb_overlap, check_hits, shapes_overlap, Aabb, CheckHitsResult, HitResult};
+pub use resource::{init_resources, resource, set_resource};
+
+// Re-export fspack for convenience
+pub use framesmith_fspack::PackView;
 
 #[cfg(test)]
 extern crate std;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_api_is_accessible() {
+        let state = CharacterState::default();
+        let _input = FrameInput::default();
+        let _ = resource::resource(&state, 0);
+    }
+}
