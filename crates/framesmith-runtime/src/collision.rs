@@ -74,7 +74,10 @@ pub struct HitResult {
     pub hitstop: u8,
     /// Guard type (high/mid/low).
     pub guard: u8,
-    // TODO: Add pushback when HitWindow is expanded
+    /// Hit pushback in pixels (applied on hit).
+    pub hit_pushback: i32,
+    /// Block pushback in pixels (applied on block).
+    pub block_pushback: i32,
 }
 
 /// Check all hitbox vs hurtbox interactions between two characters.
@@ -172,6 +175,8 @@ pub fn check_hits(
                     blockstun: hw.blockstun(),
                     hitstop: hw.hitstop(),
                     guard: hw.guard(),
+                    hit_pushback: hw.hit_pushback_px(),
+                    block_pushback: hw.block_pushback_px(),
                 });
                 // Only one hit per hit window per frame
                 break;
@@ -330,6 +335,8 @@ mod tests {
                 blockstun: 5,
                 hitstop: 3,
                 guard: 0,
+                hit_pushback: 0,
+                block_pushback: 0,
             });
         }
 
