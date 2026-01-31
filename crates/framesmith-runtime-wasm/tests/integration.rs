@@ -47,7 +47,7 @@ fn simulate_with_real_fspk() {
     }
 
     // State should have advanced
-    assert!(state.frame > 0 || state.current_move > 0, "State should have progressed");
+    assert!(state.frame > 0 || state.current_state > 0, "State should have progressed");
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn character_state_conversion_roundtrip() {
     use framesmith_runtime::CharacterState as RtState;
 
     let rt_state = RtState {
-        current_move: 5,
+        current_state: 5,
         frame: 10,
         instance_duration: 0,
         hit_confirmed: true,
@@ -65,7 +65,7 @@ fn character_state_conversion_roundtrip() {
 
     let js_state = CharacterState::from(&rt_state);
 
-    assert_eq!(js_state.current_move, 5);
+    assert_eq!(js_state.current_state, 5);
     assert_eq!(js_state.frame, 10);
     assert!(js_state.hit_confirmed);
     assert!(!js_state.block_confirmed);

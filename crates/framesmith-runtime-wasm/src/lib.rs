@@ -27,7 +27,7 @@ pub enum DummyState {
 /// Character state exposed to JavaScript.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterState {
-    pub current_move: u32,
+    pub current_state: u32,
     pub frame: u32,
     pub hit_confirmed: bool,
     pub block_confirmed: bool,
@@ -37,7 +37,7 @@ pub struct CharacterState {
 impl From<&RtCharacterState> for CharacterState {
     fn from(state: &RtCharacterState) -> Self {
         CharacterState {
-            current_move: state.current_move as u32,
+            current_state: state.current_state as u32,
             frame: state.frame as u32,
             hit_confirmed: state.hit_confirmed,
             block_confirmed: state.block_confirmed,
@@ -160,7 +160,7 @@ impl TrainingSession {
 
         // Build player input
         let player_frame_input = FrameInput {
-            requested_move: if player_input == 0xFFFF {
+            requested_state: if player_input == 0xFFFF {
                 None
             } else {
                 Some(player_input as u16)
@@ -168,9 +168,9 @@ impl TrainingSession {
         };
 
         // Build dummy input based on behavior
-        let dummy_move = self.compute_dummy_move(dummy_behavior, &dummy_pack);
+        let dummy_state = self.compute_dummy_state(dummy_behavior, &dummy_pack);
         let dummy_frame_input = FrameInput {
-            requested_move: dummy_move,
+            requested_state: dummy_state,
         };
 
         // Advance player state
@@ -288,14 +288,14 @@ impl TrainingSession {
 }
 
 impl TrainingSession {
-    /// Compute what move the dummy should perform based on its behavior.
-    fn compute_dummy_move(&self, behavior: DummyState, _pack: &PackView) -> Option<u16> {
+    /// Compute what state the dummy should transition to based on its behavior.
+    fn compute_dummy_state(&self, behavior: DummyState, _pack: &PackView) -> Option<u16> {
         // For now, dummy just stays in its current state
-        // Future: map behavior to specific moves (crouch, block, etc.)
+        // Future: map behavior to specific states (crouch, block, etc.)
         match behavior {
             DummyState::Stand => None,      // Stay idle
-            DummyState::Crouch => Some(1),  // Assume move 1 is crouch (game-specific)
-            DummyState::Jump => Some(2),    // Assume move 2 is jump
+            DummyState::Crouch => Some(1),  // Assume state 1 is crouch (game-specific)
+            DummyState::Jump => Some(2),    // Assume state 2 is jump
             DummyState::BlockStand => None, // Block is handled by game logic
             DummyState::BlockCrouch => Some(1), // Crouching block
             DummyState::BlockAuto => None,  // Auto-block handled by game logic
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn character_state_conversion() {
         let rt_state = RtCharacterState {
-            current_move: 5,
+            current_state: 5,
             frame: 10,
             instance_duration: 0,
             hit_confirmed: true,
@@ -325,7 +325,7 @@ mod tests {
 
         let js_state = CharacterState::from(&rt_state);
 
-        assert_eq!(js_state.current_move, 5);
+        assert_eq!(js_state.current_state, 5);
         assert_eq!(js_state.frame, 10);
         assert!(js_state.hit_confirmed);
         assert!(!js_state.block_confirmed);
