@@ -462,7 +462,7 @@ pub struct Vec2 {
 }
 
 /// Movement properties for a move
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct Movement {
     pub distance: Option<u16>,
@@ -473,20 +473,6 @@ pub struct Movement {
     pub acceleration: Option<Vec2>,
     #[schemars(schema_with = "optional_frame_range_schema")]
     pub frames: Option<(u8, u8)>,
-}
-
-impl Default for Movement {
-    fn default() -> Self {
-        Self {
-            distance: None,
-            direction: None,
-            curve: None,
-            airborne: None,
-            velocity: None,
-            acceleration: None,
-            frames: None,
-        }
-    }
 }
 
 /// Super freeze effect
@@ -565,7 +551,7 @@ pub struct Knockback {
 }
 
 /// Effects triggered on move use
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct OnUse {
     pub enters_state: Option<EntersState>,
@@ -577,20 +563,8 @@ pub struct OnUse {
     pub resource_deltas: Vec<ResourceDelta>,
 }
 
-impl Default for OnUse {
-    fn default() -> Self {
-        Self {
-            enters_state: None,
-            spawn_entity: None,
-            gain_meter: None,
-            events: Vec::new(),
-            resource_deltas: Vec::new(),
-        }
-    }
-}
-
 /// Effects triggered on hit
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct OnHit {
     pub gain_meter: Option<u16>,
@@ -605,23 +579,8 @@ pub struct OnHit {
     pub resource_deltas: Vec<ResourceDelta>,
 }
 
-impl Default for OnHit {
-    fn default() -> Self {
-        Self {
-            gain_meter: None,
-            heal: None,
-            status: None,
-            knockback: None,
-            wall_bounce: None,
-            ground_bounce: None,
-            events: Vec::new(),
-            resource_deltas: Vec::new(),
-        }
-    }
-}
-
 /// Effects triggered on block
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct OnBlock {
     pub gain_meter: Option<u16>,
@@ -630,17 +589,6 @@ pub struct OnBlock {
     pub events: Vec<EventEmit>,
     #[serde(default)]
     pub resource_deltas: Vec<ResourceDelta>,
-}
-
-impl Default for OnBlock {
-    fn default() -> Self {
-        Self {
-            gain_meter: None,
-            pushback: None,
-            events: Vec::new(),
-            resource_deltas: Vec::new(),
-        }
-    }
 }
 
 /// Hurtbox flags for invulnerability and armor

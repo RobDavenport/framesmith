@@ -1,5 +1,8 @@
 /**
  * Tests for MoveResolver - matches input buffer to move names and checks cancels.
+ *
+ * Note: "Move" here refers to the fighting game concept (player actions like punches, fireballs)
+ * rather than the "State" data model concept. MoveResolver resolves player inputs to moves at runtime.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MoveResolver, type MoveDefinition, type MoveList } from './MoveResolver';

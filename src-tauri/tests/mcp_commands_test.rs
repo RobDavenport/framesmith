@@ -3,7 +3,7 @@
 //! These tests validate all MCP-exposed functions to ensure they behave correctly
 //! for both happy paths and error cases.
 
-use d_developmentnethercore_projectframesmith_lib::commands::{
+use framesmith_lib::commands::{
     create_character, create_move, delete_character, list_characters, load_character,
 };
 use std::fs;
@@ -53,8 +53,8 @@ fn create_test_character(characters_dir: &str, id: &str) {
     );
     fs::write(char_path.join("character.json"), character_json).unwrap();
 
-    // Create moves directory
-    fs::create_dir_all(char_path.join("moves")).unwrap();
+    // Create states directory
+    fs::create_dir_all(char_path.join("states")).unwrap();
 
     // Create cancel_table.json
     let cancel_json = r#"{"chains": {}, "special_cancels": [], "super_cancels": [], "jump_cancels": []}"#;
@@ -69,7 +69,7 @@ fn create_test_character(characters_dir: &str, id: &str) {
 fn create_test_move(characters_dir: &str, char_id: &str, input: &str, name: &str) {
     let move_path = Path::new(characters_dir)
         .join(char_id)
-        .join("moves")
+        .join("states")
         .join(format!("{}.json", input));
 
     let move_json = format!(
@@ -232,7 +232,7 @@ fn test_create_move_success() {
     // Verify file was created
     let move_path = Path::new(&characters_dir)
         .join("test-char")
-        .join("moves")
+        .join("states")
         .join("5H.json");
     assert!(move_path.exists());
 }

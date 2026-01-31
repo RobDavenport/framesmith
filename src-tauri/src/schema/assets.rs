@@ -1,33 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(default)]
-pub struct CharacterAssets {
-    #[serde(default = "default_assets_version")]
-    pub version: u32,
-    #[serde(default)]
-    pub textures: BTreeMap<String, String>,
-    #[serde(default)]
-    pub models: BTreeMap<String, String>,
-    #[serde(default)]
-    pub animations: BTreeMap<String, AnimationClip>,
-}
-
-fn default_assets_version() -> u32 {
-    1
-}
-
-impl Default for CharacterAssets {
-    fn default() -> Self {
-        Self {
-            version: default_assets_version(),
-            textures: BTreeMap::new(),
-            models: BTreeMap::new(),
-            animations: BTreeMap::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "mode", rename_all = "snake_case")]
@@ -59,17 +30,11 @@ pub struct FrameSize {
     pub h: u32,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct Pivot2 {
     pub x: i32,
     pub y: i32,
-}
-
-impl Default for Pivot2 {
-    fn default() -> Self {
-        Self { x: 0, y: 0 }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -93,15 +58,6 @@ impl Default for Pivot3 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn assets_empty_object_deserializes_with_defaults() {
-        let assets: CharacterAssets = serde_json::from_str(r#"{}"#).expect("assets should parse");
-        assert_eq!(assets.version, 1);
-        assert!(assets.textures.is_empty());
-        assert!(assets.models.is_empty());
-        assert!(assets.animations.is_empty());
-    }
 
     #[test]
     fn sprite_clip_deserializes() {

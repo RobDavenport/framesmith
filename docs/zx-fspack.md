@@ -1,6 +1,6 @@
 # ZX FSPK Export Format
 
-**Status:** Draft
+**Status:** Active
 **Last reviewed:** 2026-01-30
 
 ## Overview

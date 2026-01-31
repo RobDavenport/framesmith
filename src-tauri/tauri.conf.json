@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "d-developmentnethercore-projectframesmith",
+  "productName": "Framesmith",
   "version": "0.1.0",
-  "identifier": "com.rdave.d-developmentnethercore-projectframesmith",
+  "identifier": "com.nethercore.framesmith",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "d-developmentnethercore-projectframesmith",
+        "title": "Framesmith",
         "width": 800,
         "height": 600
       }

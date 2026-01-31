@@ -1,4 +1,4 @@
-use d_developmentnethercore_projectframesmith_lib::{codegen, commands};
+use framesmith_lib::{codegen, commands};
 
 #[test]
 fn zx_fspack_export_roundtrips_through_reader() {
@@ -24,21 +24,20 @@ fn zx_fspack_export_roundtrips_through_reader() {
         .keyframes_keys()
         .expect("pack should contain keyframes keys");
 
-    assert!(mesh_keys.len() > 0, "expected at least one mesh key");
+    assert!(!mesh_keys.is_empty(), "expected at least one mesh key");
     assert!(
-        keyframes_keys.len() > 0,
+        !keyframes_keys.is_empty(),
         "expected at least one keyframes key"
     );
 }
 
 #[test]
 fn zx_fspack_move_record_fields_match_reader_layout() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, FrameHitbox, GuardType, MeterGain, State, Pushback, Rect,
         TriggerType,
     };
-    use std::collections::HashMap;
 
     let char_data = CharacterData {
         character: Character {
@@ -143,13 +142,13 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
 
 #[test]
 fn zx_fspack_exports_resources_and_events_sections() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, CharacterResource, Cost, EventArgValue, EventEmit, GuardType,
         MeterGain, State, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta,
         TriggerType,
     };
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
 
     // Move 0: on_hit event emit with args
     let mut hit_args = BTreeMap::new();
@@ -362,11 +361,10 @@ fn zx_fspack_exports_resources_and_events_sections() {
 
 #[test]
 fn zx_fspack_exports_move_input_notation() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
-    use std::collections::HashMap;
 
     fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
         u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
@@ -485,7 +483,7 @@ fn zx_fspack_cancel_table_roundtrips() {
     for (source, targets) in &char_data.cancel_table.chains {
         let source_idx = *input_to_idx
             .get(source.as_str())
-            .expect(&format!("source move {} should exist", source));
+            .unwrap_or_else(|| panic!("source move {} should exist", source));
         let ex = extras.get(source_idx).expect("extras");
         let (off, len) = ex.cancels();
 
@@ -501,7 +499,7 @@ fn zx_fspack_cancel_table_roundtrips() {
         for (j, target) in targets.iter().enumerate() {
             let target_idx = *input_to_idx
                 .get(target.as_str())
-                .expect(&format!("target move {} should exist", target)) as u16;
+                .unwrap_or_else(|| panic!("target move {} should exist", target)) as u16;
             let packed_target = cancels.get_at(off, j).expect("cancel target");
             assert_eq!(
                 packed_target, target_idx,
@@ -527,11 +525,10 @@ fn zx_fspack_cancel_table_roundtrips() {
 
 #[test]
 fn tags_survive_roundtrip() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, GuardType, MeterGain, State, Pushback, Tag,
     };
-    use std::collections::HashMap;
 
     let char_data = CharacterData {
         character: Character {
@@ -602,11 +599,10 @@ fn tags_survive_roundtrip() {
 
 #[test]
 fn empty_tags_roundtrip() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
-    use std::collections::HashMap;
 
     let char_data = CharacterData {
         character: Character {
@@ -647,8 +643,8 @@ fn empty_tags_roundtrip() {
 
 #[test]
 fn cancel_tag_rules_roundtrip() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, State,
         Pushback, Tag,
     };
@@ -732,8 +728,8 @@ fn cancel_tag_rules_roundtrip() {
 
 #[test]
 fn cancel_denies_roundtrip() {
-    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
-    use d_developmentnethercore_projectframesmith_lib::schema::{
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
         CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
 

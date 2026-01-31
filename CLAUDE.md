@@ -66,3 +66,26 @@ ZX FSPK details: `docs/zx-fspack.md`.
 ## MCP Server
 
 Framesmith includes an MCP server binary (`src-tauri/src/bin/mcp.rs`). Configuration and tool list: `docs/mcp-server.md`.
+
+## Code Quality Standards
+
+### Rust
+
+- Run `cargo clippy --all-targets` before committing - no warnings allowed
+- Run `cargo test` before committing
+- Use `saturating_add`/`checked_add` for arithmetic that could overflow
+- Avoid `#[allow(dead_code)]` - remove unused code instead
+- Comments should explain WHY, not WHAT
+
+### TypeScript/Svelte
+
+- Run `npm run check` before committing - no errors allowed
+- Run `npm run test:run` before committing
+- Add ARIA roles to interactive elements
+- No `@ts-expect-error` without explanation
+
+### General
+
+- Prefer explicit over implicit
+- No magic numbers - use named constants
+- Test utilities go in `tests/common/` (Rust) or shared test helpers (TS)

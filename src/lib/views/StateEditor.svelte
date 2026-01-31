@@ -229,7 +229,7 @@
               />
             </div>
             <div class="form-field computed">
-              <label>Total</label>
+              <span class="computed-label">Total</span>
               <span class="computed-value">{totalFrames}f</span>
             </div>
           </div>
@@ -283,13 +283,13 @@
           <h3 class="section-title">Advantage</h3>
           <div class="form-grid">
             <div class="form-field computed">
-              <label>On Hit</label>
+              <span class="computed-label">On Hit</span>
               <span class="computed-value" class:positive={advantageOnHit >= 0}>
                 {formatAdvantage(advantageOnHit)}
               </span>
             </div>
             <div class="form-field computed">
-              <label>On Block</label>
+              <span class="computed-label">On Block</span>
               <span class="computed-value" class:positive={advantageOnBlock >= 0}>
                 {formatAdvantage(advantageOnBlock)}
               </span>
@@ -701,7 +701,8 @@
     gap: 4px;
   }
 
-  .form-field label {
+  .form-field label,
+  .form-field .computed-label {
     font-size: 12px;
     color: var(--text-secondary);
   }

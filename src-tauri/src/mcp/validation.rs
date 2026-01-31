@@ -36,10 +36,11 @@ pub fn validate_move(mv: &State) -> Result<(), Vec<ValidationError>> {
 
     // Legacy frame range validation for hitboxes/hurtboxes.
     // Use explicit mv.total when present (v2 schema), otherwise derive total from S/A/R.
-    let effective_total_frames: u16 = mv
-        .total
-        .map(u16::from)
-        .unwrap_or_else(|| u16::from(mv.startup) + u16::from(mv.active) + u16::from(mv.recovery));
+    let effective_total_frames: u16 = mv.total.map(u16::from).unwrap_or_else(|| {
+        u16::from(mv.startup)
+            .saturating_add(u16::from(mv.active))
+            .saturating_add(u16::from(mv.recovery))
+    });
 
     for (i, hitbox) in mv.hitboxes.iter().enumerate() {
         if hitbox.frames.0 > hitbox.frames.1 {
@@ -344,7 +345,7 @@ fn validate_super_freeze(super_freeze: &SuperFreeze, errors: &mut Vec<Validation
     }
 
     if let Some(darken) = super_freeze.darken {
-        if darken < 0.0 || darken > 1.0 {
+        if !(0.0..=1.0).contains(&darken) {
             errors.push(ValidationError {
                 field: "super_freeze.darken".to_string(),
                 message: "super_freeze darken must be between 0.0 and 1.0".to_string(),

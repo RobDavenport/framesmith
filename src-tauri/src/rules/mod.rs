@@ -800,7 +800,7 @@ fn apply_set_object(
         }
         leaf => {
             let base_value = get_value_at_path(base, path);
-            if base_value.map_or(true, is_unset_value) {
+            if base_value.is_none_or(is_unset_value) {
                 set_value_at_path(resolved, path, leaf.clone());
             }
         }
@@ -1129,6 +1129,7 @@ pub fn get_builtin_validations() -> Vec<BuiltinValidation> {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)] // Test code: readability over struct initializers
 mod tests {
     use super::*;
 

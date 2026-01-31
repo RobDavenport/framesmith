@@ -11,16 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Adapter {
+    #[default]
     ZxFspack,
     JsonBlob,
-}
-
-impl Default for Adapter {
-    fn default() -> Self {
-        Self::ZxFspack
-    }
 }
 
 impl Adapter {
@@ -231,7 +226,7 @@ fn export_one(characters_dir: &Path, character_id: &str, cfg: &ExportArgs) -> Re
         })?;
     }
 
-    d_developmentnethercore_projectframesmith_lib::commands::export_character(
+    framesmith_lib::commands::export_character(
         characters_dir.to_string_lossy().to_string(),
         character_id.to_string(),
         cfg.adapter.as_str().to_string(),

@@ -9,10 +9,10 @@ This document describes Framesmith’s intended shape and the current implementa
 
 Framesmith is an engine-agnostic fighting game character authoring tool. It edits character data on disk as a directory of JSON files and exports that data into runtime-friendly formats.
 
-The core idea is “git-friendly authoring”:
+The core idea is "git-friendly authoring":
 
 - One character = one folder
-- One move = one file
+- One state = one file
 - Cancels live in a central table for easy visualization
 - Validation and defaults are configurable via rules files
 
@@ -24,8 +24,8 @@ Implemented (today):
 - Projects (open/create): a folder containing `framesmith.rules.json` and `characters/`
 - Character management: create/clone/delete
 - Move management: create, edit, save
-- Views: Character Overview, Frame Data Table, Move Editor, Cancel Graph
-- Move Editor preview: 2D sprite + 3D glTF animation preview with frame scrubber and hitbox/hurtbox overlay editing
+- Views: Character Overview, Frame Data Table, State Editor, Cancel Graph
+- State Editor preview: 2D sprite + 3D glTF animation preview with frame scrubber and hitbox/hurtbox overlay editing
 - Rules system: apply defaults + validate moves; optional registry for resources/events
 - Export adapters:
   - `json-blob` (single JSON blob)
@@ -48,7 +48,7 @@ On disk, a character folder is primarily:
 
 - `character.json`
 - `cancel_table.json`
-- `moves/*.json`
+- `states/*.json`
 - optional `rules.json` (character-level rules overrides)
 
 See `docs/data-formats.md` for details.

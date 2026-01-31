@@ -34,19 +34,19 @@ pub struct CharacterIdParam {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct MoveIdParam {
+pub struct StateIdParam {
     #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
-    #[schemars(description = "The move input notation (e.g., '5L', '236P')")]
-    pub move_input: String,
+    #[schemars(description = "The state input notation (e.g., '5L', '236P')")]
+    pub state_input: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct UpdateMoveParam {
+pub struct UpdateStateParam {
     #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
-    #[schemars(description = "Complete move data as JSON object")]
-    pub move_data: d_developmentnethercore_projectframesmith_lib::schema::State,
+    #[schemars(description = "Complete state data as JSON object")]
+    pub state_data: framesmith_lib::schema::State,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -125,7 +125,7 @@ impl FramesmithMcp {
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportCharacterParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::export_character;
+        use framesmith_lib::commands::export_character;
 
         let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
         let pretty = params.pretty.unwrap_or(false);
@@ -188,7 +188,7 @@ impl FramesmithMcp {
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportAllCharactersParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::export_character;
+        use framesmith_lib::commands::export_character;
 
         let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
         let pretty = params.pretty.unwrap_or(false);
@@ -266,9 +266,9 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "List all available characters with their IDs, names, and move counts")]
+    #[tool(description = "List all available characters with their IDs, names, and state counts")]
     async fn list_characters(&self) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::list_characters as list_chars;
+        use framesmith_lib::commands::list_characters as list_chars;
 
         let summaries = list_chars(self.characters_dir.clone()).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -285,12 +285,12 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get complete character data including properties, all moves, and cancel table")]
+    #[tool(description = "Get complete character data including properties, all states, and cancel table")]
     async fn get_character(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+        use framesmith_lib::commands::load_character;
 
         let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -307,12 +307,12 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get a single move's complete data including hitboxes and frame data")]
-    async fn get_move(
+    #[tool(description = "Get a single state's complete data including hitboxes and frame data")]
+    async fn get_state(
         &self,
-        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<MoveIdParam>,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<StateIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+        use framesmith_lib::commands::load_character;
 
         let data = load_character(self.characters_dir.clone(), params.character_id.clone()).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -320,9 +320,9 @@ impl FramesmithMcp {
             data: None,
         })?;
 
-        let mv = data.moves.iter().find(|m| m.input == params.move_input).ok_or_else(|| McpError {
+        let mv = data.moves.iter().find(|m| m.input == params.state_input).ok_or_else(|| McpError {
             code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::from(format!("Move '{}' not found for character '{}'", params.move_input, params.character_id)),
+            message: Cow::from(format!("State '{}' not found for character '{}'", params.state_input, params.character_id)),
             data: None,
         })?;
 
@@ -335,16 +335,16 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Update a move's data. Provide complete move object - it will overwrite the existing move file.")]
-    async fn update_move(
+    #[tool(description = "Update a state's data. Provide complete state object - it will overwrite the existing state file.")]
+    async fn update_state(
         &self,
-        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateStateParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+        use framesmith_lib::commands::save_move;
         save_move(
             self.characters_dir.clone(),
             params.character_id.clone(),
-            params.move_data.clone(),
+            params.state_data.clone(),
         )
         .map_err(|e| {
             let code = if e.starts_with("Validation errors:") || e.starts_with("Invalid ") {
@@ -360,31 +360,31 @@ impl FramesmithMcp {
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Successfully updated move '{}' for character '{}'",
-            params.move_data.input, params.character_id
+            "Successfully updated state '{}' for character '{}'",
+            params.state_data.input, params.character_id
         ))]))
     }
 
-    #[tool(description = "Create a new move for a character. Provide complete move data.")]
-    async fn create_move(
+    #[tool(description = "Create a new state for a character. Provide complete state data.")]
+    async fn create_state(
         &self,
-        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateMoveParam>,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateStateParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::save_move;
+        use framesmith_lib::commands::save_move;
         use std::path::Path;
 
-        // Check if move already exists
-        let move_path = Path::new(&self.characters_dir)
+        // Check if state already exists
+        let state_path = Path::new(&self.characters_dir)
             .join(&params.character_id)
-            .join("moves")
-            .join(format!("{}.json", params.move_data.input));
+            .join("states")
+            .join(format!("{}.json", params.state_data.input));
 
-        if move_path.exists() {
+        if state_path.exists() {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!(
-                    "Move '{}' already exists for character '{}'. Use update_move instead.",
-                    params.move_data.input, params.character_id
+                    "State '{}' already exists for character '{}'. Use update_state instead.",
+                    params.state_data.input, params.character_id
                 )),
                 data: None,
             });
@@ -393,7 +393,7 @@ impl FramesmithMcp {
         save_move(
             self.characters_dir.clone(),
             params.character_id.clone(),
-            params.move_data.clone(),
+            params.state_data.clone(),
         )
         .map_err(|e| {
             let code = if e.starts_with("Validation errors:") || e.starts_with("Invalid ") {
@@ -409,17 +409,17 @@ impl FramesmithMcp {
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Successfully created move '{}' for character '{}'",
-            params.move_data.input, params.character_id
+            "Successfully created state '{}' for character '{}'",
+            params.state_data.input, params.character_id
         ))]))
     }
 
-    #[tool(description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all moves")]
+    #[tool(description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all states")]
     async fn get_frame_data_table(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+        use framesmith_lib::commands::load_character;
 
         let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -456,12 +456,12 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "List all moves for a character with basic stats (input, name, startup, damage)")]
-    async fn list_moves(
+    #[tool(description = "List all states for a character with basic stats (input, name, startup, damage)")]
+    async fn list_states(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+        use framesmith_lib::commands::load_character;
 
         let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -470,14 +470,14 @@ impl FramesmithMcp {
         })?;
 
         #[derive(serde::Serialize)]
-        struct MoveSummary {
+        struct StateSummary {
             input: String,
             name: String,
             startup: u8,
             damage: u16,
         }
 
-        let summaries: Vec<MoveSummary> = data.moves.iter().map(|m| MoveSummary {
+        let summaries: Vec<StateSummary> = data.moves.iter().map(|m| StateSummary {
             input: m.input.clone(),
             name: m.name.clone(),
             startup: m.startup,
@@ -498,7 +498,7 @@ impl FramesmithMcp {
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::commands::load_character;
+        use framesmith_lib::commands::load_character;
 
         let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -515,10 +515,10 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Delete a move from a character")]
-    async fn delete_move(
+    #[tool(description = "Delete a state from a character")]
+    async fn delete_state(
         &self,
-        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<MoveIdParam>,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<StateIdParam>,
     ) -> Result<CallToolResult, McpError> {
         use std::path::Path;
 
@@ -531,46 +531,46 @@ impl FramesmithMcp {
             });
         }
 
-        // Validate move_input
-        if params.move_input.contains("..") || params.move_input.contains('/') || params.move_input.contains('\\') {
+        // Validate state_input
+        if params.state_input.contains("..") || params.state_input.contains('/') || params.state_input.contains('\\') {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                message: Cow::from("Invalid move input"),
+                message: Cow::from("Invalid state input"),
                 data: None,
             });
         }
 
-        let move_path = Path::new(&self.characters_dir)
+        let state_path = Path::new(&self.characters_dir)
             .join(&params.character_id)
-            .join("moves")
-            .join(format!("{}.json", params.move_input));
+            .join("states")
+            .join(format!("{}.json", params.state_input));
 
-        if !move_path.exists() {
+        if !state_path.exists() {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!(
-                    "Move '{}' not found for character '{}'",
-                    params.move_input, params.character_id
+                    "State '{}' not found for character '{}'",
+                    params.state_input, params.character_id
                 )),
                 data: None,
             });
         }
 
-        std::fs::remove_file(&move_path).map_err(|e| McpError {
+        std::fs::remove_file(&state_path).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(format!("Failed to delete move: {}", e)),
+            message: Cow::from(format!("Failed to delete state: {}", e)),
             data: None,
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Successfully deleted move '{}' from character '{}'",
-            params.move_input, params.character_id
+            "Successfully deleted state '{}' from character '{}'",
+            params.state_input, params.character_id
         ))]))
     }
 
     #[tool(description = "Get the JSON Schema for rules files. Use this schema for IDE autocomplete when editing framesmith.rules.json files.")]
     async fn get_rules_schema(&self) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::rules::generate_rules_schema;
+        use framesmith_lib::rules::generate_rules_schema;
 
         let schema = generate_rules_schema();
         let json = serde_json::to_string_pretty(&schema).map_err(|e| McpError {
@@ -582,9 +582,9 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get the list of built-in validation rules that always run on moves. These cannot be disabled.")]
+    #[tool(description = "Get the list of built-in validation rules that always run on states. These cannot be disabled.")]
     async fn get_builtin_validations(&self) -> Result<CallToolResult, McpError> {
-        use d_developmentnethercore_projectframesmith_lib::rules::get_builtin_validations;
+        use framesmith_lib::rules::get_builtin_validations;
 
         let validations = get_builtin_validations();
         let json = serde_json::to_string_pretty(&validations).map_err(|e| McpError {
@@ -609,8 +609,8 @@ impl ServerHandler for FramesmithMcp {
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Framesmith MCP server for reading and modifying fighting game character data. \
-                 Use list_characters to see available characters, then get_character or get_move \
-                 to read data, and update_move to make changes. \
+                 Use list_characters to see available characters, then get_character or get_state \
+                 to read data, and update_state to make changes. \
                  Resources: notation_guide explains numpad notation, rules_guide documents the validation rules system. \
                  Tools: get_rules_schema returns JSON Schema for rules files, get_builtin_validations lists always-enforced validations.".to_string(),
             ),

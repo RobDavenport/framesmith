@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run --bin generate_schema
 
-use d_developmentnethercore_projectframesmith_lib::rules::generate_rules_schema;
+use framesmith_lib::rules::generate_rules_schema;
 use std::fs;
 use std::path::Path;
 

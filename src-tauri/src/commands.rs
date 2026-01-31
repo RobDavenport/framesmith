@@ -1,7 +1,6 @@
 use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
 use crate::schema::{CancelTable, Character, CharacterAssets, State};
 use base64::Engine;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
@@ -59,23 +58,23 @@ fn load_character_files(
     let character: Character = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid character.json format: {}", e))?;
 
-    // Load all moves
-    let moves_dir = char_path.join("moves");
+    // Load all states
+    let states_dir = char_path.join("states");
     let mut moves = vec![];
-    if moves_dir.exists() {
-        for entry in fs::read_dir(&moves_dir).map_err(|e| e.to_string())? {
+    if states_dir.exists() {
+        for entry in fs::read_dir(&states_dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
-            let move_path = entry.path();
-            if move_path.extension().map(|e| e == "json").unwrap_or(false) {
-                let content = fs::read_to_string(&move_path).map_err(|e| {
+            let state_path = entry.path();
+            if state_path.extension().map(|e| e == "json").unwrap_or(false) {
+                let content = fs::read_to_string(&state_path).map_err(|e| {
                     format!(
-                        "Failed to read move file {:?}: {}",
-                        move_path.file_name(),
+                        "Failed to read state file {:?}: {}",
+                        state_path.file_name(),
                         e
                     )
                 })?;
                 let mv: State = serde_json::from_str(&content)
-                    .map_err(|e| format!("Invalid move file {:?}: {}", move_path.file_name(), e))?;
+                    .map_err(|e| format!("Invalid state file {:?}: {}", state_path.file_name(), e))?;
                 moves.push(mv);
             }
         }
@@ -136,11 +135,12 @@ pub fn list_characters(characters_dir: String) -> Result<Vec<CharacterSummary>, 
         let content = fs::read_to_string(&char_file).map_err(|e| e.to_string())?;
         let character: Character = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-        let moves_dir = char_path.join("moves");
-        let move_count = if moves_dir.exists() {
-            fs::read_dir(&moves_dir)
-                .map(|dir| dir.filter(|e| e.is_ok()).count())
-                .unwrap_or(0)
+        let states_dir = char_path.join("states");
+        let move_count = if states_dir.exists() {
+            fs::read_dir(&states_dir)
+                .map_err(|e| format!("Failed to read states directory: {}", e))?
+                .filter(|e| e.is_ok())
+                .count()
         } else {
             0
         };
@@ -367,13 +367,13 @@ pub fn save_move(characters_dir: String, character_id: String, mv: State) -> Res
         return Err(format!("Validation errors: {}", errors.join("; ")));
     }
 
-    let move_path = char_path
-        .join("moves")
+    let state_path = char_path
+        .join("states")
         .join(format!("{}.json", mv.input));
 
     let content = serde_json::to_string_pretty(&mv)
         .map_err(|e| format!("Failed to serialize move: {}", e))?;
-    fs::write(&move_path, content).map_err(|e| format!("Failed to write move file: {}", e))?;
+    fs::write(&state_path, content).map_err(|e| format!("Failed to write state file: {}", e))?;
 
     Ok(())
 }
@@ -669,9 +669,9 @@ pub fn create_character(
     fs::write(char_path.join("character.json"), char_json)
         .map_err(|e| format!("Failed to write character.json: {}", e))?;
 
-    // Create moves directory
-    fs::create_dir_all(char_path.join("moves"))
-        .map_err(|e| format!("Failed to create moves directory: {}", e))?;
+    // Create states directory
+    fs::create_dir_all(char_path.join("states"))
+        .map_err(|e| format!("Failed to create states directory: {}", e))?;
 
     // Create cancel_table.json with empty chains
     let cancel_table = CancelTable::default();
@@ -807,22 +807,22 @@ pub fn create_move(
         return Err("Move name cannot be empty".to_string());
     }
 
-    let moves_dir = Path::new(&characters_dir)
+    let states_dir = Path::new(&characters_dir)
         .join(&character_id)
-        .join("moves");
+        .join("states");
 
-    // Check moves directory exists
-    if !moves_dir.exists() {
+    // Check states directory exists
+    if !states_dir.exists() {
         return Err(format!(
-            "Character '{}' moves directory not found",
+            "Character '{}' states directory not found",
             character_id
         ));
     }
 
-    let move_path = moves_dir.join(format!("{}.json", input));
+    let state_path = states_dir.join(format!("{}.json", input));
 
     // Check move doesn't already exist
-    if move_path.exists() {
+    if state_path.exists() {
         return Err(format!("Move '{}' already exists", input));
     }
 
@@ -860,10 +860,10 @@ pub fn create_move(
         advanced_hurtboxes: None,
     };
 
-    // Write the move file
+    // Write the state file
     let content = serde_json::to_string_pretty(&mv)
         .map_err(|e| format!("Failed to serialize move: {}", e))?;
-    fs::write(&move_path, content).map_err(|e| format!("Failed to write move file: {}", e))?;
+    fs::write(&state_path, content).map_err(|e| format!("Failed to write state file: {}", e))?;
 
     Ok(mv)
 }
@@ -927,8 +927,8 @@ mod tests {
         let char_dir = characters_dir.join("test-char");
         fs::create_dir_all(&char_dir).unwrap();
 
-        let moves_dir = char_dir.join("moves");
-        fs::create_dir_all(&moves_dir).unwrap();
+        let states_dir = char_dir.join("states");
+        fs::create_dir_all(&states_dir).unwrap();
 
         characters_dir.to_string_lossy().to_string()
     }
@@ -1038,11 +1038,11 @@ mod tests {
         assert_eq!(mv.name, "Light Punch");
 
         // Verify file was created
-        let move_path = Path::new(&characters_dir)
+        let state_path = Path::new(&characters_dir)
             .join("test-char")
-            .join("moves")
+            .join("states")
             .join("5L.json");
-        assert!(move_path.exists());
+        assert!(state_path.exists());
     }
 
     #[test]

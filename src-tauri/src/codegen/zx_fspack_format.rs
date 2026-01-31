@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_flags_reserved_is_zero() {
-        assert_eq!(FLAGS_RESERVED as u32, 0);
+        assert_eq!(FLAGS_RESERVED, 0);
     }
 
     #[test]

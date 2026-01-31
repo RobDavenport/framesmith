@@ -264,6 +264,7 @@ fn trigger_type_to_u8(trigger: Option<&crate::schema::TriggerType>) -> u8 {
 /// - 26-27: hit_windows_len (u16)
 /// - 28-29: hurt_windows_off (u16)
 /// - 30-31: hurt_windows_len (u16)
+#[allow(clippy::too_many_arguments)] // Binary record packing requires all fields
 fn pack_move_record(
     move_id: u16,
     mesh_key: u16,
@@ -553,6 +554,7 @@ fn write_section_header(buf: &mut Vec<u8>, kind: u32, offset: u32, length: u32, 
 /// Export character data to FSPK binary format.
 ///
 /// Returns the packed binary data as a Vec<u8>.
+#[allow(clippy::vec_init_then_push)] // Intentional: base sections first, optional sections conditionally added
 pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     // Step 1: Build string table and asset keys
     let mut strings = StringTable::new();
@@ -2022,10 +2024,10 @@ mod tests {
         let packed = pack_moves(&moves, None, None).unwrap();
 
         // 1 move with 1 hitbox and 1 hurtbox
-        assert_eq!(packed.moves.len(), 1 * STATE_RECORD_SIZE);
+        assert_eq!(packed.moves.len(), STATE_RECORD_SIZE);
         assert_eq!(packed.shapes.len(), 2 * SHAPE12_SIZE); // 1 hit + 1 hurt shape
-        assert_eq!(packed.hit_windows.len(), 1 * HIT_WINDOW24_SIZE);
-        assert_eq!(packed.hurt_windows.len(), 1 * HURT_WINDOW12_SIZE);
+        assert_eq!(packed.hit_windows.len(), HIT_WINDOW24_SIZE);
+        assert_eq!(packed.hurt_windows.len(), HURT_WINDOW12_SIZE);
         assert_eq!(packed.cancels.len(), 0); // empty for v1
     }
 
@@ -2674,7 +2676,7 @@ mod tests {
 
         // 5H (index 2) has no chain targets
         let ex2 = extras.get(2).expect("extras 2");
-        let (off2, len2) = ex2.cancels();
+        let (_off2, len2) = ex2.cancels();
         assert_eq!(len2, 0, "5H should have 0 cancel targets");
 
         // Verify we can use CancelsView to read targets

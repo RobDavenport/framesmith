@@ -63,7 +63,7 @@ cd src-tauri && cargo run --bin framesmith -- export --all --project .. --out-di
 ## Key Constraints
 
 1. **Engine-agnostic** - Data format is JSON; exporters handle engine-specific output
-2. **Directory-based** - One file per move for easy git diffs and merge conflicts
+2. **Directory-based** - One file per state for easy git diffs and merge conflicts
 3. **Central cancel table** - All cancel relationships in one file for easy visualization
 4. **Rules-driven validation** - Defaults + constraints are configured via rules files
 5. **Registry-aware** - Resources/events are validated against the rules registry (no silent typos)
