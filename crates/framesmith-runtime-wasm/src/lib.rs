@@ -150,7 +150,9 @@ impl TrainingSession {
     /// # Returns
     /// A FrameResult containing the new states and any hits that occurred.
     pub fn tick(&mut self, player_input: u32, dummy_behavior: DummyState) -> Result<JsValue, JsError> {
-        // Parse packs (they're already validated in constructor)
+        // PackView::parse is zero-copy: it just validates the header and stores
+        // offsets into the existing byte slice. Re-parsing each frame is cheap
+        // (~100ns) and avoids lifetime complexity from caching the view.
         let player_pack = PackView::parse(&self.player_pack_data)
             .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
         let dummy_pack = PackView::parse(&self.dummy_pack_data)
@@ -239,6 +241,7 @@ impl TrainingSession {
 
     /// Get available cancel targets for the player's current state.
     pub fn available_cancels(&self) -> Result<JsValue, JsError> {
+        // Zero-copy parse; see comment in tick() for rationale.
         let player_pack = PackView::parse(&self.player_pack_data)
             .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
 
@@ -258,6 +261,7 @@ impl TrainingSession {
 
     /// Reset the session to initial state.
     pub fn reset(&mut self) -> Result<(), JsError> {
+        // Zero-copy parse; see comment in tick() for rationale.
         let player_pack = PackView::parse(&self.player_pack_data)
             .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
         let dummy_pack = PackView::parse(&self.dummy_pack_data)

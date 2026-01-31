@@ -6,13 +6,12 @@
  */
 
 // Type imports from the generated WASM bindings
-import type {
-  TrainingSession as WasmTrainingSession,
-  DummyState as WasmDummyState,
-} from '$lib/wasm/framesmith_runtime_wasm.js';
+import type { TrainingSession as WasmTrainingSession } from '$lib/wasm/framesmith_runtime_wasm.js';
 
 /**
  * Dummy behavior states for training mode.
+ *
+ * Values must match the Rust DummyState enum in framesmith-runtime-wasm.
  */
 export enum DummyState {
   Stand = 0,
@@ -21,6 +20,19 @@ export enum DummyState {
   BlockStand = 3,
   BlockCrouch = 4,
   BlockAuto = 5,
+}
+
+/**
+ * Convert TypeScript DummyState to the WASM DummyState value.
+ *
+ * The WASM-generated DummyState type is an opaque number, and wasm-bindgen
+ * represents Rust enums as numeric values matching their discriminant order.
+ * This function provides a type-safe mapping.
+ */
+function toWasmDummyState(state: DummyState): number {
+  // wasm-bindgen represents #[wasm_bindgen] enums as their variant index (0, 1, 2, ...)
+  // Our TypeScript enum values intentionally match the Rust enum order.
+  return state;
 }
 
 /**
@@ -139,7 +151,7 @@ export class TrainingSession {
    * @returns The frame result containing new states and any hits
    */
   tick(playerInput: number, dummyState: DummyState): FrameResult {
-    return this.session.tick(playerInput, dummyState as unknown as WasmDummyState);
+    return this.session.tick(playerInput, toWasmDummyState(dummyState));
   }
 
   /**
