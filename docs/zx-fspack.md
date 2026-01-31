@@ -40,7 +40,7 @@ export_character(
 ```
 
 This produces a `.fspk` binary file containing:
-- Character move data (frame counts, damage, hitstun, etc.)
+- Character state data (frame counts, damage, hitstun, etc.)
 - Hitbox and hurtbox geometry
 - Asset key references (mesh and animation keys)
 
@@ -100,36 +100,36 @@ if let Some(kf_keys) = pack.keyframes_keys() {
 }
 ```
 
-### Accessing Move Data at Runtime
+### Accessing State Data at Runtime
 
-Once loaded, access move data using the move ID (index):
+Once loaded, access state data using the state ID (index):
 
 ```rust
-// 6. At runtime, look up move data by ID
-if let Some(moves) = pack.moves() {
-    let move_id = 0; // e.g., standing light punch
-    if let Some(mv) = moves.get(move_id) {
+// 6. At runtime, look up state data by ID
+if let Some(states) = pack.states() {
+    let state_id = 0; // e.g., standing light punch
+    if let Some(st) = states.get(state_id) {
         // Frame data
-        let startup = mv.startup();       // u8: startup frames
-        let active = mv.active();         // u8: active frames
-        let recovery = mv.recovery();     // u8: recovery frames
-        let total = mv.total();           // u16: total duration
+        let startup = st.startup();       // u8: startup frames
+        let active = st.active();         // u8: active frames
+        let recovery = st.recovery();     // u8: recovery frames
+        let total = st.total();           // u16: total duration
 
         // Combat data
-        let damage = mv.damage();         // u16: damage value
-        let hitstun = mv.hitstun();       // u8: hitstun frames
-        let blockstun = mv.blockstun();   // u8: blockstun frames
-        let hitstop = mv.hitstop();       // u8: hitstop frames
-        let guard = mv.guard();           // u8: guard type (high/mid/low)
+        let damage = st.damage();         // u16: damage value
+        let hitstun = st.hitstun();       // u8: hitstun frames
+        let blockstun = st.blockstun();   // u8: blockstun frames
+        let hitstop = st.hitstop();       // u8: hitstop frames
+        let guard = st.guard();           // u8: guard type (high/mid/low)
 
         // Asset references (indices into handle arrays)
-        let mesh_idx = mv.mesh_key();
+        let mesh_idx = st.mesh_key();
         if mesh_idx != KEY_NONE {
             let mesh = mesh_handles[mesh_idx as usize];
             // Use mesh for rendering
         }
 
-        let kf_idx = mv.keyframes_key();
+        let kf_idx = st.keyframes_key();
         if kf_idx != KEY_NONE {
             let keyframes = keyframes_handles[kf_idx as usize];
             // Use keyframes for animation playback
@@ -165,19 +165,23 @@ if let Some(moves) = pack.moves() {
 | STRING_TABLE | 1 | Raw UTF-8 string data |
 | MESH_KEYS | 2 | Array of StrRef pointing to mesh asset keys |
 | KEYFRAMES_KEYS | 3 | Array of StrRef pointing to animation asset keys |
-| MOVES | 4 | Array of MoveRecord structs |
+| STATES | 4 | Array of StateRecord structs |
 | HIT_WINDOWS | 5 | Array of HitWindow24 structs (active hitbox frames) |
 | HURT_WINDOWS | 6 | Array of HurtWindow12 structs (hurtbox frames) |
 | SHAPES | 7 | Array of Shape12 structs (hitbox/hurtbox geometry) |
-| CANCELS_U16 | 8 | Array of u16 move IDs for cancel targets |
+| CANCELS_U16 | 8 | Array of u16 state IDs for cancel targets |
 | RESOURCE_DEFS | 9 | Array of ResourceDef12 structs (character resource pools) |
-| MOVE_EXTRAS | 10 | Array of MoveExtras72 structs (parallel to MOVES) |
+| STATE_EXTRAS | 10 | Array of StateExtras72 structs (parallel to STATES) |
 | EVENT_EMITS | 11 | Array of EventEmit16 structs |
 | EVENT_ARGS | 12 | Array of EventArg20 structs |
-| MOVE_NOTIFIES | 13 | Array of MoveNotify12 structs |
-| MOVE_RESOURCE_COSTS | 14 | Array of MoveResourceCost12 structs |
-| MOVE_RESOURCE_PRECONDITIONS | 15 | Array of MoveResourcePrecondition12 structs |
-| MOVE_RESOURCE_DELTAS | 16 | Array of MoveResourceDelta16 structs |
+| STATE_NOTIFIES | 13 | Array of StateNotify12 structs |
+| STATE_RESOURCE_COSTS | 14 | Array of StateResourceCost12 structs |
+| STATE_RESOURCE_PRECONDITIONS | 15 | Array of StateResourcePrecondition12 structs |
+| STATE_RESOURCE_DELTAS | 16 | Array of StateResourceDelta16 structs |
+| STATE_TAG_RANGES | 17 | Array of StateTagRange8 structs (parallel to STATES) |
+| STATE_TAGS | 18 | Array of StrRef pointing to tag strings |
+| CANCEL_TAG_RULES | 19 | Array of CancelTagRule24 structs |
+| CANCEL_DENIES | 20 | Array of CancelDeny4 structs |
 
 ### Data Structures
 
@@ -191,17 +195,17 @@ String references point into the STRING_TABLE section:
 | 4 | 2 | len | String length in bytes |
 | 6 | 2 | _pad | Padding (reserved) |
 
-#### MoveRecord (32 bytes)
+#### StateRecord (32 bytes)
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
-| 0 | 2 | move_id | Index in the MOVES array |
+| 0 | 2 | state_id | Index in the STATES array |
 | 2 | 2 | mesh_key | Index into MESH_KEYS (0xFFFF = none) |
 | 4 | 2 | keyframes_key | Index into KEYFRAMES_KEYS (0xFFFF = none) |
-| 6 | 1 | move_type | Move type enum |
+| 6 | 1 | state_type | State type enum |
 | 7 | 1 | trigger | Input trigger type |
 | 8 | 1 | guard | Guard type (high/mid/low) |
-| 9 | 1 | flags | Cancel flags (see below) |
+| 9 | 1 | flags | State flags (see below) |
 | 10 | 1 | startup | Startup frames |
 | 11 | 1 | active | Active frames |
 | 12 | 1 | recovery | Recovery frames |
@@ -217,14 +221,15 @@ String references point into the STRING_TABLE section:
 | 28 | 2 | hurt_windows_off | Byte offset within HURT_WINDOWS section (compressed to u16) |
 | 30 | 2 | hurt_windows_len | Number of hurt windows |
 
-**Cancel Flags (MoveRecord.flags byte):**
+**State Flags (StateRecord.flags byte):**
 
 | Bit | Flag | Description |
 |-----|------|-------------|
-| 0x01 | CHAIN | Move has chain cancel routes in CANCELS_U16 |
-| 0x02 | SPECIAL | Move can cancel into special moves |
-| 0x04 | SUPER | Move can cancel into super moves |
-| 0x08 | JUMP | Move can cancel into jump |
+| 0x01 | CHAIN | State has chain cancel routes in CANCELS_U16 |
+| 0x02 | SPECIAL | State can cancel into special moves |
+| 0x04 | SUPER | State can cancel into super moves |
+| 0x08 | JUMP | State can cancel into jump |
+| 0x10 | SELF_GATLING | State can cancel into itself |
 
 #### ResourceDef12 (12 bytes)
 
@@ -236,9 +241,9 @@ Character resource pool definition.
 | 8 | 2 | start | Starting amount |
 | 10 | 2 | max | Max amount |
 
-#### MoveExtras72 (72 bytes)
+#### StateExtras72 (72 bytes)
 
-Per-move offsets/lengths for optional data arrays (parallel to `MOVES`). All offsets are byte offsets into their respective backing section.
+Per-state offsets/lengths for optional data arrays (parallel to `STATES`). All offsets are byte offsets into their respective backing section.
 
 Each range is 8 bytes: `off(u32) + len(u16) + _pad(u16)`.
 
@@ -247,16 +252,16 @@ Each range is 8 bytes: `off(u32) + len(u16) + _pad(u16)`.
 | 0 | 8 | on_use_emits | Range into `EVENT_EMITS` |
 | 8 | 8 | on_hit_emits | Range into `EVENT_EMITS` |
 | 16 | 8 | on_block_emits | Range into `EVENT_EMITS` |
-| 24 | 8 | notifies | Range into `MOVE_NOTIFIES` |
-| 32 | 8 | resource_costs | Range into `MOVE_RESOURCE_COSTS` |
-| 40 | 8 | resource_preconditions | Range into `MOVE_RESOURCE_PRECONDITIONS` |
-| 48 | 8 | resource_deltas | Range into `MOVE_RESOURCE_DELTAS` |
-| 56 | 8 | input_notation | StrRef to move input notation (e.g., "5L", "236P") |
+| 24 | 8 | notifies | Range into `STATE_NOTIFIES` |
+| 32 | 8 | resource_costs | Range into `STATE_RESOURCE_COSTS` |
+| 40 | 8 | resource_preconditions | Range into `STATE_RESOURCE_PRECONDITIONS` |
+| 48 | 8 | resource_deltas | Range into `STATE_RESOURCE_DELTAS` |
+| 56 | 8 | input_notation | StrRef to state input notation (e.g., "5L", "236P") |
 | 64 | 8 | cancels | Range into `CANCELS_U16` for chain cancel targets |
 
 #### EventEmit16 (16 bytes)
 
-One notification event emission: `emit_event(id, args)`.
+One event emission: `emit_event(id, args)`.
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
@@ -281,7 +286,7 @@ Flat arg map entry `key -> value`.
 - `2 (f32)`: `f32` little-endian in the lower 4 bytes (upper 4 bytes 0)
 - `3 (string/enum)`: StrRef packed as `off(u32) + len(u16) + _pad(u16)`
 
-#### MoveNotify12 (12 bytes)
+#### StateNotify12 (12 bytes)
 
 Timeline-triggered notify point.
 
@@ -291,9 +296,9 @@ Timeline-triggered notify point.
 | 2 | 2 | _pad | Reserved (0) |
 | 4 | 8 | emits | Range into `EVENT_EMITS` |
 
-#### MoveResourceCost12 (12 bytes)
+#### StateResourceCost12 (12 bytes)
 
-Resource-type move costs only (`Cost::Resource`).
+Resource-type state costs only (`Cost::Resource`).
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
@@ -301,9 +306,9 @@ Resource-type move costs only (`Cost::Resource`).
 | 8 | 2 | amount | Cost amount |
 | 10 | 2 | _pad | Reserved (0) |
 
-#### MoveResourcePrecondition12 (12 bytes)
+#### StateResourcePrecondition12 (12 bytes)
 
-Resource-type move preconditions only (`Precondition::Resource`).
+Resource-type state preconditions only (`Precondition::Resource`).
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
@@ -311,7 +316,7 @@ Resource-type move preconditions only (`Precondition::Resource`).
 | 8 | 2 | min | Minimum required (0xFFFF = none) |
 | 10 | 2 | max | Maximum allowed (0xFFFF = none) |
 
-#### MoveResourceDelta16 (16 bytes)
+#### StateResourceDelta16 (16 bytes)
 
 Resource delta applied by a trigger.
 
@@ -370,6 +375,52 @@ Hurtbox frame ranges:
 | 8 | 2 | shapes_len | Number of shapes |
 | 10 | 2 | _reserved | Reserved |
 
+#### StateTagRange8 (8 bytes)
+
+Per-state tag index range (parallel to STATES section). Points into the STATE_TAGS section.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | offset | Byte offset into STATE_TAGS section |
+| 4 | 2 | count | Number of tags for this state |
+| 6 | 2 | _pad | Reserved (0) |
+
+#### CancelTagRule24 (24 bytes)
+
+Tag-based cancel rule. Allows canceling from states with `from_tag` to states with `to_tag` under specified conditions.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | from_tag_off | StrRef offset for source tag (0xFFFFFFFF = any) |
+| 4 | 2 | from_tag_len | StrRef length for source tag |
+| 6 | 2 | _pad1 | Reserved (0) |
+| 8 | 4 | to_tag_off | StrRef offset for target tag (0xFFFFFFFF = any) |
+| 12 | 2 | to_tag_len | StrRef length for target tag |
+| 14 | 2 | _pad2 | Reserved (0) |
+| 16 | 1 | condition | 0=always, 1=on_hit, 2=on_block, 3=on_whiff |
+| 17 | 1 | min_frame | Minimum frame for cancel (0 = no minimum) |
+| 18 | 1 | max_frame | Maximum frame for cancel (0 = no maximum) |
+| 19 | 1 | flags | Reserved (0) |
+| 20 | 4 | _pad3 | Reserved (0) |
+
+**Condition values:**
+
+| Value | Condition | Description |
+|-------|-----------|-------------|
+| 0 | always | Cancel allowed unconditionally |
+| 1 | on_hit | Cancel allowed only on hit |
+| 2 | on_block | Cancel allowed only on block |
+| 3 | on_whiff | Cancel allowed only on whiff |
+
+#### CancelDeny4 (4 bytes)
+
+Explicit cancel denial between two specific states (overrides tag-based rules).
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | from_idx | Source state index |
+| 2 | 2 | to_idx | Target state index |
+
 ## Error Handling
 
 The `framesmith-fspack` crate returns specific errors for parse failures:
@@ -405,7 +456,7 @@ match PackView::parse(&buffer) {
 
 The current v1 format has the following limitations:
 
-1. **Basic hitbox shapes only**: Only rectangular (AABB) hitboxes are exported from the current Framesmith schema. Shaped hitboxes (circles, capsules) require the v2 advanced move data schema.
+1. **Basic hitbox shapes only**: Only rectangular (AABB) hitboxes are exported from the current Framesmith schema. Shaped hitboxes (circles, capsules) require the v2 advanced state data schema.
 
 2. **No compression**: Data is stored uncompressed. For bandwidth-sensitive applications, compress the `.fspk` file externally and decompress before parsing.
 
@@ -418,8 +469,19 @@ Planned for future versions:
 
 ## Changelog
 
+### v1.2 (2026-02-01)
+
+- Renamed `Move` to `State` throughout (`MoveRecord` -> `StateRecord`, `MOVES` -> `STATES`, etc.)
+- Added state tagging system:
+  - Section 17: `STATE_TAG_RANGES` - per-state tag index ranges
+  - Section 18: `STATE_TAGS` - tag string references
+- Added tag-based cancel rules:
+  - Section 19: `CANCEL_TAG_RULES` - flexible cancel rules based on source/target tags
+  - Section 20: `CANCEL_DENIES` - explicit deny pairs that override tag rules
+- Added `SELF_GATLING` flag (0x10) to state flags
+
 ### v1.1 (2026-01-30)
 
-- Cancel flags (chain/special/super/jump) now exported in `MoveRecord.flags` byte
+- Cancel flags (chain/special/super/jump) now exported in `StateRecord.flags` byte
 - Chain cancel routes exported to `CANCELS_U16` section
-- `MoveExtras` expanded from 56 to 72 bytes to include cancel offset/length at bytes 64-71
+- `StateExtras` expanded from 56 to 72 bytes to include cancel offset/length at bytes 64-71
