@@ -1,5 +1,5 @@
 use crate::state::CharacterState;
-use framesmith_fspack::{PackView, ShapeView, SHAPE_KIND_AABB, SHAPE_KIND_CIRCLE};
+use framesmith_fspack::{PackView, ShapeView, SHAPE_KIND_AABB, SHAPE_KIND_CAPSULE, SHAPE_KIND_CIRCLE};
 
 /// Maximum number of hit results that can be stored.
 pub const MAX_HIT_RESULTS: usize = 8;
@@ -41,6 +41,32 @@ impl Circle {
             y: shape.y_px() + offset_y,
             r: shape.radius_px(),
         }
+    }
+}
+
+/// Capsule (line segment with radius) for collision detection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Capsule {
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub r: u32,
+}
+
+impl Capsule {
+    /// Create a Capsule from a ShapeView at a given position offset.
+    pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
+        // Capsule: a,b = p1; c,d = p2; e = radius
+        // a_raw, b_raw are Q12.4 for x1, y1
+        // c_raw, d_raw are Q12.4 for x2, y2
+        // e_raw is Q8.8 for radius
+        let x1 = shape.x_px() + offset_x;
+        let y1 = shape.y_px() + offset_y;
+        let x2 = ((shape.c_raw() as i32) >> 4) + offset_x;
+        let y2 = ((shape.d_raw() as i32) >> 4) + offset_y;
+        let r = ((shape.e_raw() as i32) >> 8).max(0) as u32;
+        Capsule { x1, y1, x2, y2, r }
     }
 }
 
@@ -87,6 +113,65 @@ pub fn aabb_circle_overlap(aabb: &Aabb, circle: &Circle) -> bool {
     dist_sq < r * r
 }
 
+/// Find closest point on segment (p1, p2) to point p.
+fn closest_point_on_segment(p1: (i64, i64), p2: (i64, i64), p: (i64, i64)) -> (i64, i64) {
+    let dx = p2.0 - p1.0;
+    let dy = p2.1 - p1.1;
+    let len_sq = dx * dx + dy * dy;
+
+    if len_sq == 0 {
+        return p1; // Degenerate segment (point)
+    }
+
+    // Project p onto line, clamped to [0, 1]
+    let t_num = (p.0 - p1.0) * dx + (p.1 - p1.1) * dy;
+    let t = if t_num <= 0 {
+        0
+    } else if t_num >= len_sq {
+        len_sq
+    } else {
+        t_num
+    };
+
+    (
+        p1.0 + (dx * t) / len_sq,
+        p1.1 + (dy * t) / len_sq,
+    )
+}
+
+/// Compute squared distance between closest points on two line segments.
+fn segment_distance_sq(
+    a1: (i64, i64), a2: (i64, i64),
+    b1: (i64, i64), b2: (i64, i64),
+) -> i64 {
+    // Find closest point on segment A to segment B's closest point to A
+    let closest_on_b_to_a1 = closest_point_on_segment(b1, b2, a1);
+    let closest_on_a = closest_point_on_segment(a1, a2, closest_on_b_to_a1);
+    let closest_on_b = closest_point_on_segment(b1, b2, closest_on_a);
+
+    let dx = closest_on_a.0 - closest_on_b.0;
+    let dy = closest_on_a.1 - closest_on_b.1;
+    dx * dx + dy * dy
+}
+
+/// Check if two capsules overlap.
+///
+/// A capsule is a line segment with radius (like a stadium shape).
+/// Edge-touching is NOT considered overlap.
+#[must_use]
+#[inline]
+pub fn capsule_overlap(a: &Capsule, b: &Capsule) -> bool {
+    let a1 = (a.x1 as i64, a.y1 as i64);
+    let a2 = (a.x2 as i64, a.y2 as i64);
+    let b1 = (b.x1 as i64, b.y1 as i64);
+    let b2 = (b.x2 as i64, b.y2 as i64);
+
+    let dist_sq = segment_distance_sq(a1, a2, b1, b2);
+    let radii_sum = (a.r as i64) + (b.r as i64);
+
+    dist_sq < radii_sum * radii_sum
+}
+
 /// Check if two shapes overlap.
 #[must_use]
 pub fn shapes_overlap(
@@ -116,7 +201,12 @@ pub fn shapes_overlap(
             let aabb = Aabb::from_shape(b, b_offset.0, b_offset.1);
             aabb_circle_overlap(&aabb, &circle)
         }
-        _ => false, // Capsule and rotated rect not yet supported
+        (SHAPE_KIND_CAPSULE, SHAPE_KIND_CAPSULE) => {
+            let cap_a = Capsule::from_shape(a, a_offset.0, a_offset.1);
+            let cap_b = Capsule::from_shape(b, b_offset.0, b_offset.1);
+            capsule_overlap(&cap_a, &cap_b)
+        }
+        _ => false, // Rotated rect and mixed capsule types not yet supported
     }
 }
 
@@ -446,5 +536,29 @@ mod tests {
 
         // Should cap at 8
         assert_eq!(result.len(), 8);
+    }
+
+    #[test]
+    fn capsule_overlap_detects_intersection() {
+        // Two overlapping horizontal capsules
+        let a = Capsule { x1: 0, y1: 0, x2: 20, y2: 0, r: 5 };
+        let b = Capsule { x1: 15, y1: 0, x2: 35, y2: 0, r: 5 };
+        assert!(capsule_overlap(&a, &b));
+    }
+
+    #[test]
+    fn capsule_overlap_detects_no_intersection() {
+        // Two non-overlapping capsules
+        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
+        let b = Capsule { x1: 30, y1: 0, x2: 40, y2: 0, r: 5 };
+        assert!(!capsule_overlap(&a, &b));
+    }
+
+    #[test]
+    fn capsule_overlap_edge_touching_is_not_overlap() {
+        // Two capsules exactly touching (distance == sum of radii)
+        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
+        let b = Capsule { x1: 20, y1: 0, x2: 30, y2: 0, r: 5 };
+        assert!(!capsule_overlap(&a, &b)); // distance 10 == 5+5
     }
 }
