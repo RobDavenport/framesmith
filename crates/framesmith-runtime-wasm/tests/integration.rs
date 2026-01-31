@@ -57,6 +57,7 @@ fn character_state_conversion_roundtrip() {
     let rt_state = RtState {
         current_move: 5,
         frame: 10,
+        instance_duration: 0,
         hit_confirmed: true,
         block_confirmed: false,
         resources: [100, 50, 25, 0, 0, 0, 0, 0],

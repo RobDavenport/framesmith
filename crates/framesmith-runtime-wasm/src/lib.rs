@@ -317,6 +317,7 @@ mod tests {
         let rt_state = RtCharacterState {
             current_move: 5,
             frame: 10,
+            instance_duration: 0,
             hit_confirmed: true,
             block_confirmed: false,
             resources: [100, 50, 0, 0, 0, 0, 0, 0],

@@ -13,6 +13,8 @@ pub struct CharacterState {
     pub current_move: u16,
     /// Current frame within the move (0-indexed).
     pub frame: u8,
+    /// Instance-specific duration override. 0 = use state's default total().
+    pub instance_duration: u8,
     /// Move connected with a hit (opens on-hit cancel windows).
     pub hit_confirmed: bool,
     /// Move was blocked (opens on-block cancel windows).
@@ -72,6 +74,7 @@ mod tests {
     #[test]
     fn character_state_size_is_small() {
         // Exact size verification for rollback netcode efficiency
+        // Still 22 bytes - instance_duration fills existing padding after frame
         assert_eq!(core::mem::size_of::<CharacterState>(), 22);
     }
 
