@@ -36,7 +36,8 @@ pub fn next_frame(
             new_state.frame = 0;
             new_state.hit_confirmed = false;
             new_state.block_confirmed = false;
-            // TODO: Apply resource costs
+            // Apply resource costs for the target move
+            crate::resource::apply_resource_costs(&mut new_state, pack, target);
             return FrameResult {
                 state: new_state,
                 move_ended: false,

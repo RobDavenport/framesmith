@@ -18,6 +18,55 @@ pub fn set_resource(state: &mut CharacterState, index: u8, value: u16) {
     }
 }
 
+/// Apply resource costs for a move transition.
+///
+/// Deducts costs from state. Returns true if all costs were paid,
+/// false if any resource was insufficient (costs still deducted).
+pub fn apply_resource_costs(
+    state: &mut CharacterState,
+    pack: &framesmith_fspack::PackView,
+    move_index: u16,
+) -> bool {
+    let extras = match pack.move_extras() {
+        Some(e) => e,
+        None => return true,
+    };
+    let extra = match extras.get(move_index as usize) {
+        Some(e) => e,
+        None => return true,
+    };
+    let costs_view = match pack.move_resource_costs() {
+        Some(c) => c,
+        None => return true,
+    };
+    let resource_defs = pack.resource_defs();
+
+    let (off, len) = extra.resource_costs();
+    let mut all_paid = true;
+
+    for i in 0..len as usize {
+        if let Some(cost) = costs_view.get_at(off, i) {
+            // Find resource index by name
+            if let Some(defs) = &resource_defs {
+                for res_idx in 0..defs.len().min(MAX_RESOURCES) {
+                    if let Some(def) = defs.get(res_idx) {
+                        if def.name_off() == cost.name_off() && def.name_len() == cost.name_len() {
+                            let current = resource(state, res_idx as u8);
+                            if current < cost.amount() {
+                                all_paid = false;
+                            }
+                            set_resource(state, res_idx as u8, current.saturating_sub(cost.amount()));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    all_paid
+}
+
 /// Initialize resources from pack's resource definitions.
 pub fn init_resources(state: &mut CharacterState, pack: &framesmith_fspack::PackView) {
     // Reset all to zero first
@@ -54,5 +103,28 @@ mod tests {
         let state = CharacterState::default();
         assert_eq!(resource(&state, 8), 0);
         assert_eq!(resource(&state, 255), 0);
+    }
+
+    /// Tests that the resource primitives support the deduction pattern.
+    ///
+    /// Note: `apply_resource_costs` requires a full PackView with move_extras,
+    /// move_resource_costs, and resource_defs sections - too complex for unit tests
+    /// in a no_std crate. That function is integration-tested via frame.rs when
+    /// processing real .fspk packs.
+    #[test]
+    fn resource_primitives_support_deduction() {
+        let mut state = CharacterState::default();
+        set_resource(&mut state, 0, 100); // meter
+        set_resource(&mut state, 1, 50);  // heat
+
+        // Simulate deducting 30 from resource 0, 10 from resource 1
+        let costs = [(0u8, 30u16), (1u8, 10u16)];
+        for (idx, amount) in costs {
+            let current = resource(&state, idx);
+            set_resource(&mut state, idx, current.saturating_sub(amount));
+        }
+
+        assert_eq!(resource(&state, 0), 70);
+        assert_eq!(resource(&state, 1), 40);
     }
 }
