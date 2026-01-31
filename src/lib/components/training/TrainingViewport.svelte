@@ -4,7 +4,38 @@
    *
    * This component provides a 2D viewport displaying both characters as
    * simple colored boxes. Real sprite/3D rendering will be added later.
+   *
+   * Supports hitbox overlay visualization:
+   * - Red = hitboxes (attack areas)
+   * - Green = hurtboxes (vulnerable areas)
+   * - Blue = pushboxes (collision)
    */
+
+  /**
+   * A collision box for overlay rendering.
+   */
+  export interface CollisionBox {
+    /** X offset from character center. */
+    x: number;
+    /** Y offset from character position. */
+    y: number;
+    /** Width of the box. */
+    width: number;
+    /** Height of the box. */
+    height: number;
+  }
+
+  /**
+   * Hitbox data for a character.
+   */
+  export interface HitboxData {
+    /** Attack hitboxes (red). */
+    hitboxes: CollisionBox[];
+    /** Vulnerable hurtboxes (green). */
+    hurtboxes: CollisionBox[];
+    /** Collision pushbox (blue). */
+    pushbox?: CollisionBox;
+  }
 
   interface CharacterDisplay {
     /** X position in pixels. */
@@ -32,6 +63,12 @@
     viewportHeight?: number;
     /** Ground level Y position. */
     groundY?: number;
+    /** Whether to show hitbox overlay. */
+    showHitboxes?: boolean;
+    /** Player hitbox data. */
+    playerHitboxes?: HitboxData;
+    /** Dummy hitbox data. */
+    dummyHitboxes?: HitboxData;
   }
 
   let {
@@ -40,6 +77,9 @@
     viewportWidth = 800,
     viewportHeight = 400,
     groundY = 350,
+    showHitboxes = false,
+    playerHitboxes,
+    dummyHitboxes,
   }: Props = $props();
 
   // Calculate camera offset to center between characters
@@ -56,6 +96,27 @@
   // Get screen position for player
   const playerScreen = $derived(worldToScreen(player.x, player.y));
   const dummyScreen = $derived(worldToScreen(dummy.x, dummy.y));
+
+  /**
+   * Calculate screen position for a collision box.
+   */
+  function getBoxScreenPosition(
+    charX: number,
+    charY: number,
+    box: CollisionBox,
+    facingRight: boolean
+  ): { left: number; bottom: number; width: number; height: number } {
+    // Flip X offset based on facing direction
+    const xOffset = facingRight ? box.x : -box.x - box.width;
+    const screenX = charX - cameraX + xOffset;
+
+    return {
+      left: screenX,
+      bottom: charY + box.y,
+      width: box.width,
+      height: box.height,
+    };
+  }
 </script>
 
 <div class="viewport" style:width="{viewportWidth}px" style:height="{viewportHeight}px">
@@ -100,6 +161,83 @@
       <div class="move-label">{dummy.currentMove}</div>
     {/if}
   </div>
+
+  <!-- Hitbox overlays -->
+  {#if showHitboxes}
+    <!-- Player hitboxes -->
+    {#if playerHitboxes}
+      <!-- Pushbox (blue) -->
+      {#if playerHitboxes.pushbox}
+        {@const pos = getBoxScreenPosition(player.x, player.y, playerHitboxes.pushbox, player.facingRight)}
+        <div
+          class="hitbox pushbox"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/if}
+      <!-- Hurtboxes (green) -->
+      {#each playerHitboxes.hurtboxes as hurtbox}
+        {@const pos = getBoxScreenPosition(player.x, player.y, hurtbox, player.facingRight)}
+        <div
+          class="hitbox hurtbox"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/each}
+      <!-- Hitboxes (red) -->
+      {#each playerHitboxes.hitboxes as hitbox}
+        {@const pos = getBoxScreenPosition(player.x, player.y, hitbox, player.facingRight)}
+        <div
+          class="hitbox attack"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/each}
+    {/if}
+
+    <!-- Dummy hitboxes -->
+    {#if dummyHitboxes}
+      <!-- Pushbox (blue) -->
+      {#if dummyHitboxes.pushbox}
+        {@const pos = getBoxScreenPosition(dummy.x, dummy.y, dummyHitboxes.pushbox, dummy.facingRight)}
+        <div
+          class="hitbox pushbox"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/if}
+      <!-- Hurtboxes (green) -->
+      {#each dummyHitboxes.hurtboxes as hurtbox}
+        {@const pos = getBoxScreenPosition(dummy.x, dummy.y, hurtbox, dummy.facingRight)}
+        <div
+          class="hitbox hurtbox"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/each}
+      <!-- Hitboxes (red) -->
+      {#each dummyHitboxes.hitboxes as hitbox}
+        {@const pos = getBoxScreenPosition(dummy.x, dummy.y, hitbox, dummy.facingRight)}
+        <div
+          class="hitbox attack"
+          style:left="{pos.left}px"
+          style:bottom="{pos.bottom}px"
+          style:width="{pos.width}px"
+          style:height="{pos.height}px"
+        ></div>
+      {/each}
+    {/if}
+  {/if}
 
   <!-- Center marker -->
   <div class="center-marker" style:left="{viewportWidth / 2}px"></div>
@@ -176,5 +314,31 @@
     width: 1px;
     background: rgba(255, 255, 255, 0.1);
     pointer-events: none;
+  }
+
+  /* Hitbox overlay styles */
+  .hitbox {
+    position: absolute;
+    pointer-events: none;
+    border-width: 2px;
+    border-style: solid;
+  }
+
+  .hitbox.attack {
+    /* Red - attack hitbox */
+    background: rgba(239, 68, 68, 0.3);
+    border-color: rgba(239, 68, 68, 0.8);
+  }
+
+  .hitbox.hurtbox {
+    /* Green - vulnerable hurtbox */
+    background: rgba(34, 197, 94, 0.3);
+    border-color: rgba(34, 197, 94, 0.8);
+  }
+
+  .hitbox.pushbox {
+    /* Blue - collision pushbox */
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.6);
   }
 </style>

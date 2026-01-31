@@ -32,11 +32,22 @@
     currentFrame: number;
     /** Total frames in the move. */
     totalFrames: number;
+    /** Frame advantage on hit. */
+    advantageOnHit?: number;
+    /** Frame advantage on block. */
+    advantageOnBlock?: number;
   }
 
   interface DummyStatus {
     /** Current dummy state label. */
     stateLabel: string;
+  }
+
+  interface ComboInfo {
+    /** Current combo hit count. */
+    hitCount: number;
+    /** Total combo damage. */
+    totalDamage: number;
   }
 
   interface Props {
@@ -48,6 +59,10 @@
     currentMove: MoveInfo | null;
     /** Dummy status display. */
     dummyStatus: DummyStatus;
+    /** List of available cancel move names. */
+    availableCancels?: string[];
+    /** Current combo information. */
+    comboInfo?: ComboInfo;
     /** Callback to reset health bars. */
     onResetHealth?: () => void;
   }
@@ -57,8 +72,24 @@
     dummy,
     currentMove,
     dummyStatus,
+    availableCancels = [],
+    comboInfo,
     onResetHealth,
   }: Props = $props();
+
+  // Format frame advantage with sign
+  function formatAdvantage(value: number | undefined): string {
+    if (value === undefined) return '?';
+    if (value > 0) return `+${value}`;
+    return String(value);
+  }
+
+  // Format cancels list, truncating if too long
+  function formatCancels(cancels: string[]): string {
+    if (cancels.length === 0) return 'None';
+    if (cancels.length <= 4) return cancels.join(', ');
+    return cancels.slice(0, 4).join(', ') + `, +${cancels.length - 4}`;
+  }
 
   // Calculate health bar percentages
   const playerHealthPercent = $derived(
@@ -141,19 +172,53 @@
   <!-- Frame data row -->
   <div class="frame-data-row">
     <!-- Current move info -->
-    <div class="move-info">
-      {#if currentMove}
-        <span class="move-name">{currentMove.name}</span>
-        <span class="frame-data">({formatFrameData(currentMove)})</span>
-        <span class="frame-counter">frame {currentMove.currentFrame}</span>
-      {:else}
-        <span class="move-name idle">Idle</span>
+    <div class="move-section">
+      <div class="move-info">
+        {#if currentMove}
+          <span class="move-name">{currentMove.name}</span>
+          <span class="frame-data">({formatFrameData(currentMove)})</span>
+          <span class="frame-counter">frame {currentMove.currentFrame}</span>
+        {:else}
+          <span class="move-name idle">Idle</span>
+        {/if}
+      </div>
+      {#if availableCancels.length > 0}
+        <div class="cancels-info">
+          <span class="cancels-label">Cancels:</span>
+          <span class="cancels-list">{formatCancels(availableCancels)}</span>
+        </div>
       {/if}
     </div>
 
-    <!-- Dummy state -->
-    <div class="dummy-state">
-      <span class="state-label">{dummyStatus.stateLabel}</span>
+    <!-- Frame advantage & dummy state -->
+    <div class="advantage-section">
+      <div class="dummy-state">
+        <span class="state-label">{dummyStatus.stateLabel}</span>
+      </div>
+      {#if currentMove}
+        <div class="frame-advantage">
+          <span class="advantage-item on-hit">
+            {formatAdvantage(currentMove.advantageOnHit)} on hit
+          </span>
+          <span class="advantage-item on-block">
+            {formatAdvantage(currentMove.advantageOnBlock)} on block
+          </span>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Combo display -->
+    <div class="combo-section">
+      {#if comboInfo && comboInfo.hitCount > 0}
+        <div class="combo-display">
+          <span class="combo-hits">{comboInfo.hitCount} hits</span>
+          <span class="combo-damage">{comboInfo.totalDamage}</span>
+        </div>
+      {:else}
+        <div class="combo-display empty">
+          <span class="combo-label">Combo</span>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -286,9 +351,17 @@
   .frame-data-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     padding-top: 4px;
     border-top: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .move-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
   }
 
   .move-info {
@@ -320,6 +393,29 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .cancels-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .cancels-label {
+    color: var(--text-secondary);
+  }
+
+  .cancels-list {
+    color: var(--text-primary);
+    font-family: monospace;
+  }
+
+  .advantage-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
   .dummy-state {
     display: flex;
     align-items: center;
@@ -332,5 +428,65 @@
     padding: 2px 8px;
     background: var(--bg-tertiary);
     border-radius: 4px;
+  }
+
+  .frame-advantage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .advantage-item {
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .advantage-item.on-hit {
+    color: var(--success);
+    background: rgba(74, 222, 128, 0.15);
+  }
+
+  .advantage-item.on-block {
+    color: var(--warning);
+    background: rgba(251, 191, 36, 0.15);
+  }
+
+  .combo-section {
+    display: flex;
+    align-items: center;
+  }
+
+  .combo-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    min-width: 80px;
+  }
+
+  .combo-display.empty {
+    opacity: 0.5;
+  }
+
+  .combo-hits {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .combo-damage {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .combo-label {
+    font-size: 11px;
+    color: var(--text-secondary);
   }
 </style>

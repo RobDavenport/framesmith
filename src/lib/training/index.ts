@@ -32,3 +32,10 @@ export {
   type DummyState,
   type DummyRecovery,
 } from './DummyController';
+export {
+  calculateFrameAdvantage,
+  calculateSimpleFrameAdvantage,
+  formatFrameAdvantage,
+  type FrameAdvantageInput,
+  type FrameAdvantageResult,
+} from './FrameAdvantage';

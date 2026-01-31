@@ -8,8 +8,13 @@
 
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import TrainingViewport from '$lib/components/training/TrainingViewport.svelte';
+  import TrainingViewport, {
+    type HitboxData,
+    type CollisionBox,
+  } from '$lib/components/training/TrainingViewport.svelte';
   import TrainingHUD from '$lib/components/training/TrainingHUD.svelte';
+  import InputHistory from '$lib/components/training/InputHistory.svelte';
+  import PlaybackControls, { type PlaybackSpeed } from '$lib/components/training/PlaybackControls.svelte';
   import {
     TrainingSession,
     initWasm,
@@ -17,15 +22,18 @@
     NO_INPUT,
     type CharacterState,
     type FrameResult,
+    type HitResult,
   } from '$lib/training/TrainingSession';
   import {
     InputManager,
     InputBuffer,
     MoveResolver,
     DummyController,
+    calculateSimpleFrameAdvantage,
     type TrainingInputConfig,
     type MoveList,
     type MoveDefinition,
+    type InputSnapshot,
   } from '$lib/training';
   import { getCurrentCharacter, getRulesRegistry } from '$lib/stores/character.svelte';
   import { getProjectPath } from '$lib/stores/project.svelte';
@@ -67,6 +75,24 @@
   let playerHealth = $state(10000);
   let dummyHealth = $state(10000);
   let maxHealth = $state(10000);
+
+  // Combo tracking
+  let comboHits = $state(0);
+  let comboDamage = $state(0);
+  let comboResetTimer = $state(0);
+  const COMBO_RESET_FRAMES = 60; // Reset combo after 1 second of no hits
+
+  // Input history (stores recent snapshots for display)
+  let inputHistory = $state<InputSnapshot[]>([]);
+  const INPUT_HISTORY_MAX = 30;
+
+  // Playback controls
+  let isPlaying = $state(true);
+  let playbackSpeed = $state<PlaybackSpeed>(1);
+  let frameAccumulator = $state(0);
+
+  // Developer overlay toggles
+  let showHitboxes = $state(false);
 
   // Current character data
   const currentCharacter = $derived(getCurrentCharacter());
@@ -232,56 +258,119 @@
 
   // Game loop
   function startGameLoop() {
-    function gameLoop() {
+    let lastTime = performance.now();
+
+    function gameLoop(currentTime: number) {
       if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
         return;
       }
 
-      // Get input snapshot and add to buffer
-      const snapshot = inputManager.getSnapshot();
-      inputBuffer.push(snapshot);
-
-      // Resolve move from input
-      const newlyPressed = inputManager.newlyPressedButtons;
-      const resolved = moveResolver.resolve(inputBuffer, newlyPressed, session.availableCancels());
-      inputManager.consumeNewlyPressed();
-
-      // Get move index or NO_INPUT
-      const playerInput = resolved ? resolved.index : NO_INPUT;
-
-      // Get dummy state
-      const wasmDummyState = dummyController.getWasmState();
-
-      // Tick simulation with error handling for WASM errors
-      let result: FrameResult;
-      try {
-        result = session.tick(playerInput, wasmDummyState);
-      } catch (e) {
-        console.error('WASM tick error:', e);
-        // Stop the game loop on WASM error to prevent spam
-        stopGameLoop();
-        initError = `WASM error: ${e instanceof Error ? e.message : String(e)}`;
+      // Handle playback speed
+      if (!isPlaying) {
+        // Still schedule next frame but don't tick
+        animationFrameId = requestAnimationFrame(gameLoop);
+        lastTime = currentTime;
         return;
       }
 
-      // Update state
-      playerState = result.player;
-      dummyState = result.dummy;
-
-      // Process hits
-      const hits = result.hits;
-      for (const hit of hits) {
-        // Apply damage to dummy (player attacking)
-        dummyHealth = Math.max(0, dummyHealth - hit.damage);
+      // Speed control (0 = frame-by-frame, handled separately)
+      if (playbackSpeed === 0) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+        lastTime = currentTime;
+        return;
       }
 
-      frameCount++;
+      // Accumulate time for sub-speed playback
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
+
+      // Calculate how many frames to run based on speed
+      // At 60fps, one frame is ~16.67ms
+      const frameTime = 16.67;
+      frameAccumulator += deltaTime * playbackSpeed;
+
+      if (frameAccumulator < frameTime) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
+      }
+
+      // Run one frame (don't accumulate multiple to keep it smooth)
+      frameAccumulator = Math.min(frameAccumulator - frameTime, frameTime);
+
+      tickOneFrame();
 
       // Schedule next frame
       animationFrameId = requestAnimationFrame(gameLoop);
     }
 
     animationFrameId = requestAnimationFrame(gameLoop);
+  }
+
+  // Tick one frame of simulation
+  function tickOneFrame() {
+    if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
+      return;
+    }
+
+    // Get input snapshot and add to buffer
+    const snapshot = inputManager.getSnapshot();
+    inputBuffer.push(snapshot);
+
+    // Store input in history for display
+    inputHistory = [...inputHistory.slice(-(INPUT_HISTORY_MAX - 1)), snapshot];
+
+    // Resolve move from input
+    const newlyPressed = inputManager.newlyPressedButtons;
+    const resolved = moveResolver.resolve(inputBuffer, newlyPressed, session.availableCancels());
+    inputManager.consumeNewlyPressed();
+
+    // Get move index or NO_INPUT
+    const playerInput = resolved ? resolved.index : NO_INPUT;
+
+    // Get dummy state
+    const wasmDummyState = dummyController.getWasmState();
+
+    // Tick simulation with error handling for WASM errors
+    let result: FrameResult;
+    try {
+      result = session.tick(playerInput, wasmDummyState);
+    } catch (e) {
+      console.error('WASM tick error:', e);
+      // Stop the game loop on WASM error to prevent spam
+      stopGameLoop();
+      initError = `WASM error: ${e instanceof Error ? e.message : String(e)}`;
+      return;
+    }
+
+    // Update state
+    playerState = result.player;
+    dummyState = result.dummy;
+
+    // Process hits and track combos
+    const hits = result.hits;
+    if (hits.length > 0) {
+      for (const hit of hits) {
+        // Apply damage to dummy (player attacking)
+        dummyHealth = Math.max(0, dummyHealth - hit.damage);
+        // Track combo
+        comboHits++;
+        comboDamage += hit.damage;
+      }
+      // Reset combo timer on hit
+      comboResetTimer = COMBO_RESET_FRAMES;
+    } else {
+      // Decrease combo timer
+      if (comboResetTimer > 0) {
+        comboResetTimer--;
+        if (comboResetTimer === 0) {
+          // Reset combo
+          comboHits = 0;
+          comboDamage = 0;
+        }
+      }
+    }
+
+    frameCount++;
   }
 
   // Stop game loop
@@ -305,8 +394,49 @@
       resetHealth();
       return;
     }
+    // Playback controls
+    if (event.code === 'Space') {
+      event.preventDefault();
+      togglePlayPause();
+      return;
+    }
+    if (event.code === 'Period') {
+      // Step forward
+      stepForward();
+      return;
+    }
+    if (event.code === 'Comma') {
+      // Step back (not implemented - would need state history)
+      return;
+    }
+    // Hitbox toggle
+    if (event.code === 'KeyH') {
+      showHitboxes = !showHitboxes;
+      return;
+    }
 
     inputManager.handleKeyDown(event.code);
+  }
+
+  // Playback control functions
+  function togglePlayPause() {
+    isPlaying = !isPlaying;
+  }
+
+  function stepForward() {
+    if (isPlaying) {
+      isPlaying = false;
+    }
+    tickOneFrame();
+  }
+
+  function stepBack() {
+    // Step back requires state history/rollback - not implemented yet
+    // This would be a feature for Phase 6 (sequence recorder)
+  }
+
+  function setPlaybackSpeed(speed: PlaybackSpeed) {
+    playbackSpeed = speed;
   }
 
   function handleKeyUp(event: KeyboardEvent) {
@@ -397,15 +527,44 @@
     const move = currentCharacter.moves.find(m => m.input === moveDef.name);
     if (!move) return null;
 
+    // Calculate frame advantage
+    const totalFrames = move.startup + move.active + move.recovery;
+
+    // Get hitstun/blockstun from move data
+    // First try v2 hits array, then fall back to legacy fields
+    const hitData = move.hits?.[0];
+    const hitstun = hitData?.hitstun ?? move.hitstun ?? 15;
+    const blockstun = hitData?.blockstun ?? move.blockstun ?? 10;
+
+    const advantage = calculateSimpleFrameAdvantage(move.recovery, hitstun, blockstun);
+
     return {
       name: move.input,
       startup: move.startup,
       active: move.active,
       recovery: move.recovery,
       currentFrame: playerState.frame,
-      totalFrames: move.startup + move.active + move.recovery,
+      totalFrames,
+      advantageOnHit: advantage.onHit,
+      advantageOnBlock: advantage.onBlock,
     };
   });
+
+  // Available cancels as move names
+  const availableCancelNames = $derived.by(() => {
+    if (!session || !moveResolver) return [];
+    const cancelIndices = session.availableCancels();
+    const resolver = moveResolver; // Capture in local variable for TypeScript
+    return cancelIndices
+      .map(idx => resolver.getMove(idx)?.name)
+      .filter((name): name is string => name !== undefined);
+  });
+
+  // Combo info
+  const comboInfo = $derived.by(() => ({
+    hitCount: comboHits,
+    totalDamage: comboDamage,
+  }));
 
   const dummyStatusDisplay = $derived.by(() => ({
     stateLabel: dummyController?.config.state
@@ -451,36 +610,63 @@
       dummy={dummyStatusState}
       currentMove={currentMoveInfo}
       dummyStatus={dummyStatusDisplay}
+      availableCancels={availableCancelNames}
+      comboInfo={comboInfo}
       onResetHealth={resetHealth}
     />
 
-    <!-- Viewport -->
-    <div class="viewport-container">
-      <TrainingViewport
-        player={playerDisplay}
-        dummy={dummyDisplay}
-        viewportWidth={800}
-        viewportHeight={400}
-      />
+    <!-- Main content area with viewport and sidebar -->
+    <div class="main-content">
+      <!-- Viewport -->
+      <div class="viewport-container">
+        <TrainingViewport
+          player={playerDisplay}
+          dummy={dummyDisplay}
+          viewportWidth={800}
+          viewportHeight={400}
+          showHitboxes={showHitboxes}
+        />
+      </div>
+
+      <!-- Right sidebar with input history -->
+      <div class="sidebar">
+        <InputHistory inputs={inputHistory} maxDisplay={15} />
+      </div>
     </div>
 
-    <!-- Controls info -->
-    <div class="controls-info">
-      <div class="control-group">
-        <span class="control-label">Movement:</span>
-        <span class="control-keys">WASD</span>
-      </div>
-      <div class="control-group">
-        <span class="control-label">Attacks:</span>
-        <span class="control-keys">U I O (L M H) / J K L (P K S)</span>
-      </div>
-      <div class="control-group">
-        <span class="control-label">Reset:</span>
-        <span class="control-keys">R</span>
-      </div>
-      <div class="control-group">
-        <span class="control-label">Exit:</span>
-        <span class="control-keys">Esc</span>
+    <!-- Bottom bar with playback controls and keyboard help -->
+    <div class="bottom-bar">
+      <PlaybackControls
+        isPlaying={isPlaying}
+        speed={playbackSpeed}
+        onPlayPause={togglePlayPause}
+        onStepBack={stepBack}
+        onStepForward={stepForward}
+        onSpeedChange={setPlaybackSpeed}
+      />
+
+      <!-- Controls info -->
+      <div class="controls-info">
+        <div class="control-group">
+          <span class="control-label">Movement:</span>
+          <span class="control-keys">WASD</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Attacks:</span>
+          <span class="control-keys">U I O / J K L</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Hitboxes:</span>
+          <span class="control-keys">H</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Reset:</span>
+          <span class="control-keys">R</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Exit:</span>
+          <span class="control-keys">Esc</span>
+        </div>
       </div>
     </div>
 
@@ -525,7 +711,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    gap: 12px;
+    gap: 8px;
     padding: 8px;
   }
 
@@ -549,6 +735,13 @@
     text-align: center;
   }
 
+  .main-content {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+  }
+
   .viewport-container {
     display: flex;
     justify-content: center;
@@ -556,31 +749,45 @@
     min-height: 0;
   }
 
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 140px;
+  }
+
+  .bottom-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
   .controls-info {
     display: flex;
-    justify-content: center;
-    gap: 24px;
-    padding: 8px;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 6px 12px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 4px;
+    flex: 1;
   }
 
   .control-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .control-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-secondary);
   }
 
   .control-keys {
-    font-size: 11px;
+    font-size: 10px;
     font-family: monospace;
-    padding: 2px 6px;
+    padding: 2px 4px;
     background: var(--bg-tertiary);
     border-radius: 3px;
     color: var(--text-primary);
@@ -589,12 +796,13 @@
   .dummy-panel {
     position: absolute;
     top: 60px;
-    right: 16px;
+    right: 160px;
     padding: 12px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 4px;
-    width: 180px;
+    width: 160px;
+    z-index: 10;
   }
 
   .dummy-panel h4 {
@@ -628,8 +836,8 @@
 
   .frame-counter {
     position: absolute;
-    bottom: 8px;
-    right: 16px;
+    bottom: 50px;
+    right: 160px;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
