@@ -1,5 +1,5 @@
 use crate::schema::{
-    Cost, FrameHurtbox, Hit, HitboxShape, Move, Movement, Precondition, StatusEffect, SuperFreeze,
+    Cost, FrameHurtbox, Hit, HitboxShape, Movement, Precondition, State, StatusEffect, SuperFreeze,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8,7 +8,7 @@ pub struct ValidationError {
     pub message: String,
 }
 
-pub fn validate_move(mv: &Move) -> Result<(), Vec<ValidationError>> {
+pub fn validate_move(mv: &State) -> Result<(), Vec<ValidationError>> {
     let mut errors = Vec::new();
 
     // Frame data sanity
@@ -443,12 +443,12 @@ fn validate_frame_hurtboxes(hurtboxes: &[FrameHurtbox], errors: &mut Vec<Validat
 mod tests {
     use super::*;
     use crate::schema::{
-        Cost, FrameHitbox, FrameHurtbox, GuardType, Hit, HitboxShape, MeterGain, Move, Movement,
-        OnHit, Precondition, Pushback, Rect, StatusEffect, SuperFreeze,
+        Cost, FrameHitbox, FrameHurtbox, GuardType, Hit, HitboxShape, MeterGain, Movement, OnHit,
+        Precondition, Pushback, Rect, State, StatusEffect, SuperFreeze,
     };
 
-    fn make_valid_move() -> Move {
-        Move {
+    fn make_valid_move() -> State {
+        State {
             input: "5L".to_string(),
             name: "Standing Light".to_string(),
             tags: vec![],

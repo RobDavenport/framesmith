@@ -291,7 +291,7 @@ fn button_from_input(input: &str) -> Option<&str> {
     }
 }
 
-pub fn matches_move(spec: &MatchSpec, mv: &crate::schema::Move) -> bool {
+pub fn matches_move(spec: &MatchSpec, mv: &crate::schema::State) -> bool {
     if let Some(ty) = &spec.r#type {
         let mv_type = match &mv.move_type {
             Some(t) => t.as_str(),
@@ -485,7 +485,7 @@ pub fn validate_character_resources_with_registry(
 }
 
 fn validate_move_registry(
-    mv: &crate::schema::Move,
+    mv: &crate::schema::State,
     registry: &RulesRegistry,
     issues: &mut Vec<ValidationIssue>,
 ) {
@@ -810,8 +810,8 @@ fn apply_set_object(
 pub fn apply_rules_to_move(
     project: Option<&RulesFile>,
     character: Option<&RulesFile>,
-    mv: &crate::schema::Move,
-) -> Result<crate::schema::Move, RulesError> {
+    mv: &crate::schema::State,
+) -> Result<crate::schema::State, RulesError> {
     let base = serde_json::to_value(mv)?;
     let mut resolved = base.clone();
 
@@ -951,7 +951,7 @@ fn validate_require_object(
 pub fn validate_move_with_rules(
     project: Option<&RulesFile>,
     character: Option<&RulesFile>,
-    mv: &crate::schema::Move,
+    mv: &crate::schema::State,
 ) -> Result<Vec<ValidationIssue>, RulesError> {
     let resolved = apply_rules_to_move(project, character, mv)?;
 
@@ -1263,7 +1263,7 @@ mod tests {
 
     #[test]
     fn test_matches_move_or_within_field_and_across_fields() {
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "2L".to_string();
         mv.move_type = Some("command_normal".to_string());
         mv.guard = crate::schema::GuardType::Unblockable;
@@ -1298,7 +1298,7 @@ mod tests {
 
     #[test]
     fn test_matches_move_button_extraction() {
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "j.H".to_string();
 
         let spec = MatchSpec {
@@ -1325,7 +1325,7 @@ mod tests {
 
     #[test]
     fn test_matches_move_tags_and() {
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "5L".to_string();
         mv.tags = vec![
             crate::schema::Tag::new("starter").unwrap(),
@@ -1369,8 +1369,8 @@ mod tests {
         }
     }
 
-    fn make_valid_move() -> crate::schema::Move {
-        let mut mv = crate::schema::Move::default();
+    fn make_valid_move() -> crate::schema::State {
+        let mut mv = crate::schema::State::default();
         mv.input = "5L".to_string();
         mv.startup = 1;
         mv.active = 1;
@@ -1648,7 +1648,7 @@ mod tests {
             },
         ]);
 
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "236P".to_string();
         mv.move_type = Some("special".to_string());
         mv.hitstop = 0;
@@ -1670,7 +1670,7 @@ mod tests {
             set: serde_json::json!({ "hitstop": 8 }),
         }]);
 
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "5L".to_string();
         mv.hitstop = 6;
 
@@ -1697,7 +1697,7 @@ mod tests {
             set: serde_json::json!({ "hitstop": 9 }),
         }]);
 
-        let mut mv = crate::schema::Move::default();
+        let mut mv = crate::schema::State::default();
         mv.input = "5L".to_string();
         mv.move_type = Some("normal".to_string());
         mv.hitstop = 0;

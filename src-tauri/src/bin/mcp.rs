@@ -46,7 +46,7 @@ pub struct UpdateMoveParam {
     #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
     #[schemars(description = "Complete move data as JSON object")]
-    pub move_data: d_developmentnethercore_projectframesmith_lib::schema::Move,
+    pub move_data: d_developmentnethercore_projectframesmith_lib::schema::State,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

@@ -3,7 +3,7 @@
 //! Exports character data to the FSPK binary format for use with ZX runtime.
 
 use crate::commands::CharacterData;
-use crate::schema::{FrameHitbox, GuardType, Move, Rect};
+use crate::schema::{FrameHitbox, GuardType, Rect, State};
 use std::collections::HashMap;
 
 use super::zx_fspack_format::{
@@ -267,7 +267,7 @@ fn pack_move_record(
     move_id: u16,
     mesh_key: u16,
     keyframes_key: u16,
-    mv: &Move,
+    mv: &State,
     hit_windows_off: u32,
     hit_windows_len: u16,
     hurt_windows_off: u16,
@@ -349,7 +349,7 @@ pub struct PackedMoveData {
 /// The `cancel_lookup` provides cancel information for setting MoveRecord.flags.
 /// If None, all flags are 0.
 pub fn pack_moves(
-    moves: &[Move],
+    moves: &[State],
     anim_to_index: Option<&HashMap<String, u16>>,
     cancel_lookup: Option<&CancelLookup>,
 ) -> Result<PackedMoveData, String> {
@@ -1299,8 +1299,8 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use crate::schema::{
-        CancelTable, Character, CharacterResource, FrameHitbox, GuardType, MeterGain, Move,
-        Pushback, Rect,
+        CancelTable, Character, CharacterResource, FrameHitbox, GuardType, MeterGain, Pushback,
+        Rect, State,
     };
     use std::collections::HashMap;
 
@@ -1325,9 +1325,9 @@ mod tests {
         }
     }
 
-    /// Create a minimal test move with the given input and animation.
-    fn make_test_move(input: &str, animation: &str) -> Move {
-        Move {
+    /// Create a minimal test state with the given input and animation.
+    fn make_test_move(input: &str, animation: &str) -> State {
+        State {
             input: input.to_string(),
             name: format!("{} attack", input),
             tags: vec![],
@@ -1818,8 +1818,8 @@ mod tests {
         }
     }
 
-    fn make_move_with_hitboxes() -> Move {
-        Move {
+    fn make_move_with_hitboxes() -> State {
+        State {
             input: "5L".to_string(),
             name: "Light Punch".to_string(),
             tags: vec![],
@@ -2117,7 +2117,7 @@ mod tests {
 
     #[test]
     fn test_pack_moves_no_hitboxes() {
-        let mv = Move {
+        let mv = State {
             input: "5L".to_string(),
             name: "Light Punch".to_string(),
             startup: 5,
@@ -2437,7 +2437,7 @@ mod tests {
                 resources: vec![],
             },
             moves: vec![
-                Move {
+                State {
                     input: "5L".into(),
                     name: "Jab".into(),
                     guard: GuardType::Mid,
@@ -2446,7 +2446,7 @@ mod tests {
                     meter_gain: MeterGain { hit: 0, whiff: 0 },
                     ..Default::default()
                 },
-                Move {
+                State {
                     input: "5M".into(),
                     name: "Medium".into(),
                     guard: GuardType::Mid,
@@ -2531,7 +2531,7 @@ mod tests {
                 resources: vec![],
             },
             moves: vec![
-                Move {
+                State {
                     input: "5L".into(),
                     name: "Jab".into(),
                     guard: GuardType::Mid,
@@ -2540,7 +2540,7 @@ mod tests {
                     meter_gain: MeterGain { hit: 0, whiff: 0 },
                     ..Default::default()
                 },
-                Move {
+                State {
                     input: "5M".into(),
                     name: "Medium".into(),
                     guard: GuardType::Mid,
@@ -2549,7 +2549,7 @@ mod tests {
                     meter_gain: MeterGain { hit: 0, whiff: 0 },
                     ..Default::default()
                 },
-                Move {
+                State {
                     input: "5H".into(),
                     name: "Heavy".into(),
                     guard: GuardType::Mid,
@@ -2619,7 +2619,7 @@ mod tests {
                 resources: vec![],
             },
             moves: vec![
-                Move {
+                State {
                     input: "5L".into(),
                     name: "Jab".into(),
                     guard: GuardType::Mid,
@@ -2628,7 +2628,7 @@ mod tests {
                     meter_gain: MeterGain { hit: 0, whiff: 0 },
                     ..Default::default()
                 },
-                Move {
+                State {
                     input: "5M".into(),
                     name: "Medium".into(),
                     guard: GuardType::Mid,
@@ -2637,7 +2637,7 @@ mod tests {
                     meter_gain: MeterGain { hit: 0, whiff: 0 },
                     ..Default::default()
                 },
-                Move {
+                State {
                     input: "5H".into(),
                     name: "Heavy".into(),
                     guard: GuardType::Mid,

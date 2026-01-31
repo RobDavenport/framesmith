@@ -1,5 +1,5 @@
 use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
-use crate::schema::{CancelTable, Character, CharacterAssets, Move};
+use crate::schema::{CancelTable, Character, CharacterAssets, State};
 use base64::Engine;
 use std::collections::HashMap;
 use std::fs;
@@ -41,7 +41,7 @@ fn project_rules_path(characters_dir: &str) -> PathBuf {
 fn load_character_files(
     characters_dir: &str,
     character_id: &str,
-) -> Result<(PathBuf, Character, Vec<Move>, CancelTable), String> {
+) -> Result<(PathBuf, Character, Vec<State>, CancelTable), String> {
     // Validate character_id to prevent path traversal attacks
     if character_id.contains("..") || character_id.contains('/') || character_id.contains('\\') {
         return Err("Invalid character ID".to_string());
@@ -74,7 +74,7 @@ fn load_character_files(
                         e
                     )
                 })?;
-                let mv: Move = serde_json::from_str(&content)
+                let mv: State = serde_json::from_str(&content)
                     .map_err(|e| format!("Invalid move file {:?}: {}", move_path.file_name(), e))?;
                 moves.push(mv);
             }
@@ -98,7 +98,7 @@ fn load_character_files(
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CharacterData {
     pub character: Character,
-    pub moves: Vec<Move>,
+    pub moves: Vec<State>,
     pub cancel_table: CancelTable,
 }
 
@@ -304,7 +304,7 @@ pub fn read_character_asset_base64(
 }
 
 #[tauri::command]
-pub fn save_move(characters_dir: String, character_id: String, mv: Move) -> Result<(), String> {
+pub fn save_move(characters_dir: String, character_id: String, mv: State) -> Result<(), String> {
     // Validate character_id to prevent path traversal
     if character_id.contains("..") || character_id.contains('/') || character_id.contains('\\') {
         return Err("Invalid character ID".to_string());
@@ -799,7 +799,7 @@ pub fn create_move(
     character_id: String,
     input: String,
     name: String,
-) -> Result<Move, String> {
+) -> Result<State, String> {
     validate_character_id(&character_id)?;
     validate_move_input(&input)?;
 
@@ -826,8 +826,8 @@ pub fn create_move(
         return Err(format!("Move '{}' already exists", input));
     }
 
-    // Create move with default values
-    let mv = Move {
+    // Create state with default values
+    let mv = State {
         input: input.clone(),
         name,
         tags: vec![],

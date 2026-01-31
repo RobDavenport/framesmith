@@ -140,10 +140,10 @@ impl Default for CharacterAssets {
     }
 }
 
-/// Single move definition
+/// Single state definition (attacks, reactions, neutral states, system states, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
-pub struct Move {
+pub struct State {
     pub input: String,
     pub name: String,
     #[serde(default)]
@@ -182,7 +182,7 @@ pub struct Move {
     pub advanced_hurtboxes: Option<Vec<FrameHurtbox>>,
 }
 
-impl Default for Move {
+impl Default for State {
     fn default() -> Self {
         Self {
             input: String::new(),
@@ -720,7 +720,7 @@ mod tests {
           }
         }"#;
 
-        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        let mv: State = serde_json::from_str(json).expect("state should parse");
         let on_hit = mv.on_hit.expect("on_hit should exist");
         assert_eq!(on_hit.events.len(), 1);
 
@@ -769,7 +769,7 @@ mod tests {
           ]
         }"#;
 
-        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        let mv: State = serde_json::from_str(json).expect("state should parse");
         assert_eq!(mv.notifies.len(), 1);
         assert_eq!(mv.notifies[0].frame, 7);
         assert_eq!(mv.notifies[0].events.len(), 1);
@@ -835,7 +835,7 @@ mod tests {
           "animation": "5L"
         }"#;
 
-        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        let mv: State = serde_json::from_str(json).expect("state should parse");
         assert_eq!(mv.tags.len(), 2);
         assert_eq!(mv.tags[0].as_str(), "normal");
         assert_eq!(mv.tags[1].as_str(), "light");
@@ -861,7 +861,7 @@ mod tests {
           "animation": "5L"
         }"#;
 
-        let mv: Move = serde_json::from_str(json).expect("move should parse");
+        let mv: State = serde_json::from_str(json).expect("state should parse");
         assert!(mv.tags.is_empty());
     }
 

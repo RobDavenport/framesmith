@@ -35,7 +35,7 @@ fn zx_fspack_export_roundtrips_through_reader() {
 fn zx_fspack_move_record_fields_match_reader_layout() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Move, Pushback, Rect,
+        CancelTable, Character, FrameHitbox, GuardType, MeterGain, State, Pushback, Rect,
         TriggerType,
     };
     use std::collections::HashMap;
@@ -54,7 +54,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             dash_duration: 20,
             resources: vec![],
         },
-        moves: vec![Move {
+        moves: vec![State {
             input: "5L".to_string(),
             name: "Test Jab".to_string(),
             tags: vec![],
@@ -146,7 +146,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
         CancelTable, Character, CharacterResource, Cost, EventArgValue, EventEmit, GuardType,
-        MeterGain, Move, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta,
+        MeterGain, State, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta,
         TriggerType,
     };
     use std::collections::{BTreeMap, HashMap};
@@ -158,7 +158,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
         EventArgValue::String("light".to_string()),
     );
     hit_args.insert("scale".to_string(), EventArgValue::F32(1.25));
-    let mv0 = Move {
+    let mv0 = State {
         input: "5L".to_string(),
         name: "Hit event".to_string(),
         guard: GuardType::Mid,
@@ -180,7 +180,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
         "bone".to_string(),
         EventArgValue::String("hand_r".to_string()),
     );
-    let mv1 = Move {
+    let mv1 = State {
         input: "5M".to_string(),
         name: "Notify event".to_string(),
         guard: GuardType::Mid,
@@ -196,7 +196,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     };
 
     // Move 2: resource cost + precondition + on_use resource delta
-    let mv2 = Move {
+    let mv2 = State {
         input: "236P".to_string(),
         name: "Resource gated".to_string(),
         guard: GuardType::Mid,
@@ -239,17 +239,17 @@ fn zx_fspack_exports_resources_and_events_sections() {
             }],
         },
         moves: vec![
-            Move {
+            State {
                 pushback: Pushback { hit: 0, block: 0 },
                 meter_gain: MeterGain { hit: 0, whiff: 0 },
                 ..mv0
             },
-            Move {
+            State {
                 pushback: Pushback { hit: 0, block: 0 },
                 meter_gain: MeterGain { hit: 0, whiff: 0 },
                 ..mv1
             },
-            Move {
+            State {
                 pushback: Pushback { hit: 0, block: 0 },
                 meter_gain: MeterGain { hit: 0, whiff: 0 },
                 ..mv2
@@ -364,7 +364,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
 fn zx_fspack_exports_move_input_notation() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+        CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
     use std::collections::HashMap;
 
@@ -392,7 +392,7 @@ fn zx_fspack_exports_move_input_notation() {
             dash_duration: 20,
             resources: vec![],
         },
-        moves: vec![Move {
+        moves: vec![State {
             input: "5L".to_string(),
             name: "Test Jab".to_string(),
             guard: GuardType::Mid,
@@ -529,7 +529,7 @@ fn zx_fspack_cancel_table_roundtrips() {
 fn tags_survive_roundtrip() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, Move, Pushback, Tag,
+        CancelTable, Character, GuardType, MeterGain, State, Pushback, Tag,
     };
     use std::collections::HashMap;
 
@@ -548,7 +548,7 @@ fn tags_survive_roundtrip() {
             resources: vec![],
         },
         moves: vec![
-            Move {
+            State {
                 input: "5L".to_string(),
                 name: "Light".to_string(),
                 tags: vec![
@@ -561,7 +561,7 @@ fn tags_survive_roundtrip() {
                 meter_gain: MeterGain { hit: 0, whiff: 0 },
                 ..Default::default()
             },
-            Move {
+            State {
                 input: "5M".to_string(),
                 name: "Medium".to_string(),
                 tags: vec![
@@ -604,7 +604,7 @@ fn tags_survive_roundtrip() {
 fn empty_tags_roundtrip() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+        CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
     use std::collections::HashMap;
 
@@ -622,7 +622,7 @@ fn empty_tags_roundtrip() {
             dash_duration: 20,
             resources: vec![],
         },
-        moves: vec![Move {
+        moves: vec![State {
             input: "5L".to_string(),
             name: "Light".to_string(),
             tags: vec![], // No tags
@@ -649,12 +649,12 @@ fn empty_tags_roundtrip() {
 fn cancel_tag_rules_roundtrip() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, Move,
+        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, State,
         Pushback, Tag,
     };
 
     // Create moves with tags
-    let mv0 = Move {
+    let mv0 = State {
         input: "5L".to_string(),
         name: "Light".to_string(),
         tags: vec![Tag::new("normal").unwrap()],
@@ -664,7 +664,7 @@ fn cancel_tag_rules_roundtrip() {
         meter_gain: MeterGain { hit: 0, whiff: 0 },
         ..Default::default()
     };
-    let mv1 = Move {
+    let mv1 = State {
         input: "236P".to_string(),
         name: "Fireball".to_string(),
         tags: vec![Tag::new("special").unwrap()],
@@ -734,11 +734,11 @@ fn cancel_tag_rules_roundtrip() {
 fn cancel_denies_roundtrip() {
     use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
     use d_developmentnethercore_projectframesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+        CancelTable, Character, GuardType, MeterGain, State, Pushback,
     };
 
     // Create two moves
-    let mv0 = Move {
+    let mv0 = State {
         input: "5L".to_string(),
         name: "Light".to_string(),
         guard: GuardType::Mid,
@@ -747,7 +747,7 @@ fn cancel_denies_roundtrip() {
         meter_gain: MeterGain { hit: 0, whiff: 0 },
         ..Default::default()
     };
-    let mv1 = Move {
+    let mv1 = State {
         input: "jump".to_string(),
         name: "Jump".to_string(),
         guard: GuardType::Mid,
