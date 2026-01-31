@@ -441,6 +441,41 @@ impl<'a> PackView<'a> {
         let data = self.get_section(SECTION_SHAPES)?;
         Some(ShapesView { data })
     }
+
+    /// Get the state tag ranges section as a typed view.
+    ///
+    /// Returns `None` if no STATE_TAG_RANGES section exists.
+    pub fn state_tag_ranges(&self) -> Option<StateTagRangesView<'a>> {
+        let data = self.get_section(SECTION_STATE_TAG_RANGES)?;
+        Some(StateTagRangesView { data })
+    }
+
+    /// Get tags for a state/move by its index.
+    ///
+    /// Returns an iterator over the tag strings for the given state,
+    /// or `None` if tag sections don't exist or the index is invalid.
+    pub fn state_tags(&self, state_idx: usize) -> Option<impl Iterator<Item = &'a str> + 'a> {
+        let ranges = self.state_tag_ranges()?;
+        let (off, count) = ranges.get(state_idx)?;
+        let tags_section = self.get_section(SECTION_STATE_TAGS)?;
+        let string_table = self.get_section(SECTION_STRING_TABLE)?;
+
+        Some((0..count).filter_map(move |i| {
+            let tag_offset = (off as usize) + (i as usize) * STRREF_SIZE;
+            if tag_offset + STRREF_SIZE > tags_section.len() {
+                return None;
+            }
+            let str_off = read_u32_le(tags_section, tag_offset)?;
+            let str_len = read_u16_le(tags_section, tag_offset + 4)?;
+            // Resolve string from string table
+            let start = str_off as usize;
+            let end = start.checked_add(str_len as usize)?;
+            if end > string_table.len() {
+                return None;
+            }
+            core::str::from_utf8(&string_table[start..end]).ok()
+        }))
+    }
 }
 
 // =============================================================================
@@ -1697,6 +1732,45 @@ impl<'a> CancelsView<'a> {
     }
 }
 
+// =============================================================================
+// State Tag Views
+// =============================================================================
+
+/// Zero-copy view over STATE_TAG_RANGES section.
+///
+/// Each entry is a StateTagRange8 (8 bytes): offset(4) + count(2) + padding(2)
+/// This section is parallel to MOVES - one entry per state/move.
+#[derive(Clone, Copy)]
+pub struct StateTagRangesView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> StateTagRangesView<'a> {
+    /// Get the tag range (offset, count) for a state by index.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<(u32, u16)> {
+        let offset = index * STATE_TAG_RANGE_SIZE;
+        if offset + STATE_TAG_RANGE_SIZE > self.data.len() {
+            return None;
+        }
+        let slice = &self.data[offset..offset + STATE_TAG_RANGE_SIZE];
+        let off = read_u32_le(slice, 0)?;
+        let count = read_u16_le(slice, 4)?;
+        Some((off, count))
+    }
+
+    /// Returns the number of entries (one per state/move).
+    pub fn len(&self) -> usize {
+        self.data.len() / STATE_TAG_RANGE_SIZE
+    }
+
+    /// Returns true if there are no entries.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2818,5 +2892,80 @@ mod tests {
         // Test pixel values (Q12.4 >> 4)
         assert_eq!(view.hit_pushback_px(), -2);
         assert_eq!(view.block_pushback_px(), -1);
+    }
+
+    // =========================================================================
+    // State Tag Views Tests
+    // =========================================================================
+
+    #[test]
+    fn state_tag_ranges_returns_none_for_missing_section() {
+        // Build a minimal valid pack without STATE_TAG_RANGES section
+        let pack_data = build_minimal_typed_pack();
+        let pack = PackView::parse(&pack_data).expect("should parse pack");
+
+        // The minimal pack doesn't include tag sections
+        assert!(pack.state_tag_ranges().is_none());
+        assert!(pack.state_tags(0).is_none());
+    }
+
+    #[test]
+    fn state_tag_ranges_view_basic() {
+        // Build a pack with STATE_TAG_RANGES section containing one entry
+        // Entry: offset=0, count=2 (meaning 2 tags at offset 0 in STATE_TAGS)
+        let mut range_data = [0u8; 8];
+        range_data[0..4].copy_from_slice(&0u32.to_le_bytes()); // offset
+        range_data[4..6].copy_from_slice(&2u16.to_le_bytes()); // count
+        // padding bytes 6-7 left as 0
+
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off + range_data.len() as u32;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_STATE_TAG_RANGES,
+            data_off,
+            range_data.len() as u32,
+            4,
+        ));
+        data.extend_from_slice(&range_data);
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let ranges = pack.state_tag_ranges().expect("state_tag_ranges view");
+
+        assert_eq!(ranges.len(), 1);
+        assert!(!ranges.is_empty());
+
+        let (off, count) = ranges.get(0).expect("get entry 0");
+        assert_eq!(off, 0);
+        assert_eq!(count, 2);
+
+        assert!(ranges.get(1).is_none()); // out of bounds
+    }
+
+    #[test]
+    fn state_tag_ranges_view_empty() {
+        // Build a pack with empty STATE_TAG_RANGES section
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_STATE_TAG_RANGES,
+            data_off,
+            0,
+            4,
+        ));
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let ranges = pack.state_tag_ranges().expect("state_tag_ranges view");
+
+        assert_eq!(ranges.len(), 0);
+        assert!(ranges.is_empty());
+        assert!(ranges.get(0).is_none());
     }
 }
