@@ -39,7 +39,7 @@ function toWasmDummyState(state: DummyState): number {
  * Character state returned from the WASM runtime.
  */
 export interface CharacterState {
-  current_move: number;
+  current_state: number;
   frame: number;
   hit_confirmed: boolean;
   block_confirmed: boolean;

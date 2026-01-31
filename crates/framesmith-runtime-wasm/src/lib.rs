@@ -144,7 +144,7 @@ impl TrainingSession {
     /// Advance the simulation by one frame.
     ///
     /// # Arguments
-    /// * `player_input` - Move index the player wants to perform (0xFFFF = no input)
+    /// * `player_input` - State index the player wants to transition to (0xFFFF = no input)
     /// * `dummy_behavior` - How the dummy should behave this frame
     ///
     /// # Returns

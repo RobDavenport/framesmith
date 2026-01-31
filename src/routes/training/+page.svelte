@@ -501,7 +501,7 @@
     height: 120,
     facingRight: true,
     currentMove: playerState && moveResolver
-      ? moveResolver.getMove(playerState.current_move)?.name
+      ? moveResolver.getMove(playerState.current_state)?.name
       : undefined,
   }));
 
@@ -512,7 +512,7 @@
     height: 120,
     facingRight: false,
     currentMove: dummyState && moveResolver
-      ? moveResolver.getMove(dummyState.current_move)?.name
+      ? moveResolver.getMove(dummyState.current_state)?.name
       : undefined,
   }));
 
@@ -542,7 +542,7 @@
 
   const currentMoveInfo = $derived.by(() => {
     if (!playerState || !currentCharacter || !moveResolver) return null;
-    const moveDef = moveResolver.getMove(playerState.current_move);
+    const moveDef = moveResolver.getMove(playerState.current_state);
     if (!moveDef) return null;
 
     const move = currentCharacter.moves.find(m => m.input === moveDef.name);

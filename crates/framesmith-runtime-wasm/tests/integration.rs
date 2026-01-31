@@ -18,10 +18,10 @@ fn can_parse_real_fspk() {
     assert!(pack.is_ok(), "Should parse glitch.fspk successfully");
 
     let pack = pack.unwrap();
-    // Verify it has moves
-    assert!(pack.states().is_some(), "Should have moves section");
-    let moves = pack.states().unwrap();
-    assert!(moves.len() > 0, "Should have at least one move");
+    // Verify it has states
+    assert!(pack.states().is_some(), "Should have states section");
+    let states = pack.states().unwrap();
+    assert!(states.len() > 0, "Should have at least one state");
 }
 
 /// Test runtime simulation with real FSPK data.
