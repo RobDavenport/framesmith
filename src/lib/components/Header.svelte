@@ -24,6 +24,7 @@
     { id: "frame-data", label: "Frame Data" },
     { id: "move-editor", label: "Move Editor" },
     { id: "cancel-graph", label: "Cancel Graph" },
+    { id: "training", label: "Training" },
   ];
 
   const projectName = $derived(getProjectName());

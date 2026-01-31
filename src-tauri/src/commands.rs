@@ -479,6 +479,56 @@ pub fn export_character(
     Ok(())
 }
 
+/// Get FSPK bytes for a character (for training mode WASM runtime).
+///
+/// Returns the FSPK data as base64-encoded string.
+#[tauri::command]
+pub fn get_character_fspk(
+    characters_dir: String,
+    character_id: String,
+) -> Result<String, String> {
+    let (char_path, character, base_moves, cancel_table) =
+        load_character_files(&characters_dir, &character_id)?;
+
+    let project_rules_path = project_rules_path(&characters_dir);
+    let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
+        format!(
+            "Failed to load project rules file {}: {}",
+            project_rules_path.display(),
+            e
+        )
+    })?;
+
+    let character_rules_path = char_path.join("rules.json");
+    let character_rules = crate::rules::load_rules_file(&character_rules_path).map_err(|e| {
+        format!(
+            "Failed to load character rules file {}: {}",
+            character_rules_path.display(),
+            e
+        )
+    })?;
+
+    let mut resolved_moves = Vec::with_capacity(base_moves.len());
+    for mv in base_moves {
+        let resolved = crate::rules::apply_rules_to_move(
+            project_rules.as_ref(),
+            character_rules.as_ref(),
+            &mv,
+        )
+        .map_err(|e| format!("Failed to apply rules to move '{}': {}", mv.input, e))?;
+        resolved_moves.push(resolved);
+    }
+
+    let char_data = CharacterData {
+        character,
+        moves: resolved_moves,
+        cancel_table,
+    };
+
+    let bytes = export_zx_fspack(&char_data)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
 // =============================================================================
 // Project Management Commands
 // =============================================================================

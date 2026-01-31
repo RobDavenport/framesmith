@@ -6,8 +6,9 @@ pub mod schema;
 
 use commands::{
     clone_character, create_character, create_move, create_project, delete_character,
-    export_character, list_characters, load_character, load_character_assets, load_rules_registry,
-    open_folder_dialog, read_character_asset_base64, save_move, validate_project,
+    export_character, get_character_fspk, list_characters, load_character, load_character_assets,
+    load_rules_registry, open_folder_dialog, read_character_asset_base64, save_move,
+    validate_project,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,6 +24,7 @@ pub fn run() {
             read_character_asset_base64,
             save_move,
             export_character,
+            get_character_fspk,
             open_folder_dialog,
             validate_project,
             create_project,

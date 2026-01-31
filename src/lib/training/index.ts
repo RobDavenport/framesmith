@@ -26,3 +26,9 @@ export {
   type ChargeInput,
   type ResolvedMove,
 } from './MoveResolver';
+export {
+  DummyController,
+  type DummyConfig,
+  type DummyState,
+  type DummyRecovery,
+} from './DummyController';

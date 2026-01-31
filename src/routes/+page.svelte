@@ -8,6 +8,7 @@
   import FrameDataTable from "$lib/views/FrameDataTable.svelte";
   import MoveEditor from "$lib/views/MoveEditor.svelte";
   import CancelGraph from "$lib/views/CancelGraph.svelte";
+  import TrainingMode from "$lib/views/TrainingMode.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
   import { isProjectOpen } from "$lib/stores/project.svelte";
 
@@ -43,6 +44,8 @@
       <MoveEditor />
     {:else if currentView === "cancel-graph"}
       <CancelGraph />
+    {:else if currentView === "training"}
+      <TrainingMode onExit={() => handleViewChange("overview")} />
     {/if}
   </main>
 </div>
