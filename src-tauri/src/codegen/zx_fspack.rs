@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
     HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, MOVE_EXTRAS72_SIZE, MOVE_RECORD_SIZE,
-    SECTION_CANCELS_U16, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE,
-    SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS,
-    SECTION_MOVES, SECTION_MOVE_EXTRAS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
-    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
-    SECTION_SHAPES, SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE,
-    SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
+    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CANCELS_U16, SECTION_EVENT_ARGS,
+    SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS,
+    SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVES, SECTION_MOVE_EXTRAS,
+    SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS, SECTION_MOVE_RESOURCE_DELTAS,
+    SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS, SECTION_SHAPES, SECTION_STATE_TAGS,
+    SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB, STRREF_SIZE,
 };
 
 fn checked_u16(value: usize, what: &str) -> Result<u16, String> {
@@ -1030,6 +1030,62 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         }
     }
 
+    // Encode cancel tag rules
+    // CancelTagRule24: from_tag StrRef (8) + to_tag StrRef (8) + condition (1) + min_frame (1) + max_frame (1) + flags (1) + padding (4) = 24
+    let mut cancel_tag_rules_data: Vec<u8> = Vec::new();
+    for rule in &char_data.cancel_table.tag_rules {
+        // from_tag StrRef (8 bytes) - use 0xFFFFFFFF sentinel for "any"
+        if rule.from == "any" {
+            write_u32_le(&mut cancel_tag_rules_data, 0xFFFFFFFF);
+            write_u16_le(&mut cancel_tag_rules_data, 0);
+            write_u16_le(&mut cancel_tag_rules_data, 0);
+        } else {
+            let (off, len) = strings.intern(&rule.from)?;
+            write_strref(&mut cancel_tag_rules_data, (off, len));
+        }
+
+        // to_tag StrRef (8 bytes) - use 0xFFFFFFFF sentinel for "any"
+        if rule.to == "any" {
+            write_u32_le(&mut cancel_tag_rules_data, 0xFFFFFFFF);
+            write_u16_le(&mut cancel_tag_rules_data, 0);
+            write_u16_le(&mut cancel_tag_rules_data, 0);
+        } else {
+            let (off, len) = strings.intern(&rule.to)?;
+            write_strref(&mut cancel_tag_rules_data, (off, len));
+        }
+
+        // condition (1 byte)
+        let condition: u8 = match rule.on {
+            crate::schema::CancelCondition::Always => 0,
+            crate::schema::CancelCondition::Hit => 1,
+            crate::schema::CancelCondition::Block => 2,
+            crate::schema::CancelCondition::Whiff => 3,
+        };
+        write_u8(&mut cancel_tag_rules_data, condition);
+        // min_frame (1 byte)
+        write_u8(&mut cancel_tag_rules_data, rule.after_frame);
+        // max_frame (1 byte)
+        write_u8(&mut cancel_tag_rules_data, rule.before_frame);
+        // flags (1 byte) - reserved
+        write_u8(&mut cancel_tag_rules_data, 0);
+        // padding (4 bytes)
+        write_u32_le(&mut cancel_tag_rules_data, 0);
+    }
+
+    // Encode cancel denies
+    // CancelDeny4: from_idx (u16) + to_idx (u16) = 4 bytes
+    let mut cancel_denies_data: Vec<u8> = Vec::new();
+    for (from_input, deny_list) in &char_data.cancel_table.deny {
+        if let Some(&from_idx) = cancel_lookup.input_to_index.get(from_input.as_str()) {
+            for to_input in deny_list {
+                if let Some(&to_idx) = cancel_lookup.input_to_index.get(to_input.as_str()) {
+                    write_u16_le(&mut cancel_denies_data, from_idx);
+                    write_u16_le(&mut cancel_denies_data, to_idx);
+                }
+            }
+        }
+    }
+
     let string_table_data = strings.into_bytes();
 
     struct SectionData {
@@ -1149,6 +1205,20 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             kind: SECTION_STATE_TAGS,
             align: 4,
             bytes: state_tags_data,
+        });
+    }
+    if !cancel_tag_rules_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_CANCEL_TAG_RULES,
+            align: 4,
+            bytes: cancel_tag_rules_data,
+        });
+    }
+    if !cancel_denies_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_CANCEL_DENIES,
+            align: 4,
+            bytes: cancel_denies_data,
         });
     }
 

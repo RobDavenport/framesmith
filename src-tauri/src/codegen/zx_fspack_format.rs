@@ -97,6 +97,12 @@ pub const SECTION_STATE_TAG_RANGES: u32 = 17;
 /// Array of StrRef for state tags (indexed by ranges)
 pub const SECTION_STATE_TAGS: u32 = 18;
 
+/// Array of CancelTagRule24 structs (tag-based cancel rules)
+pub const SECTION_CANCEL_TAG_RULES: u32 = 19;
+
+/// Array of CancelDeny4 structs (explicit deny pairs as from_idx:u16, to_idx:u16)
+pub const SECTION_CANCEL_DENIES: u32 = 20;
+
 // =============================================================================
 // Sentinel Values
 // =============================================================================
@@ -289,6 +295,8 @@ mod tests {
             SECTION_MOVE_RESOURCE_DELTAS,
             SECTION_STATE_TAG_RANGES,
             SECTION_STATE_TAGS,
+            SECTION_CANCEL_TAG_RULES,
+            SECTION_CANCEL_DENIES,
         ];
         let mut sorted = kinds;
         sorted.sort();
