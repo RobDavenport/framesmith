@@ -539,3 +539,133 @@ fn zx_fspack_cancel_table_roundtrips() {
         }
     }
 }
+
+#[test]
+fn tags_survive_roundtrip() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelTable, Character, GuardType, MeterGain, Move, Pushback, Tag,
+    };
+    use std::collections::HashMap;
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![],
+        },
+        moves: vec![
+            Move {
+                input: "5L".to_string(),
+                name: "Light".to_string(),
+                tags: vec![
+                    Tag::new("normal").unwrap(),
+                    Tag::new("light").unwrap(),
+                ],
+                guard: GuardType::Mid,
+                animation: "5L".to_string(),
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..Default::default()
+            },
+            Move {
+                input: "5M".to_string(),
+                name: "Medium".to_string(),
+                tags: vec![
+                    Tag::new("normal").unwrap(),
+                    Tag::new("medium").unwrap(),
+                ],
+                guard: GuardType::Mid,
+                animation: "5M".to_string(),
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..Default::default()
+            },
+        ],
+        cancel_table: CancelTable {
+            chains: HashMap::new(),
+            special_cancels: vec![],
+            super_cancels: vec![],
+            jump_cancels: vec![],
+        },
+    };
+
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify state tag sections exist
+    assert!(
+        pack.state_tag_ranges().is_some(),
+        "STATE_TAG_RANGES section should exist"
+    );
+
+    // Move 0 should have tags ["normal", "light"]
+    let tags0: Vec<&str> = pack.state_tags(0).expect("state 0 tags").collect();
+    assert_eq!(tags0.len(), 2);
+    assert_eq!(tags0[0], "normal");
+    assert_eq!(tags0[1], "light");
+
+    // Move 1 should have tags ["normal", "medium"]
+    let tags1: Vec<&str> = pack.state_tags(1).expect("state 1 tags").collect();
+    assert_eq!(tags1.len(), 2);
+    assert_eq!(tags1[0], "normal");
+    assert_eq!(tags1[1], "medium");
+}
+
+#[test]
+fn empty_tags_roundtrip() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+    };
+    use std::collections::HashMap;
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![],
+        },
+        moves: vec![Move {
+            input: "5L".to_string(),
+            name: "Light".to_string(),
+            tags: vec![], // No tags
+            guard: GuardType::Mid,
+            animation: "5L".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable {
+            chains: HashMap::new(),
+            special_cancels: vec![],
+            super_cancels: vec![],
+            jump_cancels: vec![],
+        },
+    };
+
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Tag sections should not exist when no move has tags
+    assert!(
+        pack.state_tag_ranges().is_none(),
+        "STATE_TAG_RANGES section should not exist when no tags"
+    );
+}
