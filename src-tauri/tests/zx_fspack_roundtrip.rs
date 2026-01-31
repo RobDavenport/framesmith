@@ -644,3 +644,158 @@ fn empty_tags_roundtrip() {
         "STATE_TAG_RANGES section should not exist when no tags"
     );
 }
+
+#[test]
+fn cancel_tag_rules_roundtrip() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, Move,
+        Pushback, Tag,
+    };
+
+    // Create moves with tags
+    let mv0 = Move {
+        input: "5L".to_string(),
+        name: "Light".to_string(),
+        tags: vec![Tag::new("normal").unwrap()],
+        guard: GuardType::Mid,
+        animation: "5L".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        ..Default::default()
+    };
+    let mv1 = Move {
+        input: "236P".to_string(),
+        name: "Fireball".to_string(),
+        tags: vec![Tag::new("special").unwrap()],
+        guard: GuardType::Mid,
+        animation: "236P".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        ..Default::default()
+    };
+
+    // Create cancel table with tag rule: normal can cancel to special on hit
+    let cancel_table = CancelTable {
+        tag_rules: vec![CancelTagRule {
+            from: "normal".to_string(),
+            to: "special".to_string(),
+            on: CancelCondition::Hit,
+            after_frame: 0,
+            before_frame: 255,
+        }],
+        ..Default::default()
+    };
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![],
+        },
+        moves: vec![mv0, mv1],
+        cancel_table,
+    };
+
+    // Export and parse
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify cancel tag rules section exists
+    let rules = pack
+        .cancel_tag_rules()
+        .expect("CANCEL_TAG_RULES section should exist");
+    assert_eq!(rules.len(), 1);
+
+    // Verify rule content
+    let rule = rules.get(0).expect("rule 0");
+    assert_eq!(rule.from_tag(), Some("normal"));
+    assert_eq!(rule.to_tag(), Some("special"));
+    assert_eq!(rule.condition(), 1); // 1 = on_hit
+    assert_eq!(rule.min_frame(), 0);
+    assert_eq!(rule.max_frame(), 255);
+
+    // Verify tags on moves
+    let tags0: Vec<&str> = pack.state_tags(0).expect("state 0 tags").collect();
+    assert_eq!(tags0, vec!["normal"]);
+    let tags1: Vec<&str> = pack.state_tags(1).expect("state 1 tags").collect();
+    assert_eq!(tags1, vec!["special"]);
+}
+
+#[test]
+fn cancel_denies_roundtrip() {
+    use d_developmentnethercore_projectframesmith_lib::commands::CharacterData;
+    use d_developmentnethercore_projectframesmith_lib::schema::{
+        CancelTable, Character, GuardType, MeterGain, Move, Pushback,
+    };
+
+    // Create two moves
+    let mv0 = Move {
+        input: "5L".to_string(),
+        name: "Light".to_string(),
+        guard: GuardType::Mid,
+        animation: "5L".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        ..Default::default()
+    };
+    let mv1 = Move {
+        input: "jump".to_string(),
+        name: "Jump".to_string(),
+        guard: GuardType::Mid,
+        animation: "jump".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        ..Default::default()
+    };
+
+    // Create cancel table with deny: 5L cannot cancel to jump
+    let mut deny = std::collections::HashMap::new();
+    deny.insert("5L".to_string(), vec!["jump".to_string()]);
+
+    let cancel_table = CancelTable {
+        deny,
+        ..Default::default()
+    };
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "t".to_string(),
+            name: "T".to_string(),
+            archetype: "test".to_string(),
+            health: 1000,
+            walk_speed: 3.0,
+            back_walk_speed: 3.0,
+            jump_height: 100,
+            jump_duration: 40,
+            dash_distance: 80,
+            dash_duration: 20,
+            resources: vec![],
+        },
+        moves: vec![mv0, mv1],
+        cancel_table,
+    };
+
+    // Export and parse
+    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify deny exists: move 0 (5L) to move 1 (jump)
+    assert!(
+        pack.has_cancel_deny(0, 1),
+        "5L (0) should be denied from canceling to jump (1)"
+    );
+    // Verify reverse is not denied
+    assert!(
+        !pack.has_cancel_deny(1, 0),
+        "jump (1) should not be denied from canceling to 5L (0)"
+    );
+}
