@@ -12,6 +12,9 @@ export type GuardType = "high" | "mid" | "low" | "unblockable";
 
 export type HurtboxFlag = "strike_invuln" | "throw_invuln" | "projectile_invuln" | "full_invuln" | "armor";
 
+// Tag for state/move categorization (validated on backend as lowercase alphanumeric with underscores)
+export type Tag = string;
+
 // =============================================================================
 // Hitbox Shapes (Discriminated Union)
 // =============================================================================
@@ -335,6 +338,7 @@ export interface Move {
   // Core identification
   input: string;
   name: string;
+  tags?: Tag[];  // Flexible categorization tags
 
   // v2: Move classification (flexible string type)
   type?: string;
