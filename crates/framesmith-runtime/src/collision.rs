@@ -430,6 +430,53 @@ pub struct PushboxResult {
     pub p2_dx: i32,
 }
 
+/// Calculate pushbox separation for two overlapping AABBs.
+///
+/// Returns `None` if the AABBs don't overlap.
+/// Returns `Some(PushboxResult)` with separation values if they do overlap.
+///
+/// The separation is calculated to push characters apart, splitting the overlap
+/// equally between them. The direction is determined by center positions:
+/// - If P1's center is left of P2's center, P1 is pushed left and P2 right
+/// - If P1's center is right of P2's center, P1 is pushed right and P2 left
+#[must_use]
+pub fn calculate_pushbox_separation(p1_aabb: &Aabb, p2_aabb: &Aabb) -> Option<PushboxResult> {
+    // Check if they overlap
+    if !aabb_overlap(p1_aabb, p2_aabb) {
+        return None;
+    }
+
+    // Calculate overlap amount on X axis
+    let p1_right = p1_aabb.x.saturating_add(p1_aabb.w as i32);
+    let p2_right = p2_aabb.x.saturating_add(p2_aabb.w as i32);
+
+    // Determine which side to push to (based on center positions)
+    let p1_center = p1_aabb.x.saturating_add((p1_aabb.w / 2) as i32);
+    let p2_center = p2_aabb.x.saturating_add((p2_aabb.w / 2) as i32);
+
+    // Calculate horizontal overlap
+    let overlap_x = if p1_center <= p2_center {
+        // P1 is to the left of P2
+        // Overlap is how far P1's right edge extends past P2's left edge
+        p1_right.saturating_sub(p2_aabb.x)
+    } else {
+        // P1 is to the right of P2
+        // Overlap is how far P2's right edge extends past P1's left edge (negative to push P1 right)
+        -(p2_right.saturating_sub(p1_aabb.x))
+    };
+
+    // Split the overlap between both characters (half each)
+    // P1 gets pushed left (negative) if they're overlapping from the left
+    // P2 gets pushed right (positive) if they're overlapping from the left
+    let half_overlap = overlap_x / 2;
+    let remainder = overlap_x % 2;
+
+    Some(PushboxResult {
+        p1_dx: -(half_overlap + remainder), // P1 moves opposite to overlap direction
+        p2_dx: half_overlap,                 // P2 moves in overlap direction
+    })
+}
+
 /// Find the active push window for a character at the given frame.
 fn find_active_push_window<'a>(
     state: &CharacterState,
@@ -526,40 +573,8 @@ pub fn check_pushbox(
     let p1_aabb = get_pushbox_aabb(&p1_pw, &p1_shapes, p1_pos)?;
     let p2_aabb = get_pushbox_aabb(&p2_pw, &p2_shapes, p2_pos)?;
 
-    // Check if they overlap
-    if !aabb_overlap(&p1_aabb, &p2_aabb) {
-        return None;
-    }
-
-    // Calculate overlap amount on X axis
-    let p1_right = p1_aabb.x.saturating_add(p1_aabb.w as i32);
-    let p2_right = p2_aabb.x.saturating_add(p2_aabb.w as i32);
-
-    // Determine which side to push to (based on center positions)
-    let p1_center = p1_aabb.x.saturating_add((p1_aabb.w / 2) as i32);
-    let p2_center = p2_aabb.x.saturating_add((p2_aabb.w / 2) as i32);
-
-    // Calculate horizontal overlap
-    let overlap_x = if p1_center <= p2_center {
-        // P1 is to the left of P2
-        // Overlap is how far P1's right edge extends past P2's left edge
-        p1_right.saturating_sub(p2_aabb.x)
-    } else {
-        // P1 is to the right of P2
-        // Overlap is how far P2's right edge extends past P1's left edge (negative to push P1 right)
-        -(p2_right.saturating_sub(p1_aabb.x))
-    };
-
-    // Split the overlap between both characters (half each)
-    // P1 gets pushed left (negative) if they're overlapping from the left
-    // P2 gets pushed right (positive) if they're overlapping from the left
-    let half_overlap = overlap_x / 2;
-    let remainder = overlap_x % 2;
-
-    Some(PushboxResult {
-        p1_dx: -(half_overlap + remainder), // P1 moves opposite to overlap direction
-        p2_dx: half_overlap,                 // P2 moves in overlap direction
-    })
+    // Delegate to the separation calculation helper
+    calculate_pushbox_separation(&p1_aabb, &p2_aabb)
 }
 
 #[cfg(test)]
@@ -701,5 +716,163 @@ mod tests {
         let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
         let b = Capsule { x1: 20, y1: 0, x2: 30, y2: 0, r: 5 };
         assert!(!capsule_overlap(&a, &b)); // distance 10 == 5+5
+    }
+
+    // ==========================================================================
+    // Pushbox separation tests
+    // ==========================================================================
+
+    #[test]
+    fn pushbox_separation_returns_none_when_no_overlap() {
+        // Two AABBs that don't overlap
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 50, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn pushbox_separation_returns_none_when_edge_touching() {
+        // Two AABBs exactly touching (no overlap)
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 20, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn pushbox_separation_p1_left_of_p2_even_overlap() {
+        // P1 (center=10) is left of P2 (center=25)
+        // P1: x=0..20, P2: x=15..35
+        // Overlap = P1's right (20) - P2's left (15) = 5
+        // Half = 2, remainder = 1
+        // P1 moves left by -(2+1) = -3, P2 moves right by 2
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 15, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_some());
+        let sep = result.unwrap();
+
+        // P1 should move left (negative), P2 should move right (positive)
+        assert!(sep.p1_dx < 0, "P1 should move left, got {}", sep.p1_dx);
+        assert!(sep.p2_dx >= 0, "P2 should move right, got {}", sep.p2_dx);
+
+        // Total separation should equal the overlap (5 pixels)
+        assert_eq!(
+            sep.p1_dx.abs() + sep.p2_dx.abs(),
+            5,
+            "Total separation should equal overlap"
+        );
+    }
+
+    #[test]
+    fn pushbox_separation_p1_right_of_p2() {
+        // P1 (center=25) is right of P2 (center=10)
+        // P1: x=15..35, P2: x=0..20
+        // Overlap = P2's right (20) - P1's left (15) = 5, negated = -5
+        // Half = -2, remainder = -1
+        // P1 moves right by -(-2-1) = 3, P2 moves left by -2
+        let p1 = Aabb { x: 15, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_some());
+        let sep = result.unwrap();
+
+        // P1 should move right (positive), P2 should move left (negative)
+        assert!(sep.p1_dx > 0, "P1 should move right, got {}", sep.p1_dx);
+        assert!(sep.p2_dx <= 0, "P2 should move left, got {}", sep.p2_dx);
+
+        // Total separation should equal the overlap (5 pixels)
+        assert_eq!(
+            sep.p1_dx.abs() + sep.p2_dx.abs(),
+            5,
+            "Total separation should equal overlap"
+        );
+    }
+
+    #[test]
+    fn pushbox_separation_perfectly_overlapping() {
+        // Two AABBs with identical position and size
+        // Centers are equal, so P1 is considered "left" (<=)
+        // Overlap = full width = 20
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_some());
+        let sep = result.unwrap();
+
+        // P1 should move left (negative), P2 should move right (positive)
+        assert!(sep.p1_dx < 0, "P1 should move left, got {}", sep.p1_dx);
+        assert!(sep.p2_dx >= 0, "P2 should move right, got {}", sep.p2_dx);
+
+        // Total separation should equal the overlap (20 pixels)
+        assert_eq!(
+            sep.p1_dx.abs() + sep.p2_dx.abs(),
+            20,
+            "Total separation should equal full overlap"
+        );
+    }
+
+    #[test]
+    fn pushbox_separation_small_overlap() {
+        // Minimal overlap of 1 pixel
+        // P1: x=0..20, P2: x=19..39
+        // P1 center = 10, P2 center = 29
+        // Overlap = 20 - 19 = 1
+        // Half = 0, remainder = 1
+        // P1 moves -1, P2 moves 0
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 19, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_some());
+        let sep = result.unwrap();
+
+        assert_eq!(sep.p1_dx, -1, "P1 should move -1");
+        assert_eq!(sep.p2_dx, 0, "P2 should move 0");
+    }
+
+    #[test]
+    fn pushbox_separation_even_split() {
+        // Overlap that divides evenly (6 pixels)
+        // P1: x=0..20, P2: x=14..34
+        // P1 center = 10, P2 center = 24
+        // Overlap = 20 - 14 = 6
+        // Half = 3, remainder = 0
+        // P1 moves -3, P2 moves 3
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 14, y: 0, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_some());
+        let sep = result.unwrap();
+
+        assert_eq!(sep.p1_dx, -3, "P1 should move -3");
+        assert_eq!(sep.p2_dx, 3, "P2 should move 3");
+    }
+
+    #[test]
+    fn pushbox_result_struct_equality() {
+        let a = PushboxResult { p1_dx: -5, p2_dx: 5 };
+        let b = PushboxResult { p1_dx: -5, p2_dx: 5 };
+        let c = PushboxResult { p1_dx: -4, p2_dx: 5 };
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn pushbox_separation_only_y_overlap_returns_none() {
+        // AABBs that only overlap on Y axis but not X axis
+        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p2 = Aabb { x: 30, y: 10, w: 20, h: 40 };
+
+        let result = calculate_pushbox_separation(&p1, &p2);
+        assert!(result.is_none());
     }
 }
