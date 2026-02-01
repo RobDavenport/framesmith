@@ -4,6 +4,7 @@
 //! Filename convention: `{base}~{variant}.json` (e.g., `5H~level1.json`)
 
 use crate::schema::State;
+use std::collections::HashSet;
 
 /// Check if a JSON value is "default-like" and should be skipped during merge.
 /// This prevents Rust's `Default::default()` fields from overwriting base values.
@@ -84,6 +85,77 @@ pub fn parse_variant_name(name: &str) -> (&str, Option<&str>) {
 /// Check if a filename represents a variant (has non-empty variant portion).
 pub fn is_variant_filename(name: &str) -> bool {
     parse_variant_name(name).1.is_some()
+}
+
+/// Validate variant states have existing bases and matching base fields.
+pub fn validate_variants(
+    states: &[(String, State)],
+    base_names: &HashSet<String>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    for (name, state) in states {
+        if let Some(ref declared_base) = state.base {
+            let (implied_base, variant_part) = parse_variant_name(name);
+
+            if !base_names.contains(declared_base) {
+                errors.push(format!(
+                    "Variant '{}': Base state '{}' not found",
+                    name, declared_base
+                ));
+            }
+
+            if variant_part.is_some() && declared_base != implied_base {
+                errors.push(format!(
+                    "Variant '{}': Base field '{}' doesn't match filename implied base '{}'",
+                    name, declared_base, implied_base
+                ));
+            }
+        }
+    }
+
+    errors
+}
+
+/// Validate that variants don't inherit from other variants (single-level only).
+pub fn validate_variants_no_chain(
+    states: &[(String, State)],
+    base_names: &HashSet<String>,
+    variant_names: &HashSet<String>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    for (name, state) in states {
+        if let Some(ref declared_base) = state.base {
+            let (implied_base, variant_part) = parse_variant_name(name);
+
+            // Check for chaining first - if base is a variant, that's the error
+            if variant_names.contains(declared_base) {
+                errors.push(format!(
+                    "Variant '{}': Variants cannot inherit from another variant ('{}')",
+                    name, declared_base
+                ));
+                continue;
+            }
+
+            // Only check base existence if not chaining
+            if !base_names.contains(declared_base) {
+                errors.push(format!(
+                    "Variant '{}': Base state '{}' not found",
+                    name, declared_base
+                ));
+            }
+
+            if variant_part.is_some() && declared_base != implied_base {
+                errors.push(format!(
+                    "Variant '{}': Base field '{}' doesn't match filename implied base '{}'",
+                    name, declared_base, implied_base
+                ));
+            }
+        }
+    }
+
+    errors
 }
 
 #[cfg(test)]
@@ -222,5 +294,58 @@ mod tests {
         let resolved = resolve_variant(&base, &overlay, "5H~level1");
 
         assert_eq!(resolved.input, "5H");
+    }
+
+    #[test]
+    fn validate_base_exists() {
+        let states = vec![
+            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
+        ];
+        let base_names: std::collections::HashSet<_> = std::iter::empty().collect();
+
+        let errors = validate_variants(&states, &base_names);
+
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("Base state '5H' not found"));
+    }
+
+    #[test]
+    fn validate_base_field_matches_filename() {
+        let states = vec![
+            ("5H~level1".to_string(), State { base: Some("2H".to_string()), ..Default::default() }),
+        ];
+        let base_names: std::collections::HashSet<_> = ["5H".to_string(), "2H".to_string()].into_iter().collect();
+
+        let errors = validate_variants(&states, &base_names);
+
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("doesn't match filename"));
+    }
+
+    #[test]
+    fn validate_no_chained_inheritance() {
+        let states = vec![
+            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
+            ("5H~level1~enhanced".to_string(), State { base: Some("5H~level1".to_string()), ..Default::default() }),
+        ];
+        let base_names: std::collections::HashSet<_> = ["5H".to_string()].into_iter().collect();
+        let variant_names: std::collections::HashSet<_> = ["5H~level1".to_string()].into_iter().collect();
+
+        let errors = validate_variants_no_chain(&states, &base_names, &variant_names);
+
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("cannot inherit from another variant"));
+    }
+
+    #[test]
+    fn validate_passes_for_valid_variant() {
+        let states = vec![
+            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
+        ];
+        let base_names: std::collections::HashSet<_> = ["5H".to_string()].into_iter().collect();
+
+        let errors = validate_variants(&states, &base_names);
+
+        assert!(errors.is_empty());
     }
 }
