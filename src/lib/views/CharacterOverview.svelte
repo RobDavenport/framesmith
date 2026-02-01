@@ -69,9 +69,24 @@
   const superCancelCount = $derived(cancelTable?.super_cancels?.length ?? 0);
   const jumpCancelCount = $derived(cancelTable?.jump_cancels?.length ?? 0);
 
-  // Format speed values
-  function formatSpeed(value: number): string {
-    return value.toFixed(1);
+  // Format property names: convert snake_case to Title Case
+  function formatPropertyName(key: string): string {
+    return key
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+  // Format property values: numbers get formatted, booleans become Yes/No, strings as-is
+  function formatPropertyValue(value: unknown): string {
+    if (typeof value === "number") {
+      // If it's a whole number, show without decimals; otherwise show one decimal
+      return Number.isInteger(value) ? value.toString() : value.toFixed(1);
+    }
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No";
+    }
+    return String(value);
   }
 
   async function handleExport() {
@@ -112,34 +127,12 @@
       <div class="stats-card">
         <h3 class="card-title">Properties</h3>
         <div class="stat-list">
-          <div class="stat-row">
-            <span class="stat-label">Health</span>
-            <span class="stat-value">{character.health}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Walk Speed</span>
-            <span class="stat-value">{formatSpeed(character.walk_speed)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Back Walk Speed</span>
-            <span class="stat-value">{formatSpeed(character.back_walk_speed)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Jump Height</span>
-            <span class="stat-value">{formatSpeed(character.jump_height)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Jump Duration</span>
-            <span class="stat-value">{character.jump_duration}f</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Dash Distance</span>
-            <span class="stat-value">{formatSpeed(character.dash_distance)}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Dash Duration</span>
-            <span class="stat-value">{character.dash_duration}f</span>
-          </div>
+          {#each Object.entries(character.properties ?? {}) as [key, value]}
+            <div class="stat-row">
+              <span class="stat-label">{formatPropertyName(key)}</span>
+              <span class="stat-value">{formatPropertyValue(value)}</span>
+            </div>
+          {/each}
         </div>
       </div>
 
