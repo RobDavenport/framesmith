@@ -3,6 +3,66 @@
 //! Variants allow states to inherit from base states with targeted overrides.
 //! Filename convention: `{base}~{variant}.json` (e.g., `5H~level1.json`)
 
+use crate::schema::State;
+
+/// Check if a JSON value is "default-like" and should be skipped during merge.
+/// This prevents Rust's `Default::default()` fields from overwriting base values.
+fn is_default_value(v: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match v {
+        Value::Null => true,
+        Value::String(s) => s.is_empty(),
+        Value::Array(arr) => arr.is_empty(),
+        Value::Object(obj) => obj.is_empty(),
+        Value::Number(n) => n.as_u64() == Some(0) || n.as_i64() == Some(0) || n.as_f64() == Some(0.0),
+        Value::Bool(_) => false, // bools are never considered default (false is meaningful)
+    }
+}
+
+/// Deep merge two JSON values.
+/// - Objects: recursively merge (overlay fields override base fields)
+/// - Arrays: overlay replaces base entirely (no element merging)
+/// - Scalars: overlay replaces base
+/// - Null/default values in overlay are skipped (don't override base)
+fn deep_merge(base: serde_json::Value, overlay: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+
+    match (base, overlay) {
+        (Value::Object(mut base_map), Value::Object(overlay_map)) => {
+            for (key, overlay_val) in overlay_map {
+                if is_default_value(&overlay_val) {
+                    // Skip default/null overlay values - keep base value
+                    continue;
+                } else if let Some(base_val) = base_map.remove(&key) {
+                    base_map.insert(key, deep_merge(base_val, overlay_val));
+                } else {
+                    base_map.insert(key, overlay_val);
+                }
+            }
+            Value::Object(base_map)
+        }
+        (_, overlay) => overlay,
+    }
+}
+
+/// Resolve a variant by merging overlay onto base state.
+pub fn resolve_variant(base: &State, overlay: &State, resolved_id: &str) -> State {
+    let base_json = serde_json::to_value(base).expect("base should serialize");
+    let overlay_json = serde_json::to_value(overlay).expect("overlay should serialize");
+
+    let mut merged = deep_merge(base_json, overlay_json);
+
+    if let serde_json::Value::Object(ref mut map) = merged {
+        map.insert("id".to_string(), serde_json::Value::String(resolved_id.to_string()));
+        map.remove("base");
+        if map.get("input").map(|v| v.as_str() == Some("")).unwrap_or(true) {
+            map.insert("input".to_string(), serde_json::Value::String(base.input.clone()));
+        }
+    }
+
+    serde_json::from_value(merged).expect("merged state should deserialize")
+}
+
 /// Parse a state name into (base, variant) components.
 ///
 /// Splits on the **last** tilde. If the portion after the last tilde is empty,
@@ -71,5 +131,96 @@ mod tests {
         assert!(is_variant_filename("5H~level1"));
         assert!(!is_variant_filename("5S~"));
         assert!(is_variant_filename("5S~~installed"));
+    }
+
+    use crate::schema::{FrameHitbox, OnHit, Rect, State};
+
+    #[test]
+    fn merge_scalars_override() {
+        let base = State {
+            input: "5H".to_string(),
+            name: "Standing Heavy".to_string(),
+            damage: 50,
+            hitstun: 20,
+            ..Default::default()
+        };
+        let overlay = State {
+            damage: 80,
+            ..Default::default()
+        };
+
+        let resolved = resolve_variant(&base, &overlay, "5H~level1");
+
+        assert_eq!(resolved.id.as_deref(), Some("5H~level1"));
+        assert_eq!(resolved.input, "5H");
+        assert_eq!(resolved.name, "Standing Heavy");
+        assert_eq!(resolved.damage, 80);
+        assert_eq!(resolved.hitstun, 20);
+    }
+
+    #[test]
+    fn merge_objects_deep() {
+        let base = State {
+            on_hit: Some(OnHit {
+                gain_meter: Some(10),
+                ground_bounce: Some(false),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let overlay = State {
+            on_hit: Some(OnHit {
+                ground_bounce: Some(true),
+                wall_bounce: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let resolved = resolve_variant(&base, &overlay, "5H~level1");
+
+        let on_hit = resolved.on_hit.unwrap();
+        assert_eq!(on_hit.gain_meter, Some(10));
+        assert_eq!(on_hit.ground_bounce, Some(true));
+        assert_eq!(on_hit.wall_bounce, Some(true));
+    }
+
+    #[test]
+    fn merge_arrays_replace() {
+        let base = State {
+            hitboxes: vec![FrameHitbox {
+                frames: (8, 12),
+                r#box: Rect { x: 0, y: -50, w: 40, h: 20 },
+            }],
+            ..Default::default()
+        };
+        let overlay = State {
+            hitboxes: vec![FrameHitbox {
+                frames: (8, 14),
+                r#box: Rect { x: 0, y: -55, w: 50, h: 25 },
+            }],
+            ..Default::default()
+        };
+
+        let resolved = resolve_variant(&base, &overlay, "5H~level1");
+
+        assert_eq!(resolved.hitboxes.len(), 1);
+        assert_eq!(resolved.hitboxes[0].frames, (8, 14));
+    }
+
+    #[test]
+    fn merge_inherits_input_from_base() {
+        let base = State {
+            input: "5H".to_string(),
+            ..Default::default()
+        };
+        let overlay = State {
+            damage: 80,
+            ..Default::default()
+        };
+
+        let resolved = resolve_variant(&base, &overlay, "5H~level1");
+
+        assert_eq!(resolved.input, "5H");
     }
 }
