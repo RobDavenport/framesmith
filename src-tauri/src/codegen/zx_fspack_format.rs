@@ -103,6 +103,19 @@ pub const SECTION_CANCEL_TAG_RULES: u32 = 19;
 /// Array of CancelDeny4 structs (explicit deny pairs as from_idx:u16, to_idx:u16)
 pub const SECTION_CANCEL_DENIES: u32 = 20;
 
+/// Array of CharacterProp12 structs (dynamic key-value properties)
+pub const SECTION_CHARACTER_PROPS: u32 = 21;
+
+/// Character property record size: name_off(4) + name_len(2) + type(1) + reserved(1) + value(4) = 12 bytes
+pub const CHARACTER_PROP12_SIZE: usize = 12;
+
+/// Property type: Q24.8 signed fixed-point number
+pub const PROP_TYPE_Q24_8: u8 = 0;
+/// Property type: boolean (value != 0)
+pub const PROP_TYPE_BOOL: u8 = 1;
+/// Property type: string reference (u16 offset + u16 len in value field)
+pub const PROP_TYPE_STR: u8 = 2;
+
 // =============================================================================
 // Sentinel Values
 // =============================================================================
@@ -310,6 +323,7 @@ mod tests {
             SECTION_STATE_TAGS,
             SECTION_CANCEL_TAG_RULES,
             SECTION_CANCEL_DENIES,
+            SECTION_CHARACTER_PROPS,
         ];
         let mut sorted = kinds;
         sorted.sort();

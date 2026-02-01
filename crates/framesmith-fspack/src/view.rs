@@ -89,6 +89,9 @@ pub const SECTION_CANCEL_TAG_RULES: u32 = 19;
 /// Section containing explicit deny pairs
 pub const SECTION_CANCEL_DENIES: u32 = 20;
 
+/// Array of CharacterProp12 structs
+pub const SECTION_CHARACTER_PROPS: u32 = 21;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
