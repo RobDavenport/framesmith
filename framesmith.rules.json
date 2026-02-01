@@ -17,7 +17,7 @@
     }
   },
   "registry": {
-    "resources": ["heat", "ammo"],
+    "resources": ["heat", "ammo", "level", "install_active"],
     "events": {
       "gain_heat": {
         "contexts": ["on_hit", "notify"],
