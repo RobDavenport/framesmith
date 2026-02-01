@@ -5,8 +5,9 @@
 
 use framesmith_fspack::PackView;
 use framesmith_runtime::{
-    available_cancels, check_hits, init_resources, next_frame,
+    available_cancels, check_hits, check_pushbox, init_resources, next_frame,
     CharacterState as RtCharacterState, FrameInput, HitResult as RtHitResult,
+    PushboxResult as RtPushboxResult,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -78,12 +79,34 @@ impl From<&RtHitResult> for HitResult {
     }
 }
 
+/// Push separation result exposed to JavaScript.
+/// Contains the (dx, dy) separation values if characters are overlapping.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PushSeparation {
+    /// Separation for player (negative = left, positive = right)
+    pub player_dx: i32,
+    /// Separation for dummy (negative = left, positive = right)
+    pub dummy_dx: i32,
+}
+
+impl From<&RtPushboxResult> for PushSeparation {
+    fn from(result: &RtPushboxResult) -> Self {
+        PushSeparation {
+            player_dx: result.p1_dx,
+            dummy_dx: result.p2_dx,
+        }
+    }
+}
+
 /// Result of a single frame tick.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FrameResult {
     pub player: CharacterState,
     pub dummy: CharacterState,
     pub hits: Vec<HitResult>,
+    /// Push separation values if characters' pushboxes are overlapping.
+    /// None if there is no overlap.
+    pub push_separation: Option<PushSeparation>,
 }
 
 /// Training session for simulating a player character against a dummy.
@@ -304,11 +327,22 @@ impl TrainingSession {
             framesmith_runtime::report_hit(&mut self.dummy_state);
         }
 
+        // Check pushbox collision
+        let push_sep = check_pushbox(
+            &self.player_state,
+            &player_pack,
+            self.player_pos,
+            &self.dummy_state,
+            &dummy_pack,
+            self.dummy_pos,
+        );
+
         // Build result
         let result = FrameResult {
             player: CharacterState::from(&self.player_state),
             dummy: CharacterState::from(&self.dummy_state),
             hits: self.last_hits.iter().map(HitResult::from).collect(),
+            push_separation: push_sep.as_ref().map(PushSeparation::from),
         };
 
         serde_wasm_bindgen::to_value(&result)
