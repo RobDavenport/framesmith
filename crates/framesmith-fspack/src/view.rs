@@ -103,7 +103,7 @@ pub const SECTION_PUSH_WINDOWS: u32 = 22;
 pub const STRREF_SIZE: usize = 8;
 
 /// State record size (see StateRecord in module docs)
-pub const STATE_RECORD_SIZE: usize = 32;
+pub const STATE_RECORD_SIZE: usize = 36;
 
 /// ResourceDef record size
 pub const RESOURCE_DEF_SIZE: usize = 12;
@@ -625,7 +625,7 @@ impl<'a> KeyframesKeysView<'a> {
 
 /// Zero-copy view over the states section.
 ///
-/// Each entry is a StateRecord (32 bytes).
+/// Each entry is a StateRecord (36 bytes).
 #[derive(Clone, Copy)]
 pub struct StatesView<'a> {
     data: &'a [u8],
@@ -657,7 +657,7 @@ impl<'a> StatesView<'a> {
     }
 }
 
-/// Zero-copy view over a single state record (32 bytes).
+/// Zero-copy view over a single state record (36 bytes).
 ///
 /// Layout:
 /// - 0-1: state_id (u16)
@@ -679,8 +679,10 @@ impl<'a> StatesView<'a> {
 /// - 21: reserved (u8)
 /// - 22-25: hit_windows_off (u32)
 /// - 26-27: hit_windows_len (u16)
-/// - 28-29: hurt_windows_off (u16) - note: compressed to fit 32 bytes
+/// - 28-29: hurt_windows_off (u16)
 /// - 30-31: hurt_windows_len (u16)
+/// - 32-33: push_windows_off (u16)
+/// - 34-35: push_windows_len (u16)
 #[derive(Clone, Copy)]
 pub struct StateView<'a> {
     data: &'a [u8],
@@ -804,6 +806,16 @@ impl<'a> StateView<'a> {
     /// Returns the hurt windows count.
     pub fn hurt_windows_len(&self) -> u16 {
         read_u16_le(self.data, 30).unwrap_or(0)
+    }
+
+    /// Returns the byte offset within the PUSH_WINDOWS section.
+    pub fn push_windows_off(&self) -> u16 {
+        read_u16_le(self.data, 32).unwrap_or(0)
+    }
+
+    /// Returns the push windows count.
+    pub fn push_windows_len(&self) -> u16 {
+        read_u16_le(self.data, 34).unwrap_or(0)
     }
 }
 
@@ -2273,7 +2285,7 @@ mod tests {
         data
     }
 
-    /// Helper to build a MoveRecord (32 bytes).
+    /// Helper to build a MoveRecord (36 bytes).
     fn build_move_record(
         move_id: u16,
         mesh_key: u16,
@@ -2294,8 +2306,10 @@ mod tests {
         hit_windows_len: u16,
         hurt_windows_off: u16,
         hurt_windows_len: u16,
-    ) -> [u8; 32] {
-        let mut data = [0u8; 32];
+        push_windows_off: u16,
+        push_windows_len: u16,
+    ) -> [u8; 36] {
+        let mut data = [0u8; 36];
         data[0..2].copy_from_slice(&move_id.to_le_bytes());
         data[2..4].copy_from_slice(&mesh_key.to_le_bytes());
         data[4..6].copy_from_slice(&keyframes_key.to_le_bytes());
@@ -2317,6 +2331,8 @@ mod tests {
         data[26..28].copy_from_slice(&hit_windows_len.to_le_bytes());
         data[28..30].copy_from_slice(&hurt_windows_off.to_le_bytes());
         data[30..32].copy_from_slice(&hurt_windows_len.to_le_bytes());
+        data[32..34].copy_from_slice(&push_windows_off.to_le_bytes());
+        data[34..36].copy_from_slice(&push_windows_len.to_le_bytes());
         data
     }
 
@@ -2338,17 +2354,17 @@ mod tests {
 
         // STRING_TABLE at offset 64, len 12
         // MESH_KEYS at offset 76 (64 + 12), len 8
-        // MOVES at offset 84 (76 + 8), len 32
+        // MOVES at offset 84 (76 + 8), len 36
 
         // offset 64: STRING_TABLE (12 bytes) -> ends at 76
         // offset 76 (aligned to 4): MESH_KEYS (8 bytes) -> ends at 84
-        // offset 84 (aligned to 4): MOVES (32 bytes) -> ends at 116
+        // offset 84 (aligned to 4): MOVES (36 bytes) -> ends at 120
 
         let string_table_off: u32 = 64;
         let mesh_keys_off: u32 = 76; // 64 + 12 = 76 (already aligned)
         let moves_off: u32 = 84; // 76 + 8 = 84 (already aligned)
 
-        let total_len: u32 = 116; // 84 + 32
+        let total_len: u32 = 120; // 84 + 36
 
         // Build header: 3 sections
         data.extend_from_slice(&build_header(0, total_len, 3));
@@ -2366,7 +2382,7 @@ mod tests {
             8,
             4,
         ));
-        data.extend_from_slice(&build_section_header(SECTION_STATES, moves_off, 32, 4));
+        data.extend_from_slice(&build_section_header(SECTION_STATES, moves_off, 36, 4));
 
         // String table data
         data.extend_from_slice(string_data);
@@ -2397,6 +2413,8 @@ mod tests {
             0,        // hit_windows_len
             0,        // hurt_windows_off
             0,        // hurt_windows_len
+            0,        // push_windows_off
+            0,        // push_windows_len
         ));
 
         assert_eq!(data.len(), total_len as usize);
@@ -2484,6 +2502,8 @@ mod tests {
             0,        // hit_windows_len
             0,        // hurt_windows_off
             0,        // hurt_windows_len
+            0,        // push_windows_off
+            0,        // push_windows_len
         ));
 
         assert_eq!(data.len(), total_len as usize);
@@ -2649,7 +2669,7 @@ mod tests {
         let string_len = string_data.len() as u32;
 
         let moves_off = align_up(string_off + string_len, 4);
-        let moves_len = 32u32;
+        let moves_len = 36u32;
 
         let extras_off = align_up(moves_off + moves_len, 4);
         let extras_len = 72u32;
@@ -2703,6 +2723,8 @@ mod tests {
             0,        // hit_windows_len
             0,        // hurt_windows_off
             0,        // hurt_windows_len
+            0,        // push_windows_off
+            0,        // push_windows_len
         ));
 
         // MOVE_EXTRAS (one record)
@@ -2859,7 +2881,7 @@ mod tests {
         let string_len = string_data.len() as u32;
 
         let moves_off = align_up(string_off + string_len, 4);
-        let moves_len = 32u32;
+        let moves_len = 36u32;
 
         let extras_off = align_up(moves_off + moves_len, 4);
         let extras_len = 72u32;
@@ -2977,6 +2999,8 @@ mod tests {
             0,        // hit_windows_len
             0,        // hurt_windows_off
             0,        // hurt_windows_len
+            0,        // push_windows_off
+            0,        // push_windows_len
         ));
 
         // MOVE_EXTRAS (one record)

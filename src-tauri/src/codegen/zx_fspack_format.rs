@@ -187,7 +187,7 @@ pub const HIT_WINDOW24_SIZE: usize = 24;
 pub const HURT_WINDOW12_SIZE: usize = 12;
 
 /// State record size (see StateRecord struct in module docs)
-pub const STATE_RECORD_SIZE: usize = 32;
+pub const STATE_RECORD_SIZE: usize = 36;
 
 /// ResourceDef record size
 pub const RESOURCE_DEF12_SIZE: usize = 12;
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(SHAPE12_SIZE, 12, "Shape12 size must be 12 bytes");
         assert_eq!(HIT_WINDOW24_SIZE, 24, "HitWindow24 size must be 24 bytes");
         assert_eq!(HURT_WINDOW12_SIZE, 12, "HurtWindow12 size must be 12 bytes");
-        assert_eq!(STATE_RECORD_SIZE, 32, "StateRecord size must be 32 bytes");
+        assert_eq!(STATE_RECORD_SIZE, 36, "StateRecord size must be 36 bytes");
     }
 
     #[test]
