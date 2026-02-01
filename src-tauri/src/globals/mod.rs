@@ -120,6 +120,44 @@ pub fn list_global_states(project_dir: &Path) -> Result<Vec<String>, GlobalsErro
     Ok(states)
 }
 
+/// Apply overrides to a global state using shallow merge semantics
+///
+/// - Top-level fields are replaced entirely
+/// - Arrays are replaced (not concatenated)
+/// - Nested objects are replaced as units (not deep merged)
+/// - Null values remove the field
+/// - The alias becomes the new input
+pub fn apply_overrides(
+    base: State,
+    overrides: &serde_json::Map<String, serde_json::Value>,
+    alias: &str,
+) -> Result<State, GlobalsError> {
+    // Convert base to JSON, apply overrides, convert back
+    let mut base_json = serde_json::to_value(&base).map_err(|e| GlobalsError::ParseError {
+        path: "state serialization".to_string(),
+        message: e.to_string(),
+    })?;
+
+    if let serde_json::Value::Object(ref mut map) = base_json {
+        for (key, value) in overrides {
+            if value.is_null() {
+                map.remove(key);
+            } else {
+                map.insert(key.clone(), value.clone());
+            }
+        }
+        // Always set input to alias
+        map.insert("input".to_string(), serde_json::Value::String(alias.to_string()));
+    }
+
+    let result: State = serde_json::from_value(base_json).map_err(|e| GlobalsError::ParseError {
+        path: "state deserialization".to_string(),
+        message: e.to_string(),
+    })?;
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +242,89 @@ mod tests {
         let dir = create_test_project();
         let states = list_global_states(dir.path()).unwrap();
         assert_eq!(states, vec!["burst"]);
+    }
+
+    #[test]
+    fn apply_overrides_replaces_top_level_field() {
+        let base = State {
+            input: "idle".to_string(),
+            startup: 5,
+            ..Default::default()
+        };
+
+        let mut overrides = serde_json::Map::new();
+        overrides.insert("startup".to_string(), serde_json::json!(10));
+
+        let result = apply_overrides(base, &overrides, "idle").unwrap();
+        assert_eq!(result.startup, 10);
+        assert_eq!(result.input, "idle"); // unchanged
+    }
+
+    #[test]
+    fn apply_overrides_replaces_array_entirely() {
+        let base = State {
+            input: "idle".to_string(),
+            tags: vec![
+                crate::schema::Tag::new("normal").unwrap(),
+                crate::schema::Tag::new("ground").unwrap(),
+            ],
+            ..Default::default()
+        };
+
+        let mut overrides = serde_json::Map::new();
+        overrides.insert("tags".to_string(), serde_json::json!(["special"]));
+
+        let result = apply_overrides(base, &overrides, "idle").unwrap();
+        assert_eq!(result.tags.len(), 1);
+        assert_eq!(result.tags[0].as_str(), "special");
+    }
+
+    #[test]
+    fn apply_overrides_replaces_nested_object() {
+        let base = State {
+            input: "idle".to_string(),
+            movement: Some(crate::schema::Movement {
+                distance: Some(10),
+                direction: Some("forward".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut overrides = serde_json::Map::new();
+        overrides.insert("movement".to_string(), serde_json::json!({ "distance": 20 }));
+
+        let result = apply_overrides(base, &overrides, "idle").unwrap();
+        let movement = result.movement.unwrap();
+        assert_eq!(movement.distance, Some(20));
+        assert!(movement.direction.is_none()); // replaced entirely, not merged
+    }
+
+    #[test]
+    fn apply_overrides_sets_alias_as_input() {
+        let base = State {
+            input: "walk_forward".to_string(),
+            ..Default::default()
+        };
+
+        let overrides = serde_json::Map::new();
+        let result = apply_overrides(base, &overrides, "66").unwrap();
+        assert_eq!(result.input, "66"); // alias replaces input
+    }
+
+    #[test]
+    fn apply_overrides_null_removes_field() {
+        let base = State {
+            input: "idle".to_string(),
+            startup: 5,
+            total: Some(20),
+            ..Default::default()
+        };
+
+        let mut overrides = serde_json::Map::new();
+        overrides.insert("total".to_string(), serde_json::Value::Null);
+
+        let result = apply_overrides(base, &overrides, "idle").unwrap();
+        assert!(result.total.is_none());
     }
 }
