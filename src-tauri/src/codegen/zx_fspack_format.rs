@@ -216,6 +216,19 @@ pub fn to_q8_8_degrees(degrees: f32) -> i16 {
     (degrees * 256.0).round() as i16
 }
 
+/// Convert a floating-point value to Q24.8 fixed point.
+/// Range: ±8,388,607.996, Precision: 1/256 ≈ 0.0039
+#[inline]
+pub fn to_q24_8(value: f64) -> i32 {
+    (value * 256.0).round() as i32
+}
+
+/// Convert Q24.8 fixed point back to floating-point.
+#[inline]
+pub fn from_q24_8(raw: i32) -> f64 {
+    raw as f64 / 256.0
+}
+
 // =============================================================================
 // Little-Endian Write Helpers
 // =============================================================================
@@ -378,6 +391,18 @@ mod tests {
         assert_eq!(to_q8_8_degrees(90.0), 23040);
         // -45.0 degrees -> -11520
         assert_eq!(to_q8_8_degrees(-45.0), -11520);
+    }
+
+    #[test]
+    fn test_q24_8_conversion() {
+        assert_eq!(to_q24_8(10000.0), 2_560_000);
+        assert_eq!(from_q24_8(2_560_000), 10000.0);
+        assert_eq!(to_q24_8(4.5), 1152);
+        assert_eq!(from_q24_8(1152), 4.5);
+        assert_eq!(to_q24_8(-3.5), -896);
+        assert_eq!(from_q24_8(-896), -3.5);
+        assert_eq!(to_q24_8(0.0), 0);
+        assert_eq!(from_q24_8(0), 0.0);
     }
 
     #[test]
