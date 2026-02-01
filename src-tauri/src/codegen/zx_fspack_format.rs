@@ -106,8 +106,14 @@ pub const SECTION_CANCEL_DENIES: u32 = 20;
 /// Array of CharacterProp12 structs (dynamic key-value properties)
 pub const SECTION_CHARACTER_PROPS: u32 = 21;
 
+/// Array of PushWindow12 structs (body collision boxes, same format as HurtWindow12)
+pub const SECTION_PUSH_WINDOWS: u32 = 22;
+
 /// Character property record size: name_off(4) + name_len(2) + type(1) + reserved(1) + value(4) = 12 bytes
 pub const CHARACTER_PROP12_SIZE: usize = 12;
+
+/// Push window record size (same as hurt window): start(1) + end(1) + pad(2) + shapes_off(4) + shapes_len(2) + pad(2) = 12 bytes
+pub const PUSH_WINDOW12_SIZE: usize = 12;
 
 /// Property type: Q24.8 signed fixed-point number
 pub const PROP_TYPE_Q24_8: u8 = 0;
@@ -324,6 +330,7 @@ mod tests {
             SECTION_CANCEL_TAG_RULES,
             SECTION_CANCEL_DENIES,
             SECTION_CHARACTER_PROPS,
+            SECTION_PUSH_WINDOWS,
         ];
         let mut sorted = kinds;
         sorted.sort();

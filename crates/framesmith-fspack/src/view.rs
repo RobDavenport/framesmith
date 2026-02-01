@@ -92,6 +92,9 @@ pub const SECTION_CANCEL_DENIES: u32 = 20;
 /// Array of CharacterProp12 structs
 pub const SECTION_CHARACTER_PROPS: u32 = 21;
 
+/// Array of PushWindow12 structs (body collision)
+pub const SECTION_PUSH_WINDOWS: u32 = 22;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
