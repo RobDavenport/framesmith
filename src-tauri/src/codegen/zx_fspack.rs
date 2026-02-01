@@ -567,11 +567,11 @@ pub fn pack_character_props(
             PropertyValue::String(s) => {
                 write_u8(&mut data, PROP_TYPE_STR);
                 write_u8(&mut data, 0); // reserved
-                // Write string reference packed into u32: (offset: u16, len: u16)
+                // Write string reference as u16 offset + u16 length pair
                 let (str_off, str_len) = strings.intern(s)?;
-                // Pack offset (lower 16 bits) and length (upper 16 bits) into u32
-                // Actually per the spec: value contains offset:u16 + len:u16, so write them in order
-                write_u16_le(&mut data, str_off as u16);
+                let str_off_u16 =
+                    checked_u16(str_off as usize, "string property value offset")?;
+                write_u16_le(&mut data, str_off_u16);
                 write_u16_le(&mut data, str_len);
             }
         }
