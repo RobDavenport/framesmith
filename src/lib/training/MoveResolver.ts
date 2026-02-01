@@ -47,7 +47,16 @@ export interface ChargeInput {
   button: ButtonName;
 }
 
-export type MoveInput = SimpleInput | MotionInput | ChargeInput;
+/**
+ * Input definition for a dash move (double-tap direction).
+ */
+export interface DashInput {
+  type: 'dash';
+  /** Direction to double-tap (4 for back, 6 for forward). */
+  direction: number;
+}
+
+export type MoveInput = SimpleInput | MotionInput | ChargeInput | DashInput;
 
 /**
  * Definition of a move for input resolution.
@@ -114,10 +123,6 @@ export class MoveResolver {
     newlyPressed: ButtonName[],
     availableCancels?: number[]
   ): ResolvedMove | null {
-    if (newlyPressed.length === 0) {
-      return null;
-    }
-
     const matches = this.getMatchingMoves(buffer, newlyPressed, availableCancels);
     return matches.length > 0 ? matches[0] : null;
   }
@@ -138,14 +143,15 @@ export class MoveResolver {
     const matches: ResolvedMove[] = [];
 
     for (const { def, index } of this.movesByPriority) {
-      // Skip if not in available cancels
-      if (availableCancels !== undefined && !availableCancels.includes(index)) {
+      // Skip if not in available cancels (but allow all moves if cancels list is empty,
+      // which indicates neutral state where any move should be available)
+      if (availableCancels !== undefined && availableCancels.length > 0 && !availableCancels.includes(index)) {
         continue;
       }
 
-      // Check if this move's button was newly pressed
+      // Check if this move's button was newly pressed (dash moves don't need buttons)
       const button = this.getMoveButton(def.input);
-      if (!newlyPressed.includes(button)) {
+      if (button !== null && !newlyPressed.includes(button)) {
         continue;
       }
 
@@ -164,8 +170,12 @@ export class MoveResolver {
 
   /**
    * Get the button required for a move input.
+   * Returns null for moves that don't require a button (e.g., dashes).
    */
-  private getMoveButton(input: MoveInput): ButtonName {
+  private getMoveButton(input: MoveInput): ButtonName | null {
+    if (input.type === 'dash') {
+      return null;
+    }
     return input.button;
   }
 
@@ -193,6 +203,11 @@ export class MoveResolver {
           releaseDirection: input.releaseDirection,
           chargeFrames: input.chargeFrames,
           button: input.button,
+        });
+
+      case 'dash':
+        return buffer.detectDash({
+          direction: input.direction,
         });
     }
   }

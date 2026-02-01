@@ -61,8 +61,21 @@ export interface SimplePattern {
   button: ButtonName;
 }
 
+/**
+ * Pattern for double-tap dash inputs (44, 66).
+ */
+export interface DashPattern {
+  /** Direction to double-tap (4 for back, 6 for forward). */
+  direction: number;
+  /** Maximum frames between taps (default: 12). */
+  windowFrames?: number;
+}
+
 /** Default motion input window in frames. */
 const DEFAULT_MOTION_WINDOW = 15;
+
+/** Default dash input window in frames. */
+const DEFAULT_DASH_WINDOW = 12;
 
 /** Default buffer capacity (1 second at 60fps). */
 const DEFAULT_CAPACITY = 60;
@@ -221,5 +234,52 @@ export class InputBuffer {
     }
 
     return latest.direction === pattern.direction;
+  }
+
+  /**
+   * Detect a double-tap dash input (44 or 66).
+   *
+   * Pattern: direction -> neutral -> direction (within window)
+   *
+   * @param pattern - The dash pattern to detect.
+   * @returns true if the dash was detected.
+   */
+  detectDash(pattern: DashPattern): boolean {
+    const window = pattern.windowFrames ?? DEFAULT_DASH_WINDOW;
+    const latest = this.latest();
+
+    // Latest frame must be the dash direction
+    if (!latest || latest.direction !== pattern.direction) {
+      return false;
+    }
+
+    // Need at least 3 frames: dir -> neutral -> dir
+    if (this.buffer.length < 3) {
+      return false;
+    }
+
+    // Search backwards for pattern: direction -> (neutral or other) -> direction
+    const searchStart = Math.max(0, this.buffer.length - window);
+    let foundNeutral = false;
+    let foundFirstTap = false;
+
+    for (let i = this.buffer.length - 2; i >= searchStart; i--) {
+      const snapshot = this.buffer[i];
+
+      if (!foundNeutral) {
+        // Looking for neutral (5) or opposite direction after first tap
+        if (snapshot.direction === 5 || snapshot.direction !== pattern.direction) {
+          foundNeutral = true;
+        }
+      } else if (!foundFirstTap) {
+        // Looking for the first tap of the dash direction
+        if (snapshot.direction === pattern.direction) {
+          foundFirstTap = true;
+          break;
+        }
+      }
+    }
+
+    return foundFirstTap;
   }
 }

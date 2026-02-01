@@ -90,6 +90,23 @@ export function getSelectedMoveInput() {
   return selectedMoveInput;
 }
 
+/**
+ * Reactive store object for components that need fine-grained reactivity.
+ * Use this when $derived(getterFn()) doesn't track properly.
+ */
+export const characterStore = {
+  get selectedMoveInput() {
+    return selectedMoveInput;
+  },
+  get selectedMove(): State | null {
+    if (!currentCharacter || !selectedMoveInput) return null;
+    return currentCharacter.moves.find((m) => m.input === selectedMoveInput) ?? null;
+  },
+  get currentCharacter() {
+    return currentCharacter;
+  },
+};
+
 export function isLoading() {
   return loading;
 }

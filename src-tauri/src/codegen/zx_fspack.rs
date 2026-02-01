@@ -154,17 +154,21 @@ fn guard_type_to_u8(guard: &GuardType) -> u8 {
 
 /// Pack a FrameHitbox into a HitWindow24 structure.
 ///
-/// HitWindow24 layout (24 bytes):
-/// - frame_start (u8): first active frame
-/// - frame_end (u8): last active frame
-/// - shape_off (u32): offset into SHAPES section
-/// - shape_count (u16): number of shapes (always 1 for v1)
-/// - damage (u16): damage value
-/// - hitstun (u8): hitstun frames
-/// - blockstun (u8): blockstun frames
-/// - hitstop (u8): hitstop frames
-/// - guard (u8): guard type (0=high, 1=mid, 2=low, 3=unblockable)
-/// - reserved (8 bytes): padding for future use
+/// HitWindow24 layout (24 bytes) - must match view.rs HitWindowView:
+/// - 0: start_frame (u8)
+/// - 1: end_frame (u8)
+/// - 2: guard (u8)
+/// - 3: reserved (u8)
+/// - 4-5: damage (u16 LE)
+/// - 6-7: chip_damage (u16 LE)
+/// - 8: hitstun (u8)
+/// - 9: blockstun (u8)
+/// - 10: hitstop (u8)
+/// - 11: reserved (u8)
+/// - 12-15: shapes_off (u32 LE)
+/// - 16-17: shapes_len (u16 LE)
+/// - 18-21: cancels_off (u32 LE)
+/// - 22-23: cancels_len (u16 LE)
 fn pack_hit_window(
     hb: &FrameHitbox,
     shapes_off: u32,
@@ -176,16 +180,19 @@ fn pack_hit_window(
 ) -> [u8; HIT_WINDOW24_SIZE] {
     let mut buf = [0u8; HIT_WINDOW24_SIZE];
 
-    buf[0] = hb.frames.0; // frame_start
-    buf[1] = hb.frames.1; // frame_end
-    buf[2..6].copy_from_slice(&shapes_off.to_le_bytes()); // shape_off
-    buf[6..8].copy_from_slice(&1u16.to_le_bytes()); // shape_count = 1
-    buf[8..10].copy_from_slice(&damage.to_le_bytes()); // damage
-    buf[10] = hitstun; // hitstun
-    buf[11] = blockstun; // blockstun
-    buf[12] = hitstop; // hitstop
-    buf[13] = guard; // guard
-                     // bytes 14-23 are reserved/padding (already zeroed)
+    buf[0] = hb.frames.0; // start_frame
+    buf[1] = hb.frames.1; // end_frame
+    buf[2] = guard; // guard
+    buf[3] = 0; // reserved
+    buf[4..6].copy_from_slice(&damage.to_le_bytes()); // damage
+    buf[6..8].copy_from_slice(&0u16.to_le_bytes()); // chip_damage (TODO: add to schema)
+    buf[8] = hitstun; // hitstun
+    buf[9] = blockstun; // blockstun
+    buf[10] = hitstop; // hitstop
+    buf[11] = 0; // reserved
+    buf[12..16].copy_from_slice(&shapes_off.to_le_bytes()); // shapes_off
+    buf[16..18].copy_from_slice(&1u16.to_le_bytes()); // shapes_len = 1
+    // bytes 18-27 are cancels/pushback (already zeroed, not used in v1)
 
     buf
 }
@@ -1016,21 +1023,34 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     }
 
     // Build state tag sections (one range entry per move, tags are StrRefs)
+    // Note: move_type (the "type" field) is also included as a tag so that
+    // tag-based cancel rules can match on it (e.g., "system" -> "any")
     let mut state_tag_ranges_data: Vec<u8> = Vec::new();
     let mut state_tags_data: Vec<u8> = Vec::new();
-    let any_tags = char_data.moves.iter().any(|m| !m.tags.is_empty());
+    let any_tags = char_data
+        .moves
+        .iter()
+        .any(|m| !m.tags.is_empty() || m.move_type.is_some());
 
     if any_tags {
         for mv in &char_data.moves {
             let tag_offset = checked_u32(state_tags_data.len(), "state_tags_offset")?;
-            let tag_count = checked_u16(mv.tags.len(), "state_tags_count")?;
+            // Count includes move_type if present
+            let type_count = if mv.move_type.is_some() { 1 } else { 0 };
+            let tag_count = checked_u16(mv.tags.len() + type_count, "state_tags_count")?;
 
             // Write range entry: offset(4) + count(2) + padding(2)
             write_u32_le(&mut state_tag_ranges_data, tag_offset);
             write_u16_le(&mut state_tag_ranges_data, tag_count);
             write_u16_le(&mut state_tag_ranges_data, 0); // padding
 
-            // Write tag StrRefs
+            // Write move_type as first tag if present (so cancel rules can match on type)
+            if let Some(ref move_type) = mv.move_type {
+                let (str_off, str_len) = strings.intern(move_type.as_str())?;
+                write_strref(&mut state_tags_data, (str_off, str_len));
+            }
+
+            // Write explicit tag StrRefs
             for tag in &mv.tags {
                 let (str_off, str_len) = strings.intern(tag.as_str())?;
                 write_strref(&mut state_tags_data, (str_off, str_len));
@@ -1933,20 +1953,25 @@ mod tests {
         assert_eq!(hw.len(), HIT_WINDOW24_SIZE);
         assert_eq!(hw[0], 5); // frame_start
         assert_eq!(hw[1], 8); // frame_end
+        assert_eq!(hw[2], 1); // guard (mid)
+        assert_eq!(hw[3], 0); // reserved
 
-        let shape_off = u32::from_le_bytes([hw[2], hw[3], hw[4], hw[5]]);
-        assert_eq!(shape_off, 100);
-
-        let shape_count = u16::from_le_bytes([hw[6], hw[7]]);
-        assert_eq!(shape_count, 1);
-
-        let damage = u16::from_le_bytes([hw[8], hw[9]]);
+        let damage = u16::from_le_bytes([hw[4], hw[5]]);
         assert_eq!(damage, 500);
 
-        assert_eq!(hw[10], 12); // hitstun
-        assert_eq!(hw[11], 8); // blockstun
-        assert_eq!(hw[12], 10); // hitstop
-        assert_eq!(hw[13], 1); // guard (mid)
+        let chip_damage = u16::from_le_bytes([hw[6], hw[7]]);
+        assert_eq!(chip_damage, 0);
+
+        assert_eq!(hw[8], 12); // hitstun
+        assert_eq!(hw[9], 8); // blockstun
+        assert_eq!(hw[10], 10); // hitstop
+        assert_eq!(hw[11], 0); // reserved
+
+        let shape_off = u32::from_le_bytes([hw[12], hw[13], hw[14], hw[15]]);
+        assert_eq!(shape_off, 100);
+
+        let shape_count = u16::from_le_bytes([hw[16], hw[17]]);
+        assert_eq!(shape_count, 1);
     }
 
     #[test]
@@ -2113,11 +2138,11 @@ mod tests {
         let mv = make_move_with_hitboxes();
         let packed = pack_moves(&[mv], None, None).unwrap();
 
-        // Verify hit window shape reference
+        // Verify hit window shape reference (shapes_off at bytes 12-15, shapes_len at 16-17)
         let hit_window = &packed.hit_windows[0..HIT_WINDOW24_SIZE];
         let shape_off =
-            u32::from_le_bytes([hit_window[2], hit_window[3], hit_window[4], hit_window[5]]);
-        let shape_count = u16::from_le_bytes([hit_window[6], hit_window[7]]) as u32;
+            u32::from_le_bytes([hit_window[12], hit_window[13], hit_window[14], hit_window[15]]);
+        let shape_count = u16::from_le_bytes([hit_window[16], hit_window[17]]) as u32;
 
         let shape_end = shape_off + shape_count * SHAPE12_SIZE as u32;
         assert!(

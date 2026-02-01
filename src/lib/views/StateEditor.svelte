@@ -1,8 +1,6 @@
 <script lang="ts">
   import {
-    getCurrentCharacter,
-    getSelectedMove,
-    getSelectedMoveInput,
+    characterStore,
     selectMove,
     saveMove,
   } from "$lib/stores/character.svelte";
@@ -14,10 +12,12 @@
   const commonMoveTypes = ["normal", "command_normal", "special", "super", "movement", "throw", "ex", "rekka"];
   const triggerOptions: TriggerType[] = ["press", "release", "hold"];
 
-  const characterData = $derived(getCurrentCharacter());
+  // Use reactive getters from characterStore for proper dependency tracking
+  const characterData = $derived(characterStore.currentCharacter);
+  const selectedMoveInputValue = $derived(characterStore.selectedMoveInput);
+  const selectedMoveValue = $derived(characterStore.selectedMove);
+
   const moves = $derived(characterData?.moves ?? []);
-  const selectedMoveInput = $derived(getSelectedMoveInput());
-  const selectedMove = $derived(getSelectedMove());
   const characterId = $derived(characterData?.character.id ?? null);
   const assets = $derived(getAssets());
   const assetsLoading = $derived(isAssetsLoading());
@@ -32,9 +32,9 @@
 
   // Watch for selected move changes and create a local copy
   $effect(() => {
-    if (selectedMove) {
-      editingMove = structuredClone(selectedMove);
-    } else if (moves.length > 0 && !selectedMoveInput) {
+    if (selectedMoveValue) {
+      editingMove = structuredClone(selectedMoveValue);
+    } else if (moves.length > 0 && !selectedMoveInputValue) {
       // Auto-select first move if none selected
       selectMove(moves[0].input);
     }
@@ -55,8 +55,8 @@
 
   // Check if there are unsaved changes
   const hasChanges = $derived.by(() => {
-    if (!editingMove || !selectedMove) return false;
-    return JSON.stringify(editingMove) !== JSON.stringify(selectedMove);
+    if (!editingMove || !selectedMoveValue) return false;
+    return JSON.stringify(editingMove) !== JSON.stringify(selectedMoveValue);
   });
 
   function handleMoveSelect(event: Event) {
@@ -155,7 +155,7 @@
   <!-- Move Selector - always visible so users can select a move -->
   <div class="move-selector">
     <label for="move-select">Move:</label>
-    <select id="move-select" value={selectedMoveInput ?? ""} onchange={handleMoveSelect}>
+    <select id="move-select" value={selectedMoveInputValue ?? ""} onchange={handleMoveSelect}>
       {#if moves.length === 0}
         <option value="">No moves available</option>
       {:else}
@@ -593,7 +593,7 @@
       <div class="preview-panel">
         <MoveAnimationPreview
           characterId={characterId}
-          selectionKey={selectedMoveInput}
+          selectionKey={selectedMoveInputValue}
           move={editingMove}
           onMoveChange={(m) => (editingMove = m)}
           assets={assets}

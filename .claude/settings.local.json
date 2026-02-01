@@ -17,7 +17,10 @@
       "Bash(cargo add:*)",
       "Bash(npm run build:*)",
       "Bash(git mv:*)",
-      "Bash(npx svelte-check)"
+      "Bash(npx svelte-check)",
+      "Bash(npm run wasm:build:*)",
+      "Bash(npm run test:run:*)",
+      "Bash(npm run build:wasm:*)"
     ]
   },
   "disabledMcpjsonServers": [

@@ -87,5 +87,16 @@ function parseInputNotation(input: string): MoveDefinition['input'] | null {
     };
   }
 
+  // Double-tap dash inputs (44, 66) - direction-only, no button
+  // These are triggered by tapping a direction twice quickly
+  const dashMatch = input.match(/^([46])\1$/);
+  if (dashMatch) {
+    const direction = parseInt(dashMatch[1]);
+    return {
+      type: 'dash',
+      direction,
+    } as MoveDefinition['input'];
+  }
+
   return null;
 }

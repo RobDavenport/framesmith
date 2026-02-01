@@ -1,10 +1,10 @@
 [package]
 name = "framesmith"
 version = "0.1.0"
-default-run = "framesmith"
 description = "Engine-agnostic fighting game character authoring tool"
 authors = ["you"]
 edition = "2021"
+default-run = "framesmith"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -48,6 +48,6 @@ path = "src/bin/generate_schema.rs"
 test = false
 
 [[bin]]
-name = "framesmith"
+name = "framesmith-cli"
 path = "src/bin/framesmith.rs"
 test = false

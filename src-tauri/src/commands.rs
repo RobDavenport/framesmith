@@ -565,8 +565,34 @@ pub fn get_character_fspk(
         )
     })?;
 
+    let mut error_messages = Vec::new();
+
+    let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
+    let char_issues =
+        crate::rules::validate_character_resources_with_registry(&character, &registry);
+    error_messages.extend(
+        char_issues
+            .into_iter()
+            .filter(|i| i.severity == crate::rules::Severity::Error)
+            .map(|i| format!("character {}: {}", i.field, i.message)),
+    );
+
     let mut resolved_moves = Vec::with_capacity(base_moves.len());
     for mv in base_moves {
+        let issues = crate::rules::validate_move_with_rules(
+            project_rules.as_ref(),
+            character_rules.as_ref(),
+            &mv,
+        )
+        .map_err(|e| format!("Failed to validate move '{}': {}", mv.input, e))?;
+
+        error_messages.extend(
+            issues
+                .into_iter()
+                .filter(|i| i.severity == crate::rules::Severity::Error)
+                .map(|i| format!("{} {}: {}", mv.input, i.field, i.message)),
+        );
+
         let resolved = crate::rules::apply_rules_to_move(
             project_rules.as_ref(),
             character_rules.as_ref(),
@@ -574,6 +600,10 @@ pub fn get_character_fspk(
         )
         .map_err(|e| format!("Failed to apply rules to move '{}': {}", mv.input, e))?;
         resolved_moves.push(resolved);
+    }
+
+    if !error_messages.is_empty() {
+        return Err(error_messages.join("; "));
     }
 
     let char_data = CharacterData {

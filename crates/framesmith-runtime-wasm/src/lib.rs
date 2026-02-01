@@ -177,9 +177,19 @@ impl TrainingSession {
         let player_result = next_frame(&self.player_state, &player_pack, &player_frame_input);
         self.player_state = player_result.state;
 
+        // Handle move completion for player
+        if player_result.move_ended {
+            Self::handle_move_ended(&mut self.player_state, &player_pack);
+        }
+
         // Advance dummy state
         let dummy_result = next_frame(&self.dummy_state, &dummy_pack, &dummy_frame_input);
         self.dummy_state = dummy_result.state;
+
+        // Handle move completion for dummy
+        if dummy_result.move_ended {
+            Self::handle_move_ended(&mut self.dummy_state, &dummy_pack);
+        }
 
         // Check for hits (player attacking dummy)
         let hits_result = check_hits(
@@ -190,6 +200,86 @@ impl TrainingSession {
             &dummy_pack,
             self.dummy_pos,
         );
+
+        // Debug: Log hit detection info
+        #[cfg(debug_assertions)]
+        {
+            // Get move info for debugging
+            if let Some(moves) = player_pack.states() {
+                if let Some(mv) = moves.get(self.player_state.current_state as usize) {
+                    let hit_count = mv.hit_windows_len();
+                    if hit_count > 0 {
+                        // Get hit window details
+                        let mut hw_info = String::new();
+                        if let Some(hit_windows) = player_pack.hit_windows() {
+                            for i in 0..hit_count as usize {
+                                if let Some(hw) = hit_windows.get_at(mv.hit_windows_off(), i) {
+                                    hw_info.push_str(&format!(
+                                        " hw[{}]: frames={}-{}, damage={}, shapes_off={}, shapes_len={}",
+                                        i, hw.start_frame(), hw.end_frame(), hw.damage(),
+                                        hw.shapes_off(), hw.shapes_len()
+                                    ));
+
+                                    // Get shape details
+                                    if let Some(shapes) = player_pack.shapes() {
+                                        for j in 0..hw.shapes_len() as usize {
+                                            if let Some(shape) = shapes.get_at(hw.shapes_off(), j) {
+                                                hw_info.push_str(&format!(
+                                                    " shape[{}]: kind={}, x={}, y={}, w={}, h={}",
+                                                    j, shape.kind(), shape.x_px(), shape.y_px(),
+                                                    shape.width_px(), shape.height_px()
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Get dummy hurtbox info
+                        let mut hrt_info = String::new();
+                        if let Some(dummy_moves) = dummy_pack.states() {
+                            if let Some(dummy_mv) = dummy_moves.get(self.dummy_state.current_state as usize) {
+                                if let Some(hurt_windows) = dummy_pack.hurt_windows() {
+                                    for i in 0..dummy_mv.hurt_windows_len() as usize {
+                                        if let Some(hrt) = hurt_windows.get_at(dummy_mv.hurt_windows_off(), i) {
+                                            hrt_info.push_str(&format!(
+                                                " hrt[{}]: frames={}-{}, shapes_off={}, shapes_len={}",
+                                                i, hrt.start_frame(), hrt.end_frame(),
+                                                hrt.shapes_off(), hrt.shapes_len()
+                                            ));
+
+                                            if let Some(shapes) = dummy_pack.shapes() {
+                                                for j in 0..hrt.shapes_len() as usize {
+                                                    if let Some(shape) = shapes.get_at(hrt.shapes_off(), j) {
+                                                        hrt_info.push_str(&format!(
+                                                            " shape[{}]: x={}, y={}, w={}, h={}",
+                                                            j, shape.x_px(), shape.y_px(),
+                                                            shape.width_px(), shape.height_px()
+                                                        ));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        web_sys::console::log_1(&format!(
+                            "[WASM] state={}, frame={}, player_pos={:?}, dummy_pos={:?}, hits={}{}{}",
+                            self.player_state.current_state,
+                            self.player_state.frame,
+                            self.player_pos,
+                            self.dummy_pos,
+                            hits_result.len(),
+                            hw_info,
+                            hrt_info
+                        ).into());
+                    }
+                }
+            }
+        }
 
         // Store hits for later retrieval
         self.last_hits.clear();
@@ -299,6 +389,25 @@ impl TrainingSession {
             DummyState::BlockStand => None, // Block is handled by game logic
             DummyState::BlockCrouch => Some(1), // Crouching block
             DummyState::BlockAuto => None,  // Auto-block handled by game logic
+        }
+    }
+
+    /// Handle move completion - either loop system states or return to idle.
+    fn handle_move_ended(state: &mut RtCharacterState, pack: &PackView) {
+        // Check if current state is a system state (state 0 = idle, state 1 = crouch)
+        // System states loop back to frame 0 instead of transitioning
+        const IDLE_STATE: u16 = 0;
+        const MAX_SYSTEM_STATE: u16 = 1; // States 0-1 are system states that loop
+
+        if state.current_state <= MAX_SYSTEM_STATE {
+            // System state - loop back to frame 0
+            state.frame = 0;
+        } else {
+            // Attack/action state ended - return to idle
+            state.current_state = IDLE_STATE;
+            state.frame = 0;
+            state.hit_confirmed = false;
+            state.block_confirmed = false;
         }
     }
 }

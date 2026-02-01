@@ -13,6 +13,7 @@
   import InputHistory from '$lib/components/training/InputHistory.svelte';
   import PlaybackControls, { type PlaybackSpeed } from '$lib/components/training/PlaybackControls.svelte';
   import DummySettings from '$lib/components/training/DummySettings.svelte';
+  import HitboxOverlay from '$lib/components/training/HitboxOverlay.svelte';
   import {
     TrainingSession,
     initWasm,
@@ -69,12 +70,11 @@
   let dummyState = $state<CharacterState | null>(null);
 
   // Character display state
-  // TODO: Position updates will come from WASM in a future phase. Currently these
-  // are static placeholder values. The WASM runtime will eventually provide position
-  // data as part of CharacterState, and these values will be updated each frame.
-  let playerX = $state(200);
+  // Positions are in screen pixels. Characters need to be close enough for hitboxes to collide.
+  // Typical hitbox reach is ~30-50 pixels, so characters should be ~100 pixels apart to test hits.
+  let playerX = $state(350);
   let playerY = $state(0);
-  let dummyX = $state(600);
+  let dummyX = $state(450);
   let dummyY = $state(0);
 
   // Health tracking (separate from WASM state for reset functionality)
@@ -367,6 +367,9 @@
     // Get dummy state
     const wasmDummyState = dummyController.getWasmState();
 
+    // Sync positions to WASM for hit detection
+    session.setPositions(playerX, playerY, dummyX, dummyY);
+
     // Tick simulation with error handling for WASM errors
     let result: FrameResult;
     try {
@@ -380,12 +383,34 @@
     }
 
     // Update state
+    const prevState = playerState?.current_state;
     playerState = result.player;
     dummyState = result.dummy;
+
+    // Log state transitions for debugging
+    if (prevState !== result.player.current_state) {
+      const move = currentCharacter?.moves[result.player.current_state];
+      console.log('[STATE]', {
+        from: prevState,
+        to: result.player.current_state,
+        moveName: move?.input ?? 'unknown',
+        hitboxes: move?.hitboxes?.length ?? 0,
+      });
+    }
+
+    // Apply movement
+    applyMovement(snapshot, result.player);
 
     // Process hits and track combos
     const hits = result.hits;
     if (hits.length > 0) {
+      console.log('[HIT]', {
+        playerPos: { x: playerX, y: playerY },
+        dummyPos: { x: dummyX, y: dummyY },
+        playerState: result.player.current_state,
+        playerFrame: result.player.frame,
+        hits: hits.map(h => ({ damage: h.damage, move: h.attacker_move })),
+      });
       for (const hit of hits) {
         // Apply damage to dummy (player attacking)
         dummyHealth = Math.max(0, dummyHealth - hit.damage);
@@ -479,6 +504,46 @@
   function handleKeyUp(event: KeyboardEvent) {
     if (!inputManager) return;
     inputManager.handleKeyUp(event.code);
+  }
+
+  // Apply movement based on current state and input
+  function applyMovement(snapshot: InputSnapshot, state: CharacterState) {
+    if (!currentCharacter) return;
+
+    const char = currentCharacter.character;
+    const move = currentCharacter.moves[state.current_state];
+
+    // Stage boundaries (prevent going off screen)
+    const MIN_X = 50;
+    const MAX_X = 750;
+
+    // Check if in a movement state with movement data
+    if (move?.movement) {
+      const movement = move.movement;
+      const totalFrames = move.total ?? (move.startup + move.active + move.recovery);
+
+      if (movement.distance && movement.direction) {
+        // Calculate per-frame movement
+        const perFrame = movement.distance / totalFrames;
+        const direction = movement.direction === 'forward' ? 1 : -1;
+
+        // Apply movement (player faces right)
+        playerX = Math.max(MIN_X, Math.min(MAX_X, playerX + perFrame * direction));
+      }
+    }
+    // Walking: apply when in system state (idle/crouch) and holding direction
+    else if (state.current_state <= 1) {
+      // Direction 4 = back (left), 6 = forward (right)
+      // Also handle diagonals: 1, 4, 7 = back; 3, 6, 9 = forward
+      const isHoldingBack = [1, 4, 7].includes(snapshot.direction);
+      const isHoldingForward = [3, 6, 9].includes(snapshot.direction);
+
+      if (isHoldingBack) {
+        playerX = Math.max(MIN_X, playerX - char.back_walk_speed);
+      } else if (isHoldingForward) {
+        playerX = Math.min(MAX_X, playerX + char.walk_speed);
+      }
+    }
   }
 
   // Reset health
@@ -632,6 +697,33 @@
     totalDamage: comboDamage,
   }));
 
+  // Hitbox overlay data
+  const playerHitboxData = $derived.by(() => {
+    const move = playerState && currentCharacter
+      ? getMoveForStateIndex(currentCharacter.moves, playerState.current_state)
+      : null;
+    return {
+      move,
+      frame: playerState?.frame ?? 0,
+      x: playerX,
+      y: playerY,
+      facing: 'right' as const,
+    };
+  });
+
+  const dummyHitboxData = $derived.by(() => {
+    const move = dummyState && currentCharacter
+      ? getMoveForStateIndex(currentCharacter.moves, dummyState.current_state)
+      : null;
+    return {
+      move,
+      frame: dummyState?.frame ?? 0,
+      x: dummyX,
+      y: dummyY,
+      facing: 'left' as const,
+    };
+  });
+
   const dummyStatusDisplay = $derived.by(() => ({
     stateLabel: dummyController?.config.state
       ? formatDummyState(dummyController.config.state)
@@ -691,6 +783,13 @@
             characterId={characterId ?? ''}
             actors={renderBuild.actors}
             error={renderBuild.error}
+          />
+          <HitboxOverlay
+            player={playerHitboxData}
+            dummy={dummyHitboxData}
+            show={showHitboxes}
+            width={800}
+            height={400}
           />
         </div>
         </div>
@@ -805,6 +904,7 @@
   }
 
   .viewport-frame {
+    position: relative;
     width: 800px;
     height: 400px;
     min-width: 0;
