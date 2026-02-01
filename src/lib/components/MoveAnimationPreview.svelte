@@ -9,7 +9,7 @@
   import { PREVIEW_ORIGIN_Y_FRAC } from "$lib/rendercore/config";
   import type { ActorSpec } from "$lib/rendercore/types";
 
-  type Layer = "hitboxes" | "hurtboxes";
+  type Layer = "hitboxes" | "hurtboxes" | "pushboxes";
   type Tool = "select" | "draw";
   type Selection = { layer: Layer; index: number };
   type CornerHandle = "nw" | "ne" | "sw" | "se";
@@ -592,7 +592,16 @@
       inactive: !isActiveFrame(hb.frames, frameIndex),
     }));
 
-    // Draw hurtboxes under hitboxes.
+    const pushboxes = getLayerArray(move, "pushboxes").map((hb, index) => ({
+      ...((liveOverride && liveOverride.layer === "pushboxes" && liveOverride.index === index
+        ? liveOverride.rect
+        : hb.box) as Rect),
+      selected: selectedLayer === "pushboxes" && selectedIndex === index,
+      inactive: !isActiveFrame(hb.frames, frameIndex),
+    }));
+
+    // Draw pushboxes first (bottom), then hurtboxes, then hitboxes (top).
+    drawRects(pushboxes, "rgba(234,179,8,0.95)", "rgba(234,179,8,0.18)");
     drawRects(hurtboxes, "rgba(34,197,94,0.95)", "rgba(34,197,94,0.18)");
     drawRects(hitboxes, "rgba(239,68,68,0.95)", "rgba(239,68,68,0.18)");
 
@@ -948,6 +957,7 @@
       >
         <option value="hitboxes">Hitboxes</option>
         <option value="hurtboxes">Hurtboxes</option>
+        <option value="pushboxes">Pushboxes</option>
       </select>
     </label>
 
@@ -1024,7 +1034,7 @@
     <div class="rect-editor">
       <div class="rect-row">
         <span class="rect-title">
-          {selectedEditor.layer === "hitboxes" ? "Hitbox" : "Hurtbox"} #{selectedEditor.index + 1}
+          {selectedEditor.layer === "hitboxes" ? "Hitbox" : selectedEditor.layer === "hurtboxes" ? "Hurtbox" : "Pushbox"} #{selectedEditor.index + 1}
         </span>
         <button class="btn danger" type="button" onclick={deleteSelected} disabled={!!message}>Delete</button>
       </div>
