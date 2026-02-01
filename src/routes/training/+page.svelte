@@ -38,6 +38,7 @@
   import type { CharacterAssets, CharacterData } from '$lib/types';
   import type { ActorSpec, Facing } from '$lib/rendercore/types';
   import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
+  import { getCharProp } from '$lib/utils';
 
   const devLog = (...args: unknown[]) => {
     if (import.meta.env.DEV) console.debug(...args);
@@ -241,7 +242,7 @@
       moveResolver = new MoveResolver(buildMoveList(currentCharacter?.moves));
 
       // Reset health
-      maxHealth = currentCharacter.character.health;
+      maxHealth = getCharProp(currentCharacter.character, 'health', 1000);
       playerHealth = maxHealth;
       dummyHealth = maxHealth;
 

@@ -37,6 +37,7 @@
   import type { Character, CharacterAssets } from '$lib/types';
   import type { ActorSpec, Facing } from '$lib/rendercore/types';
   import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
+  import { getCharProp } from '$lib/utils';
 
   // Props
   interface Props {
@@ -145,20 +146,6 @@
     } catch {
       return String(e);
     }
-  }
-
-  /**
-   * Get a character property with fallback.
-   * Prefers the dynamic properties map, falls back to legacy fixed fields, then the default.
-   */
-  function getCharProp(char: Character, key: string, fallback: number): number {
-    // Prefer properties map
-    const val = char.properties?.[key];
-    if (typeof val === 'number') return val;
-    // Fall back to legacy fixed fields (cast through unknown to avoid type error)
-    const legacyVal = (char as unknown as Record<string, unknown>)[key];
-    if (typeof legacyVal === 'number') return legacyVal;
-    return fallback;
   }
 
   $effect(() => {
