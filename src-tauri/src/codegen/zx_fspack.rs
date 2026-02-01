@@ -7,9 +7,10 @@ use crate::schema::{FrameHitbox, GuardType, Rect, State};
 use std::collections::HashMap;
 
 use super::zx_fspack_format::{
-    to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
-    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, SECTION_CANCELS_U16,
-    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
+    to_q12_4, to_q12_4_unsigned, to_q24_8, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED,
+    HEADER_SIZE, HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, PROP_TYPE_BOOL,
+    PROP_TYPE_Q24_8, PROP_TYPE_STR, SECTION_CANCELS_U16, SECTION_CANCEL_DENIES,
+    SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
     SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
     SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
     SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
@@ -519,6 +520,64 @@ pub fn build_asset_keys(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok((mesh_keys, keyframes_keys))
+}
+
+/// Pack character properties into the CHARACTER_PROPS section.
+///
+/// Each property record is 12 bytes (CHARACTER_PROP12_SIZE):
+/// - bytes 0-3: name offset (u32) into string pool
+/// - bytes 4-5: name length (u16)
+/// - bytes 6: value type (u8) - 0=Q24.8 number, 1=bool, 2=string ref
+/// - byte 7: reserved/padding
+/// - bytes 8-11: value (u32/i32 depending on type)
+///
+/// For string values, the value field contains (offset: u16, len: u16) packed into u32.
+pub fn pack_character_props(
+    character: &crate::schema::Character,
+    strings: &mut StringTable,
+) -> Result<Vec<u8>, String> {
+    use crate::schema::PropertyValue;
+
+    // CHARACTER_PROP12_SIZE = 12 bytes per property
+    let mut data = Vec::with_capacity(character.properties.len() * 12);
+
+    // BTreeMap iterates in sorted key order, ensuring deterministic output
+    for (name, value) in &character.properties {
+        // Write name reference (offset + length)
+        let (name_off, name_len) = strings.intern(name)?;
+        write_u32_le(&mut data, name_off);
+        write_u16_le(&mut data, name_len);
+
+        // Write type and value based on PropertyValue variant
+        match value {
+            PropertyValue::Number(n) => {
+                write_u8(&mut data, PROP_TYPE_Q24_8);
+                write_u8(&mut data, 0); // reserved
+                // Convert f64 to Q24.8 fixed-point and write as i32
+                let q24_8 = to_q24_8(*n);
+                data.extend_from_slice(&q24_8.to_le_bytes());
+            }
+            PropertyValue::Bool(b) => {
+                write_u8(&mut data, PROP_TYPE_BOOL);
+                write_u8(&mut data, 0); // reserved
+                // Write boolean as u32 (0 or 1)
+                let val: u32 = if *b { 1 } else { 0 };
+                write_u32_le(&mut data, val);
+            }
+            PropertyValue::String(s) => {
+                write_u8(&mut data, PROP_TYPE_STR);
+                write_u8(&mut data, 0); // reserved
+                // Write string reference packed into u32: (offset: u16, len: u16)
+                let (str_off, str_len) = strings.intern(s)?;
+                // Pack offset (lower 16 bits) and length (upper 16 bits) into u32
+                // Actually per the spec: value contains offset:u16 + len:u16, so write them in order
+                write_u16_le(&mut data, str_off as u16);
+                write_u16_le(&mut data, str_len);
+            }
+        }
+    }
+
+    Ok(data)
 }
 
 /// Write a string reference (StrRef) to the buffer.
@@ -1114,6 +1173,9 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         }
     }
 
+    // Pack character properties (dynamic key-value pairs like health, walk_speed, etc.)
+    let character_props_data = pack_character_props(&char_data.character, &mut strings)?;
+
     let string_table_data = strings.into_bytes();
 
     struct SectionData {
@@ -1247,6 +1309,13 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             kind: SECTION_CANCEL_DENIES,
             align: 4,
             bytes: cancel_denies_data,
+        });
+    }
+    if !character_props_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_CHARACTER_PROPS,
+            align: 4,
+            bytes: character_props_data,
         });
     }
 
@@ -1641,9 +1710,9 @@ mod tests {
             "Total length should match actual output size"
         );
 
-        // Verify section count
+        // Verify section count: 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 9, "Section count should be 9");
+        assert_eq!(section_count, 10, "Section count should be 10");
     }
 
     #[test]
@@ -1666,9 +1735,9 @@ mod tests {
         // Should still have valid FSPK header
         assert_eq!(&bytes[0..4], b"FSPK");
 
-        // Section count should still be 8
+        // Section count should be 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 8);
+        assert_eq!(section_count, 9);
     }
 
     #[test]
@@ -1731,10 +1800,11 @@ mod tests {
             );
         }
 
-        // MOVE_EXTRAS is expected when there are moves.
+        // MOVE_EXTRAS and CHARACTER_PROPS are expected when there are moves.
+        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
         assert_eq!(
-            section_count, 9,
-            "Expected MOVE_EXTRAS section to be present"
+            section_count, 10,
+            "Expected STATE_EXTRAS and CHARACTER_PROPS sections to be present"
         );
         let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
         let extras_kind = u32::from_le_bytes([
@@ -2276,8 +2346,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // MOVE_EXTRAS is expected when there are moves.
-        assert_eq!(pack.section_count(), 9);
+        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10 sections
+        assert_eq!(pack.section_count(), 10);
 
         // Verify move count matches
         let moves = pack.states().expect("should have MOVES section");
@@ -2389,8 +2459,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // Verify section count
-        assert_eq!(pack.section_count(), 8);
+        // 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
+        assert_eq!(pack.section_count(), 9);
 
         // Verify moves section is empty
         let moves = pack.states().expect("should have MOVES section");
