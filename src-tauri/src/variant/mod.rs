@@ -4,7 +4,7 @@
 //! Filename convention: `{base}~{variant}.json` (e.g., `5H~level1.json`)
 
 use crate::schema::State;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Check if a JSON value is "default-like" and should be skipped during merge.
 /// This prevents Rust's `Default::default()` fields from overwriting base values.
@@ -156,6 +156,44 @@ pub fn validate_variants_no_chain(
     }
 
     errors
+}
+
+/// Flatten all variants into fully resolved states.
+pub fn flatten_variants(states: Vec<(String, State)>) -> Result<Vec<State>, String> {
+    let mut base_map: HashMap<String, State> = HashMap::new();
+    let mut variants: Vec<(String, State)> = Vec::new();
+
+    for (name, state) in states {
+        if state.base.is_some() {
+            variants.push((name, state));
+        } else {
+            base_map.insert(name, state);
+        }
+    }
+
+    let base_names: HashSet<String> = base_map.keys().cloned().collect();
+    let variant_names: HashSet<String> = variants.iter().map(|(n, _)| n.clone()).collect();
+    let errors = validate_variants_no_chain(&variants, &base_names, &variant_names);
+    if !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
+    let mut result: Vec<State> = Vec::new();
+    for (name, mut state) in base_map.clone() {
+        state.id = Some(name);
+        result.push(state);
+    }
+
+    for (name, overlay) in variants {
+        let base_name = overlay.base.as_ref().unwrap();
+        let base = base_map.get(base_name).ok_or_else(|| {
+            format!("Base state '{}' not found for variant '{}'", base_name, name)
+        })?;
+        let resolved = resolve_variant(base, &overlay, &name);
+        result.push(resolved);
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -347,5 +385,100 @@ mod tests {
         let errors = validate_variants(&states, &base_names);
 
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn flatten_resolves_all_variants() {
+        let base = State {
+            input: "5H".to_string(),
+            name: "Standing Heavy".to_string(),
+            damage: 50,
+            ..Default::default()
+        };
+        let variant1 = State {
+            base: Some("5H".to_string()),
+            damage: 60,
+            ..Default::default()
+        };
+        let variant2 = State {
+            base: Some("5H".to_string()),
+            damage: 75,
+            ..Default::default()
+        };
+
+        let states = vec![
+            ("5H".to_string(), base),
+            ("5H~level1".to_string(), variant1),
+            ("5H~level2".to_string(), variant2),
+        ];
+
+        let flattened = flatten_variants(states).unwrap();
+
+        assert_eq!(flattened.len(), 3);
+
+        let base_resolved = flattened.iter().find(|s| s.id.as_deref() == Some("5H")).unwrap();
+        assert_eq!(base_resolved.damage, 50);
+
+        let v1 = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level1")).unwrap();
+        assert_eq!(v1.input, "5H");
+        assert_eq!(v1.damage, 60);
+        assert!(v1.base.is_none());
+
+        let v2 = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level2")).unwrap();
+        assert_eq!(v2.damage, 75);
+    }
+
+    #[test]
+    fn flatten_errors_on_missing_base() {
+        let variant = State {
+            base: Some("5H".to_string()),
+            damage: 60,
+            ..Default::default()
+        };
+
+        let states = vec![
+            ("5H~level1".to_string(), variant),
+        ];
+
+        let result = flatten_variants(states);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Base state '5H' not found"));
+    }
+
+    #[test]
+    fn integration_load_and_flatten() {
+        let base_json = r#"{
+            "input": "5H",
+            "name": "Standing Heavy",
+            "damage": 50,
+            "hitstun": 20,
+            "on_hit": { "gain_meter": 10 }
+        }"#;
+
+        let variant_json = r#"{
+            "base": "5H",
+            "damage": 80,
+            "on_hit": { "ground_bounce": true }
+        }"#;
+
+        let base: State = serde_json::from_str(base_json).unwrap();
+        let variant: State = serde_json::from_str(variant_json).unwrap();
+
+        let states = vec![
+            ("5H".to_string(), base),
+            ("5H~level1".to_string(), variant),
+        ];
+
+        let flattened = flatten_variants(states).unwrap();
+
+        assert_eq!(flattened.len(), 2);
+
+        let resolved = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level1")).unwrap();
+        assert_eq!(resolved.input, "5H");
+        assert_eq!(resolved.damage, 80);
+        assert_eq!(resolved.hitstun, 20);
+        let on_hit = resolved.on_hit.as_ref().unwrap();
+        assert_eq!(on_hit.gain_meter, Some(10));
+        assert_eq!(on_hit.ground_bounce, Some(true));
     }
 }
