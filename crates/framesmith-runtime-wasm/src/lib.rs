@@ -4,13 +4,6 @@
 //! character simulations in the browser.
 
 use framesmith_fspack::PackView;
-
-/// Convert Q24.8 fixed-point to f64.
-///
-/// Q24.8 uses 8 fractional bits, so dividing by 256 converts to float.
-fn from_q24_8(raw: i32) -> f64 {
-    raw as f64 / 256.0
-}
 use framesmith_runtime::{
     available_cancels, check_hits, check_pushbox, init_resources, next_frame,
     CharacterState as RtCharacterState, FrameInput, HitResult as RtHitResult,
@@ -18,6 +11,16 @@ use framesmith_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+/// Convert Q24.8 fixed-point to f64.
+///
+/// Q24.8 uses 8 fractional bits, so dividing by 256 converts to float.
+fn from_q24_8(raw: i32) -> f64 {
+    raw as f64 / 256.0
+}
+
+/// Property value type constant for Q24.8 numeric properties.
+const PROP_TYPE_Q24_8: u8 = 0;
 
 /// Dummy behavior states for training mode.
 #[wasm_bindgen]
@@ -420,7 +423,8 @@ impl TrainingSession {
     /// Get a player character property by name.
     ///
     /// Returns the property value as f64 (converted from Q24.8 fixed-point),
-    /// or None if the property doesn't exist.
+    /// or None if the property doesn't exist or is not a numeric (Q24.8) type.
+    /// Bool and string properties are not supported by this method.
     ///
     /// # Arguments
     /// * `name` - The property name (e.g., "health", "walk_speed")
@@ -433,7 +437,11 @@ impl TrainingSession {
             let (off, len) = prop.name();
             let prop_name = pack.string(off, len)?;
             if prop_name == name {
-                return Some(from_q24_8(prop.as_q24_8()));
+                // Only return numeric (Q24.8) properties
+                if prop.value_type() == PROP_TYPE_Q24_8 {
+                    return Some(from_q24_8(prop.as_q24_8()));
+                }
+                return None;
             }
         }
         None
@@ -442,7 +450,8 @@ impl TrainingSession {
     /// Get a dummy character property by name.
     ///
     /// Returns the property value as f64 (converted from Q24.8 fixed-point),
-    /// or None if the property doesn't exist.
+    /// or None if the property doesn't exist or is not a numeric (Q24.8) type.
+    /// Bool and string properties are not supported by this method.
     ///
     /// # Arguments
     /// * `name` - The property name (e.g., "health", "walk_speed")
@@ -455,7 +464,11 @@ impl TrainingSession {
             let (off, len) = prop.name();
             let prop_name = pack.string(off, len)?;
             if prop_name == name {
-                return Some(from_q24_8(prop.as_q24_8()));
+                // Only return numeric (Q24.8) properties
+                if prop.value_type() == PROP_TYPE_Q24_8 {
+                    return Some(from_q24_8(prop.as_q24_8()));
+                }
+                return None;
             }
         }
         None
