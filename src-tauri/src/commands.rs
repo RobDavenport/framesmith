@@ -37,10 +37,13 @@ fn project_rules_path(characters_dir: &str) -> PathBuf {
     project_root.join("framesmith.rules.json")
 }
 
+/// Named states: Vec<(filename_without_extension, State)>
+type NamedStates = Vec<(String, State)>;
+
 fn load_character_files(
     characters_dir: &str,
     character_id: &str,
-) -> Result<(PathBuf, Character, Vec<State>, CancelTable), String> {
+) -> Result<(PathBuf, Character, NamedStates, CancelTable), String> {
     // Validate character_id to prevent path traversal attacks
     if character_id.contains("..") || character_id.contains('/') || character_id.contains('\\') {
         return Err("Invalid character ID".to_string());
@@ -58,7 +61,7 @@ fn load_character_files(
     let character: Character = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid character.json format: {}", e))?;
 
-    // Load all states
+    // Load all states with their filenames (for variant resolution)
     let states_dir = char_path.join("states");
     let mut moves = vec![];
     if states_dir.exists() {
@@ -66,6 +69,11 @@ fn load_character_files(
             let entry = entry.map_err(|e| e.to_string())?;
             let state_path = entry.path();
             if state_path.extension().map(|e| e == "json").unwrap_or(false) {
+                let state_name = state_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| format!("Invalid state filename: {:?}", state_path.file_name()))?
+                    .to_string();
                 let content = fs::read_to_string(&state_path).map_err(|e| {
                     format!(
                         "Failed to read state file {:?}: {}",
@@ -75,7 +83,7 @@ fn load_character_files(
                 })?;
                 let mv: State = serde_json::from_str(&content)
                     .map_err(|e| format!("Invalid state file {:?}: {}", state_path.file_name(), e))?;
-                moves.push(mv);
+                moves.push((state_name, mv));
             }
         }
     }
@@ -208,8 +216,11 @@ pub fn load_character(
     characters_dir: String,
     character_id: String,
 ) -> Result<CharacterData, String> {
-    let (char_path, character, moves, cancel_table) =
+    let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
+
+    // Flatten variants before applying rules
+    let moves = crate::variant::flatten_variants(named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
@@ -389,8 +400,11 @@ pub fn export_character(
     output_path: String,
     pretty: bool,
 ) -> Result<(), String> {
-    let (char_path, character, base_moves, cancel_table) =
+    let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
+
+    // Flatten variants before validation and rules application
+    let base_moves = crate::variant::flatten_variants(named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
@@ -485,8 +499,11 @@ pub fn get_character_fspk(
     characters_dir: String,
     character_id: String,
 ) -> Result<String, String> {
-    let (char_path, character, base_moves, cancel_table) =
+    let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
+
+    // Flatten variants before rules application
+    let base_moves = crate::variant::flatten_variants(named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
