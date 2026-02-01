@@ -195,7 +195,12 @@
       <tbody>
         {#each sortedMoves as move}
           <tr onclick={() => handleRowClick(move)}>
-            <td class="input-cell">{move.input}</td>
+            <td class="input-cell">
+              {#if move.type === 'system'}
+                <span class="origin-badge global" title="From global state">🌐</span>
+              {/if}
+              {move.input}
+            </td>
             <td>{move.name}</td>
             <td class="num">{move.startup}</td>
             <td class="num">{move.active}</td>
@@ -293,6 +298,11 @@
     font-family: monospace;
     font-weight: 600;
     color: var(--accent);
+  }
+
+  .origin-badge {
+    margin-right: 4px;
+    font-size: 11px;
   }
 
   .advantage {
