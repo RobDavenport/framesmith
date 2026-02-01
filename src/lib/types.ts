@@ -317,6 +317,12 @@ export interface MeterGain {
 // Character Types
 // =============================================================================
 
+/**
+ * A dynamic character property value.
+ * Matches the Rust enum: Number(f64) | Bool(bool) | String(String)
+ */
+export type PropertyValue = number | boolean | string;
+
 export interface Character {
   id: string;
   name: string;
@@ -330,7 +336,7 @@ export interface Character {
   dash_distance: number;
   dash_duration: number;
   // Dynamic properties map (preferred over fixed fields)
-  properties?: Record<string, number>;
+  properties?: Record<string, PropertyValue>;
 }
 
 // =============================================================================
