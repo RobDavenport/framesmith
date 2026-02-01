@@ -1,6 +1,7 @@
 //! Global states loading and resolution
 
 use crate::schema::{GlobalsManifest, State};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Errors that can occur during global state operations
@@ -156,6 +157,79 @@ pub fn apply_overrides(
     })?;
 
     Ok(result)
+}
+
+/// Known State field names for override validation
+const KNOWN_STATE_FIELDS: &[&str] = &[
+    "id", "input", "name", "type", "tags", "base",
+    "startup", "active", "recovery", "total",
+    "damage", "hitstun", "blockstun", "hitstop",
+    "guard", "animation",
+    "hitboxes", "hurtboxes", "pushback",
+    "movement", "on_hit", "on_block", "on_use",
+    "hits", "preconditions", "costs", "meter_gain", "notifies",
+    "trigger", "parent", "super_freeze", "advanced_hurtboxes",
+];
+
+/// Resolve all global states for a character
+///
+/// Returns (resolved_states, warnings)
+/// - resolved_states: Global states with overrides applied
+/// - warnings: Non-fatal issues (unknown override fields)
+pub fn resolve_globals(
+    project_dir: &Path,
+    character_dir: &Path,
+    local_inputs: &HashSet<String>,
+) -> Result<(Vec<State>, Vec<String>), GlobalsError> {
+    let manifest = match load_globals_manifest(character_dir)? {
+        Some(m) => m,
+        None => return Ok((Vec::new(), Vec::new())),
+    };
+
+    let mut resolved = Vec::new();
+    let mut warnings = Vec::new();
+    let mut seen_aliases = HashSet::new();
+
+    for include in &manifest.includes {
+        // Check for duplicate aliases
+        if seen_aliases.contains(&include.alias) {
+            return Err(GlobalsError::DuplicateAlias {
+                alias: include.alias.clone(),
+            });
+        }
+        seen_aliases.insert(include.alias.clone());
+
+        // Check for conflict with local states
+        if local_inputs.contains(&include.alias) {
+            return Err(GlobalsError::AliasConflict {
+                alias: include.alias.clone(),
+            });
+        }
+
+        // Load the global state
+        let base_state = load_global_state(project_dir, &include.state)?;
+
+        // Validate override fields and collect warnings
+        if let Some(ref overrides) = include.overrides {
+            for key in overrides.keys() {
+                if !KNOWN_STATE_FIELDS.contains(&key.as_str()) {
+                    warnings.push(format!(
+                        "Override field '{}' not present in global state '{}'",
+                        key, include.state
+                    ));
+                }
+            }
+        }
+
+        // Apply overrides
+        let empty_overrides = serde_json::Map::new();
+        let overrides = include.overrides.as_ref().unwrap_or(&empty_overrides);
+        let resolved_state = apply_overrides(base_state, overrides, &include.alias)?;
+
+        resolved.push(resolved_state);
+    }
+
+    Ok((resolved, warnings))
 }
 
 #[cfg(test)]
@@ -326,5 +400,103 @@ mod tests {
 
         let result = apply_overrides(base, &overrides, "idle").unwrap();
         assert!(result.total.is_none());
+    }
+
+    #[test]
+    fn resolve_globals_basic() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+
+        let manifest = r#"{ "includes": [{ "state": "burst", "as": "burst" }] }"#;
+        fs::write(char_dir.join("globals.json"), manifest).unwrap();
+
+        let local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let (states, warnings) = resolve_globals(dir.path(), &char_dir, &local_inputs).unwrap();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].input, "burst");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn resolve_globals_with_alias() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+
+        let manifest = r#"{ "includes": [{ "state": "burst", "as": "reversal" }] }"#;
+        fs::write(char_dir.join("globals.json"), manifest).unwrap();
+
+        let local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let (states, _) = resolve_globals(dir.path(), &char_dir, &local_inputs).unwrap();
+        assert_eq!(states[0].input, "reversal");
+    }
+
+    #[test]
+    fn resolve_globals_conflict_with_local() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+
+        let manifest = r#"{ "includes": [{ "state": "burst", "as": "5L" }] }"#;
+        fs::write(char_dir.join("globals.json"), manifest).unwrap();
+
+        let mut local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        local_inputs.insert("5L".to_string());
+
+        let result = resolve_globals(dir.path(), &char_dir, &local_inputs);
+        assert!(matches!(result, Err(GlobalsError::AliasConflict { .. })));
+    }
+
+    #[test]
+    fn resolve_globals_duplicate_alias() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+
+        // Add another global state
+        let idle_state = r#"{ "id": "idle", "input": "idle", "name": "Idle" }"#;
+        fs::write(dir.path().join("globals/states/idle.json"), idle_state).unwrap();
+
+        let manifest = r#"{ "includes": [
+            { "state": "burst", "as": "same_alias" },
+            { "state": "idle", "as": "same_alias" }
+        ] }"#;
+        fs::write(char_dir.join("globals.json"), manifest).unwrap();
+
+        let local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let result = resolve_globals(dir.path(), &char_dir, &local_inputs);
+        assert!(matches!(result, Err(GlobalsError::DuplicateAlias { .. })));
+    }
+
+    #[test]
+    fn resolve_globals_warns_on_unknown_override_field() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+
+        let manifest = r#"{ "includes": [{
+            "state": "burst",
+            "as": "burst",
+            "override": { "nonexistent_field": 123 }
+        }] }"#;
+        fs::write(char_dir.join("globals.json"), manifest).unwrap();
+
+        let local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let (_, warnings) = resolve_globals(dir.path(), &char_dir, &local_inputs).unwrap();
+        assert!(!warnings.is_empty());
+        assert!(warnings[0].contains("nonexistent_field"));
+    }
+
+    #[test]
+    fn resolve_globals_no_manifest_returns_empty() {
+        let dir = create_test_project();
+        let char_dir = dir.path().join("characters").join("test_char");
+        // No globals.json created
+
+        let local_inputs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let (states, warnings) = resolve_globals(dir.path(), &char_dir, &local_inputs).unwrap();
+        assert!(states.is_empty());
+        assert!(warnings.is_empty());
     }
 }
