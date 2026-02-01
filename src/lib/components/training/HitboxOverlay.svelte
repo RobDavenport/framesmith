@@ -1,9 +1,10 @@
 <script lang="ts">
   /**
-   * HitboxOverlay - Canvas overlay for visualizing hitboxes and hurtboxes.
+   * HitboxOverlay - Canvas overlay for visualizing collision boxes.
    *
-   * Draws colored rectangles representing active hitboxes (red) and hurtboxes (blue/green)
-   * for both player and dummy characters.
+   * Draws colored rectangles representing active hitboxes (red), hurtboxes (blue/green),
+   * and pushboxes (yellow) for both player and dummy characters.
+   * Each box type can be toggled independently via showHitboxes, showHurtboxes, showPushboxes props.
    */
 
   import type { State } from '$lib/types';
@@ -20,11 +21,23 @@
     player: CharacterBoxData;
     dummy: CharacterBoxData;
     show: boolean;
+    showHitboxes?: boolean;
+    showHurtboxes?: boolean;
+    showPushboxes?: boolean;
     width?: number;
     height?: number;
   }
 
-  let { player, dummy, show, width = 800, height = 400 }: Props = $props();
+  let {
+    player,
+    dummy,
+    show,
+    showHitboxes = true,
+    showHurtboxes = true,
+    showPushboxes = true,
+    width = 800,
+    height = 400
+  }: Props = $props();
 
   let canvas: HTMLCanvasElement | null = $state(null);
   let ctx: CanvasRenderingContext2D | null = $state(null);
@@ -163,7 +176,10 @@
     ctx: CanvasRenderingContext2D,
     data: CharacterBoxData,
     isPlayer: boolean,
-    canvasH: number
+    canvasH: number,
+    drawHitboxes: boolean,
+    drawHurtboxes: boolean,
+    drawPushboxes: boolean
   ) {
     const { move, frame, x, facing } = data;
     const groundY = canvasH * GROUND_Y_PERCENT;
@@ -178,25 +194,27 @@
 
     if (move) {
       // Draw hurtboxes (legacy format)
-      for (const hurtbox of move.hurtboxes) {
-        if (isFrameActive(hurtbox.frames, frame)) {
-          drawRect(ctx, x, groundY, facing, hurtbox.box, hurtboxColor, hurtboxStroke);
-          hasActiveHurtbox = true;
+      if (drawHurtboxes) {
+        for (const hurtbox of move.hurtboxes) {
+          if (isFrameActive(hurtbox.frames, frame)) {
+            drawRect(ctx, x, groundY, facing, hurtbox.box, hurtboxColor, hurtboxStroke);
+            hasActiveHurtbox = true;
+          }
         }
-      }
 
-      // Draw advanced hurtboxes if present
-      if (move.advanced_hurtboxes) {
-        for (const frameHurtbox of move.advanced_hurtboxes) {
-          if (isFrameActive(frameHurtbox.frames, frame)) {
-            for (const shape of frameHurtbox.boxes) {
-              if (shape.type === 'aabb' || shape.type === 'rect') {
-                const box = { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
-                drawRect(ctx, x, groundY, facing, box, hurtboxColor, hurtboxStroke);
-                hasActiveHurtbox = true;
-              } else if (shape.type === 'circle') {
-                drawCircle(ctx, x, groundY, facing, shape, hurtboxColor, hurtboxStroke);
-                hasActiveHurtbox = true;
+        // Draw advanced hurtboxes if present
+        if (move.advanced_hurtboxes) {
+          for (const frameHurtbox of move.advanced_hurtboxes) {
+            if (isFrameActive(frameHurtbox.frames, frame)) {
+              for (const shape of frameHurtbox.boxes) {
+                if (shape.type === 'aabb' || shape.type === 'rect') {
+                  const box = { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
+                  drawRect(ctx, x, groundY, facing, box, hurtboxColor, hurtboxStroke);
+                  hasActiveHurtbox = true;
+                } else if (shape.type === 'circle') {
+                  drawCircle(ctx, x, groundY, facing, shape, hurtboxColor, hurtboxStroke);
+                  hasActiveHurtbox = true;
+                }
               }
             }
           }
@@ -204,7 +222,7 @@
       }
 
       // Draw pushboxes
-      if (move.pushboxes) {
+      if (drawPushboxes && move.pushboxes) {
         for (const pb of move.pushboxes) {
           if (isFrameActive(pb.frames, frame)) {
             drawRect(ctx, x, groundY, facing, pb.box, PUSHBOX_COLOR, PUSHBOX_STROKE);
@@ -213,22 +231,24 @@
       }
 
       // Draw hitboxes (legacy format)
-      for (const hitbox of move.hitboxes) {
-        if (isFrameActive(hitbox.frames, frame)) {
-          drawRect(ctx, x, groundY, facing, hitbox.box, HITBOX_COLOR, HITBOX_STROKE);
+      if (drawHitboxes) {
+        for (const hitbox of move.hitboxes) {
+          if (isFrameActive(hitbox.frames, frame)) {
+            drawRect(ctx, x, groundY, facing, hitbox.box, HITBOX_COLOR, HITBOX_STROKE);
+          }
         }
-      }
 
-      // Draw v2 hits if present
-      if (move.hits) {
-        for (const hit of move.hits) {
-          if (isFrameActive(hit.frames, frame)) {
-            for (const shape of hit.hitboxes) {
-              if (shape.type === 'aabb' || shape.type === 'rect') {
-                const box = { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
-                drawRect(ctx, x, groundY, facing, box, HITBOX_COLOR, HITBOX_STROKE);
-              } else if (shape.type === 'circle') {
-                drawCircle(ctx, x, groundY, facing, shape, HITBOX_COLOR, HITBOX_STROKE);
+        // Draw v2 hits if present
+        if (move.hits) {
+          for (const hit of move.hits) {
+            if (isFrameActive(hit.frames, frame)) {
+              for (const shape of hit.hitboxes) {
+                if (shape.type === 'aabb' || shape.type === 'rect') {
+                  const box = { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
+                  drawRect(ctx, x, groundY, facing, box, HITBOX_COLOR, HITBOX_STROKE);
+                } else if (shape.type === 'circle') {
+                  drawCircle(ctx, x, groundY, facing, shape, HITBOX_COLOR, HITBOX_STROKE);
+                }
               }
             }
           }
@@ -236,8 +256,8 @@
       }
     }
 
-    // Draw default body outline if no hurtbox is active
-    if (!hasActiveHurtbox) {
+    // Draw default body outline if no hurtbox is active (only when hurtboxes are enabled)
+    if (drawHurtboxes && !hasActiveHurtbox) {
       drawDefaultBody(ctx, x, groundY, facing, isPlayer);
     }
   }
@@ -291,59 +311,76 @@
     ctx.setLineDash([]);
 
     // Draw character boxes
-    drawCharacterBoxes(ctx, player, true, canvasH);
-    drawCharacterBoxes(ctx, dummy, false, canvasH);
+    drawCharacterBoxes(ctx, player, true, canvasH, showHitboxes, showHurtboxes, showPushboxes);
+    drawCharacterBoxes(ctx, dummy, false, canvasH, showHitboxes, showHurtboxes, showPushboxes);
 
     // Draw debug info
     drawDebugInfo(ctx, player, 'P1', 5);
     drawDebugInfo(ctx, dummy, 'CPU', 60);
 
     // Draw legend
-    drawLegend(ctx, canvasW);
+    drawLegend(ctx, canvasW, showHitboxes, showHurtboxes, showPushboxes);
   }
 
-  function drawLegend(ctx: CanvasRenderingContext2D, canvasW: number) {
+  function drawLegend(
+    ctx: CanvasRenderingContext2D,
+    canvasW: number,
+    drawHitboxes: boolean,
+    drawHurtboxes: boolean,
+    drawPushboxes: boolean
+  ) {
     const legendX = canvasW - 120;
     const legendY = 10;
     const boxSize = 12;
     const spacing = 18;
+    let row = 0;
 
     ctx.font = '11px monospace';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
 
     // Hitbox
-    ctx.fillStyle = HITBOX_COLOR;
-    ctx.fillRect(legendX, legendY, boxSize, boxSize);
-    ctx.strokeStyle = HITBOX_STROKE;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(legendX, legendY, boxSize, boxSize);
-    ctx.fillStyle = 'white';
-    ctx.fillText('Hitbox', legendX + boxSize + 6, legendY + boxSize / 2);
+    if (drawHitboxes) {
+      ctx.fillStyle = HITBOX_COLOR;
+      ctx.fillRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.strokeStyle = HITBOX_STROKE;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.fillStyle = 'white';
+      ctx.fillText('Hitbox', legendX + boxSize + 6, legendY + spacing * row + boxSize / 2);
+      row++;
+    }
 
     // Player hurtbox
-    ctx.fillStyle = HURTBOX_PLAYER_COLOR;
-    ctx.fillRect(legendX, legendY + spacing, boxSize, boxSize);
-    ctx.strokeStyle = HURTBOX_PLAYER_STROKE;
-    ctx.strokeRect(legendX, legendY + spacing, boxSize, boxSize);
-    ctx.fillStyle = 'white';
-    ctx.fillText('P1 Hurtbox', legendX + boxSize + 6, legendY + spacing + boxSize / 2);
+    if (drawHurtboxes) {
+      ctx.fillStyle = HURTBOX_PLAYER_COLOR;
+      ctx.fillRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.strokeStyle = HURTBOX_PLAYER_STROKE;
+      ctx.strokeRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.fillStyle = 'white';
+      ctx.fillText('P1 Hurtbox', legendX + boxSize + 6, legendY + spacing * row + boxSize / 2);
+      row++;
 
-    // Dummy hurtbox
-    ctx.fillStyle = HURTBOX_DUMMY_COLOR;
-    ctx.fillRect(legendX, legendY + spacing * 2, boxSize, boxSize);
-    ctx.strokeStyle = HURTBOX_DUMMY_STROKE;
-    ctx.strokeRect(legendX, legendY + spacing * 2, boxSize, boxSize);
-    ctx.fillStyle = 'white';
-    ctx.fillText('CPU Hurtbox', legendX + boxSize + 6, legendY + spacing * 2 + boxSize / 2);
+      // Dummy hurtbox
+      ctx.fillStyle = HURTBOX_DUMMY_COLOR;
+      ctx.fillRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.strokeStyle = HURTBOX_DUMMY_STROKE;
+      ctx.strokeRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.fillStyle = 'white';
+      ctx.fillText('CPU Hurtbox', legendX + boxSize + 6, legendY + spacing * row + boxSize / 2);
+      row++;
+    }
 
     // Pushbox
-    ctx.fillStyle = PUSHBOX_COLOR;
-    ctx.fillRect(legendX, legendY + spacing * 3, boxSize, boxSize);
-    ctx.strokeStyle = PUSHBOX_STROKE;
-    ctx.strokeRect(legendX, legendY + spacing * 3, boxSize, boxSize);
-    ctx.fillStyle = 'white';
-    ctx.fillText('Pushbox', legendX + boxSize + 6, legendY + spacing * 3 + boxSize / 2);
+    if (drawPushboxes) {
+      ctx.fillStyle = PUSHBOX_COLOR;
+      ctx.fillRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.strokeStyle = PUSHBOX_STROKE;
+      ctx.strokeRect(legendX, legendY + spacing * row, boxSize, boxSize);
+      ctx.fillStyle = 'white';
+      ctx.fillText('Pushbox', legendX + boxSize + 6, legendY + spacing * row + boxSize / 2);
+      row++;
+    }
   }
 
   $effect(() => {
@@ -357,7 +394,7 @@
 
   $effect(() => {
     // Re-render when any dependency changes
-    void [player, dummy, show, width, height];
+    void [player, dummy, show, showHitboxes, showHurtboxes, showPushboxes, width, height];
     render();
   });
 </script>

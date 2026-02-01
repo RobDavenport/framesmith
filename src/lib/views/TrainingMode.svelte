@@ -101,7 +101,10 @@
   let frameAccumulator = $state(0);
 
   // Developer overlay toggles
-  let showHitboxes = $state(false);
+  let showBoxOverlay = $state(false);
+  let showHitboxes = $state(true);
+  let showHurtboxes = $state(true);
+  let showPushboxes = $state(true);
   let dummySettingsCollapsed = $state(false);
 
   // Current character data
@@ -478,9 +481,22 @@
       // Step back (not implemented - would need state history)
       return;
     }
-    // Hitbox toggle
+    // Box overlay toggles
     if (event.code === 'KeyH') {
+      showBoxOverlay = !showBoxOverlay;
+      return;
+    }
+    // Individual box type toggles (only when overlay is visible)
+    if (event.code === 'Digit1' && showBoxOverlay) {
       showHitboxes = !showHitboxes;
+      return;
+    }
+    if (event.code === 'Digit2' && showBoxOverlay) {
+      showHurtboxes = !showHurtboxes;
+      return;
+    }
+    if (event.code === 'Digit3' && showBoxOverlay) {
+      showPushboxes = !showPushboxes;
       return;
     }
 
@@ -796,7 +812,10 @@
           <HitboxOverlay
             player={playerHitboxData}
             dummy={dummyHitboxData}
-            show={showHitboxes}
+            show={showBoxOverlay}
+            showHitboxes={showHitboxes}
+            showHurtboxes={showHurtboxes}
+            showPushboxes={showPushboxes}
             width={800}
             height={400}
           />
@@ -848,9 +867,15 @@
           <span class="control-keys">U I O / J K L</span>
         </div>
         <div class="control-group">
-          <span class="control-label">Hitboxes:</span>
+          <span class="control-label">Boxes:</span>
           <span class="control-keys">H</span>
         </div>
+        {#if showBoxOverlay}
+          <div class="control-group">
+            <span class="control-label">Toggle:</span>
+            <span class="control-keys">1=Hit 2=Hurt 3=Push</span>
+          </div>
+        {/if}
         <div class="control-group">
           <span class="control-label">Reset:</span>
           <span class="control-keys">R</span>
