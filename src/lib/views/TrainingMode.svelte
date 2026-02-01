@@ -34,7 +34,7 @@
   import { buildMoveList } from '$lib/training/buildMoveList';
   import { getCurrentCharacter, getTrainingSync } from '$lib/stores/character.svelte';
   import { getProjectPath } from '$lib/stores/project.svelte';
-  import type { CharacterAssets } from '$lib/types';
+  import type { Character, CharacterAssets } from '$lib/types';
   import type { ActorSpec, Facing } from '$lib/rendercore/types';
   import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
 
@@ -147,6 +147,20 @@
     }
   }
 
+  /**
+   * Get a character property with fallback.
+   * Prefers the dynamic properties map, falls back to legacy fixed fields, then the default.
+   */
+  function getCharProp(char: Character, key: string, fallback: number): number {
+    // Prefer properties map
+    const val = char.properties?.[key];
+    if (typeof val === 'number') return val;
+    // Fall back to legacy fixed fields (cast through unknown to avoid type error)
+    const legacyVal = (char as unknown as Record<string, unknown>)[key];
+    if (typeof legacyVal === 'number') return legacyVal;
+    return fallback;
+  }
+
   $effect(() => {
     const dir = charactersDir;
     const id = characterId;
@@ -254,7 +268,7 @@
       dummyController = nextDummyController;
 
       // Set initial health from character data
-      maxHealth = currentCharacter.character.health;
+      maxHealth = getCharProp(currentCharacter.character, 'health', 1000);
       playerHealth = maxHealth;
       dummyHealth = maxHealth;
 
@@ -539,9 +553,11 @@
       const isHoldingForward = [3, 6, 9].includes(snapshot.direction);
 
       if (isHoldingBack) {
-        playerX = Math.max(MIN_X, playerX - char.back_walk_speed);
+        const backWalkSpeed = getCharProp(char, 'back_walk_speed', 3.2);
+        playerX = Math.max(MIN_X, playerX - backWalkSpeed);
       } else if (isHoldingForward) {
-        playerX = Math.min(MAX_X, playerX + char.walk_speed);
+        const walkSpeed = getCharProp(char, 'walk_speed', 4.5);
+        playerX = Math.min(MAX_X, playerX + walkSpeed);
       }
     }
   }

@@ -321,6 +321,7 @@ export interface Character {
   id: string;
   name: string;
   archetype: string;
+  // Legacy fixed fields (deprecated - use properties map instead)
   health: number;
   walk_speed: number;
   back_walk_speed: number;
@@ -328,6 +329,8 @@ export interface Character {
   jump_duration: number;
   dash_distance: number;
   dash_duration: number;
+  // Dynamic properties map (preferred over fixed fields)
+  properties?: Record<string, number>;
 }
 
 // =============================================================================
