@@ -538,21 +538,7 @@ impl<'a> PackView<'a> {
     /// Returns `None` if no CHARACTER_PROPS section exists.
     pub fn character_props(&self) -> Option<CharacterPropsView<'a>> {
         let data = self.get_section(SECTION_CHARACTER_PROPS)?;
-        Some(CharacterPropsView {
-            data: self.data,
-            offset: self.section_offset(SECTION_CHARACTER_PROPS)?,
-            len: (data.len() / CHARACTER_PROP_SIZE) as u32,
-        })
-    }
-
-    /// Get the offset of a section by kind (internal helper).
-    fn section_offset(&self, kind: u32) -> Option<u32> {
-        for i in 0..self.section_count {
-            if self.sections[i].kind == kind {
-                return Some(self.sections[i].offset);
-            }
-        }
-        None
+        Some(CharacterPropsView { data })
     }
 }
 
@@ -2007,39 +1993,36 @@ impl<'a> CharacterPropView<'a> {
 #[derive(Clone, Copy)]
 pub struct CharacterPropsView<'a> {
     data: &'a [u8],
-    offset: u32,
-    len: u32,
 }
 
 impl<'a> CharacterPropsView<'a> {
-    /// Get a character property by index.
-    ///
-    /// Returns `None` if the index is out of bounds.
-    pub fn get(&self, index: usize) -> Option<CharacterPropView<'a>> {
-        let start = (self.offset as usize).saturating_add(index.saturating_mul(CHARACTER_PROP_SIZE));
-        let end = start.saturating_add(CHARACTER_PROP_SIZE);
-        if index < self.len as usize && end <= self.data.len() {
-            Some(CharacterPropView {
-                data: &self.data[start..end],
-            })
-        } else {
-            None
-        }
-    }
-
     /// Returns the number of character properties.
     pub fn len(&self) -> usize {
-        self.len as usize
+        self.data.len() / CHARACTER_PROP_SIZE
     }
 
     /// Returns true if there are no character properties.
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.data.is_empty()
+    }
+
+    /// Get a character property by index.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<CharacterPropView<'a>> {
+        let off = index.checked_mul(CHARACTER_PROP_SIZE)?;
+        let end = off.checked_add(CHARACTER_PROP_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(CharacterPropView {
+            data: &self.data[off..end],
+        })
     }
 
     /// Returns an iterator over all character properties.
     pub fn iter(&self) -> impl Iterator<Item = CharacterPropView<'a>> + '_ {
-        (0..self.len()).filter_map(move |i| self.get(i))
+        (0..self.len()).filter_map(|i| self.get(i))
     }
 }
 
