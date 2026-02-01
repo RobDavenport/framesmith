@@ -57,4 +57,56 @@ mod tests {
         assert!(json.contains(r#""id":"5H""#));
         assert!(json.contains(r#""id":"5H~level1""#));
     }
+
+    #[test]
+    fn export_includes_global_derived_states() {
+        // Global states become regular states after resolution,
+        // so they should be included in exports automatically.
+        // This test documents that expectation.
+
+        let states = vec![
+            State {
+                id: Some("5L".to_string()),
+                input: "5L".to_string(),
+                name: "Light Attack".to_string(),
+                ..Default::default()
+            },
+            State {
+                id: Some("burst".to_string()),
+                input: "burst".to_string(),
+                name: "Burst".to_string(),
+                move_type: Some("system".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let character = Character {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            archetype: "test".to_string(),
+            health: 10000,
+            walk_speed: 4.0,
+            back_walk_speed: 3.0,
+            jump_height: 120,
+            jump_duration: 45,
+            dash_distance: 80,
+            dash_duration: 18,
+            resources: vec![],
+        };
+
+        let cancel_table = CancelTable::default();
+
+        let char_data = CharacterData {
+            character,
+            moves: states,
+            cancel_table,
+        };
+
+        let json = export_json_blob(&char_data).unwrap();
+
+        // Verify both states are in the export
+        assert!(json.contains("\"5L\""));
+        assert!(json.contains("\"burst\""));
+        assert!(json.contains("\"system\"")); // type field from global
+    }
 }
