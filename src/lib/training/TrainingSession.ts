@@ -63,12 +63,21 @@ export interface HitResult {
 }
 
 /**
+ * Push separation result when characters' pushboxes overlap.
+ */
+export interface PushSeparation {
+  player_dx: number;
+  dummy_dx: number;
+}
+
+/**
  * Result of a single frame tick.
  */
 export interface FrameResult {
   player: CharacterState;
   dummy: CharacterState;
   hits: HitResult[];
+  push_separation?: PushSeparation;
 }
 
 /**

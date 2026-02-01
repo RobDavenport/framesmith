@@ -433,6 +433,12 @@
       }
     }
 
+    // Apply push separation when characters' pushboxes overlap
+    if (result.push_separation) {
+      playerX += result.push_separation.player_dx;
+      dummyX += result.push_separation.dummy_dx;
+    }
+
     frameCount++;
   }
 
