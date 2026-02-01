@@ -151,6 +151,9 @@ pub const SHAPE_SIZE: usize = 12;
 /// Layout: name_off(4) + name_len(2) + value_type(1) + pad(1) + value(4)
 pub const CHARACTER_PROP_SIZE: usize = 12;
 
+/// PushWindow record size (12 bytes) - same layout as HurtWindow
+pub const PUSH_WINDOW_SIZE: usize = 12;
+
 // =============================================================================
 // Shape Type Constants
 // =============================================================================
@@ -454,6 +457,14 @@ impl<'a> PackView<'a> {
     pub fn hurt_windows(&self) -> Option<HurtWindowsView<'a>> {
         let data = self.get_section(SECTION_HURT_WINDOWS)?;
         Some(HurtWindowsView { data })
+    }
+
+    /// Get push windows section as a typed view.
+    ///
+    /// Returns `None` if no push windows section exists.
+    pub fn push_windows(&self) -> Option<PushWindowsView<'a>> {
+        let data = self.get_section(SECTION_PUSH_WINDOWS)?;
+        Some(PushWindowsView { data })
     }
 
     /// Get shapes section as a typed view.
@@ -1587,6 +1598,68 @@ impl<'a> HurtWindowView<'a> {
     /// Number of shapes in this hurt window.
     pub fn shapes_len(&self) -> u16 {
         read_u16_le(self.data, 8).unwrap_or(0)
+    }
+}
+
+// =============================================================================
+// Push Windows Views
+// =============================================================================
+
+/// Type alias for push window view - same binary layout as hurt windows.
+///
+/// Push windows define body collision boxes (pushboxes) that prevent
+/// characters from overlapping. They use the same 12-byte format:
+/// - 0: start_f (u8)
+/// - 1: end_f (u8)
+/// - 2-3: flags (u16)
+/// - 4-7: shapes_off (u32)
+/// - 8-9: shapes_len (u16)
+/// - 10-11: _pad (u16)
+pub type PushWindowView<'a> = HurtWindowView<'a>;
+
+/// Zero-copy view over push windows section.
+///
+/// Each entry is 12 bytes (same layout as HurtWindow12).
+#[derive(Clone, Copy)]
+pub struct PushWindowsView<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> PushWindowsView<'a> {
+    /// Returns the total number of push windows.
+    pub fn len(&self) -> usize {
+        self.data.len() / PUSH_WINDOW_SIZE
+    }
+
+    /// Returns true if there are no push windows.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get a push window by global index.
+    pub fn get(&self, index: usize) -> Option<PushWindowView<'a>> {
+        let off = index.checked_mul(PUSH_WINDOW_SIZE)?;
+        let end = off.checked_add(PUSH_WINDOW_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(HurtWindowView {
+            data: &self.data[off..end],
+        })
+    }
+
+    /// Get a push window at a byte offset + index.
+    ///
+    /// This is used to access push windows referenced by a state.
+    pub fn get_at(&self, offset_bytes: u16, index: usize) -> Option<PushWindowView<'a>> {
+        let base = (offset_bytes as usize).checked_add(index.checked_mul(PUSH_WINDOW_SIZE)?)?;
+        let end = base.checked_add(PUSH_WINDOW_SIZE)?;
+        if end > self.data.len() {
+            return None;
+        }
+        Some(HurtWindowView {
+            data: &self.data[base..end],
+        })
     }
 }
 
