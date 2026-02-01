@@ -1,0 +1,12 @@
+{
+  "base": "5H",
+  "damage": 115,
+  "hitstun": 28,
+  "preconditions": [
+    { "type": "resource", "name": "level", "min": 2 }
+  ],
+  "on_hit": {
+    "wall_bounce": true,
+    "ground_bounce": true
+  }
+}

@@ -11,6 +11,8 @@
   "dash_duration": 18,
   "resources": [
     { "name": "heat", "start": 0, "max": 100 },
-    { "name": "ammo", "start": 6, "max": 6 }
+    { "name": "ammo", "start": 6, "max": 6 },
+    { "name": "level", "start": 0, "max": 3 },
+    { "name": "install_active", "start": 0, "max": 1 }
   ]
 }

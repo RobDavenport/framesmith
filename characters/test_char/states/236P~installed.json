@@ -1,0 +1,16 @@
+{
+  "base": "236P",
+  "name": "Enhanced Fireball",
+  "startup": 8,
+  "damage": 120,
+  "preconditions": [
+    { "type": "resource", "name": "install_active", "min": 1 }
+  ],
+  "on_use": {
+    "spawn_entity": {
+      "type": "projectile",
+      "tag": "fireball",
+      "data": "enhanced_fireball_projectile"
+    }
+  }
+}
