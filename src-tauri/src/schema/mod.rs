@@ -395,6 +395,25 @@ fn default_max_frame() -> u8 {
     255
 }
 
+/// A reference to a global state with optional overrides
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GlobalInclude {
+    /// Name of the global state file (without .json)
+    pub state: String,
+    /// Alias for this character (the input name to use)
+    #[serde(rename = "as")]
+    pub alias: String,
+    /// Optional field overrides (shallow merge)
+    #[serde(rename = "override", skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// Character's global state manifest (globals.json)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GlobalsManifest {
+    pub includes: Vec<GlobalInclude>,
+}
+
 /// Cancel table defining all state relationships
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
 pub struct CancelTable {
@@ -927,5 +946,40 @@ mod tests {
 
         let state: State = serde_json::from_str(json).expect("state should parse");
         assert_eq!(state.id.as_deref(), Some("5H~level1"));
+    }
+
+    #[test]
+    fn global_include_basic() {
+        let json = r#"{ "state": "burst", "as": "burst" }"#;
+        let include: GlobalInclude = serde_json::from_str(json).unwrap();
+        assert_eq!(include.state, "burst");
+        assert_eq!(include.alias, "burst");
+        assert!(include.overrides.is_none());
+    }
+
+    #[test]
+    fn global_include_with_override() {
+        let json = r#"{
+            "state": "idle",
+            "as": "idle",
+            "override": { "animation": "ryu_idle" }
+        }"#;
+        let include: GlobalInclude = serde_json::from_str(json).unwrap();
+        assert_eq!(include.state, "idle");
+        assert!(include.overrides.is_some());
+        let overrides = include.overrides.unwrap();
+        assert_eq!(overrides.get("animation").unwrap(), "ryu_idle");
+    }
+
+    #[test]
+    fn globals_manifest_deserialization() {
+        let json = r#"{
+            "includes": [
+                { "state": "burst", "as": "burst" },
+                { "state": "idle", "as": "idle", "override": { "animation": "ryu_idle" } }
+            ]
+        }"#;
+        let manifest: GlobalsManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.includes.len(), 2);
     }
 }
