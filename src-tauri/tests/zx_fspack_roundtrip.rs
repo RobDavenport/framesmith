@@ -110,6 +110,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            pushboxes: vec![],
             base: None,
             id: None,
         }],

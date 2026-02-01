@@ -961,6 +961,7 @@ pub fn create_move(
         on_block: None,
         notifies: vec![],
         advanced_hurtboxes: None,
+        pushboxes: vec![],
         base: None,
         id: None,
     };

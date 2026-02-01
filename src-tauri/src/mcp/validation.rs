@@ -489,6 +489,7 @@ mod tests {
             on_use: None,
             on_block: None,
             notifies: vec![],
+            pushboxes: vec![],
             base: None,
             id: None,
         }

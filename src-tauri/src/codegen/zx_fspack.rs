@@ -1392,6 +1392,7 @@ mod tests {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            pushboxes: vec![],
             base: None,
             id: None,
         }
@@ -1920,6 +1921,7 @@ mod tests {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            pushboxes: vec![],
             base: None,
             id: None,
         }

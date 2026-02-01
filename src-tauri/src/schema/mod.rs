@@ -249,6 +249,9 @@ pub struct State {
     #[serde(default)]
     pub notifies: Vec<MoveNotify>,
     pub advanced_hurtboxes: Option<Vec<FrameHurtbox>>,
+    /// Push boxes for body collision (same format as hurtboxes)
+    #[serde(default)]
+    pub pushboxes: Vec<FrameHitbox>,
     /// Base state this variant inherits from (authoring only, not exported).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
@@ -290,6 +293,7 @@ impl Default for State {
             on_block: None,
             notifies: Vec::new(),
             advanced_hurtboxes: None,
+            pushboxes: Vec::new(),
             base: None,
             id: None,
         }
