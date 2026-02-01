@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 mod assets;
 pub use assets::*;
@@ -14,7 +15,9 @@ impl std::fmt::Display for TagError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TagError::Empty => write!(f, "tag cannot be empty"),
-            TagError::InvalidChars => write!(f, "tag must be lowercase alphanumeric with underscores"),
+            TagError::InvalidChars => {
+                write!(f, "tag must be lowercase alphanumeric with underscores")
+            }
         }
     }
 }
@@ -35,7 +38,10 @@ impl Tag {
         if s.is_empty() {
             return Err(TagError::Empty);
         }
-        if !s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        {
             return Err(TagError::InvalidChars);
         }
         Ok(Tag(s))
@@ -118,11 +124,11 @@ pub struct CharacterAssets {
     #[serde(default = "default_assets_version")]
     pub version: u32,
     #[serde(default)]
-    pub textures: Vec<String>,
+    pub textures: BTreeMap<String, String>,
     #[serde(default)]
-    pub models: Vec<String>,
+    pub models: BTreeMap<String, String>,
     #[serde(default)]
-    pub animations: Vec<String>,
+    pub animations: BTreeMap<String, AnimationClip>,
 }
 
 fn default_assets_version() -> u32 {
@@ -133,10 +139,70 @@ impl Default for CharacterAssets {
     fn default() -> Self {
         Self {
             version: 1,
-            textures: Vec::new(),
-            models: Vec::new(),
-            animations: Vec::new(),
+            textures: BTreeMap::new(),
+            models: BTreeMap::new(),
+            animations: BTreeMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod assets_manifest_tests {
+    use super::*;
+
+    #[test]
+    fn character_assets_deserializes_doc_shape() {
+        let json = r#"{
+          "version": 1,
+          "textures": { "atlas": "assets/textures/atlas.png" },
+          "models": { "body": "assets/models/body.glb" },
+          "animations": {
+            "stand_light": {
+              "mode": "sprite",
+              "texture": "atlas",
+              "frame_size": { "w": 64, "h": 32 },
+              "frames": 18,
+              "pivot": { "x": 10, "y": 20 }
+            },
+            "stand_light_3d": {
+              "mode": "gltf",
+              "model": "body",
+              "clip": "Idle",
+              "fps": 60,
+              "pivot": { "x": 0, "y": 1, "z": 2 }
+            }
+          }
+        }"#;
+
+        let assets: CharacterAssets = serde_json::from_str(json).expect("assets should parse");
+        assert_eq!(assets.version, 1);
+        assert_eq!(
+            assets.textures.get("atlas").map(|s| s.as_str()),
+            Some("assets/textures/atlas.png")
+        );
+        assert_eq!(
+            assets.models.get("body").map(|s| s.as_str()),
+            Some("assets/models/body.glb")
+        );
+        assert!(assets.animations.contains_key("stand_light"));
+        assert!(assets.animations.contains_key("stand_light_3d"));
+    }
+
+    #[test]
+    fn character_assets_deserializes_legacy_minimal_shape() {
+        // Legacy manifests may have extra fields (e.g. "mesh") and omit newer fields.
+        let json = r#"{
+          "mesh": null,
+          "textures": {},
+          "animations": {}
+        }"#;
+
+        let assets: CharacterAssets =
+            serde_json::from_str(json).expect("legacy assets should parse");
+        assert_eq!(assets.version, 1);
+        assert!(assets.textures.is_empty());
+        assert!(assets.models.is_empty());
+        assert!(assets.animations.is_empty());
     }
 }
 
@@ -180,6 +246,12 @@ pub struct State {
     #[serde(default)]
     pub notifies: Vec<MoveNotify>,
     pub advanced_hurtboxes: Option<Vec<FrameHurtbox>>,
+    /// Base state this variant inherits from (authoring only, not exported).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    /// Unique state ID (set during resolution, used in exports).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 impl Default for State {
@@ -215,6 +287,8 @@ impl Default for State {
             on_block: None,
             notifies: Vec::new(),
             advanced_hurtboxes: None,
+            base: None,
+            id: None,
         }
     }
 }
@@ -829,5 +903,29 @@ mod tests {
         assert_eq!(ct.tag_rules[0].from, "normal");
         assert_eq!(ct.tag_rules[0].to, "special");
         assert_eq!(ct.deny.get("2H"), Some(&vec!["jump".to_string()]));
+    }
+
+    #[test]
+    fn state_with_base_field_deserializes() {
+        let json = r#"{
+          "base": "5H",
+          "damage": 80
+        }"#;
+
+        let state: State = serde_json::from_str(json).expect("state should parse");
+        assert_eq!(state.base.as_deref(), Some("5H"));
+        assert_eq!(state.damage, 80);
+    }
+
+    #[test]
+    fn state_with_id_field_deserializes() {
+        let json = r#"{
+          "id": "5H~level1",
+          "input": "5H",
+          "damage": 80
+        }"#;
+
+        let state: State = serde_json::from_str(json).expect("state should parse");
+        assert_eq!(state.id.as_deref(), Some("5H~level1"));
     }
 }

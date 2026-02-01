@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE,
-    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, SECTION_CANCEL_DENIES,
-    SECTION_CANCEL_TAG_RULES, SECTION_CANCELS_U16, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
+    HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, SECTION_CANCELS_U16,
+    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
     SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
     SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
     SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
@@ -556,9 +556,14 @@ fn write_section_header(buf: &mut Vec<u8>, kind: u32, offset: u32, length: u32, 
 /// Returns the packed binary data as a Vec<u8>.
 #[allow(clippy::vec_init_then_push)] // Intentional: base sections first, optional sections conditionally added
 pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
+    // Canonicalize move ordering so move indices are deterministic.
+    // (Do this here as a backstop even if callers already sorted.)
+    let mut char_data = char_data.clone();
+    char_data.moves.sort_by(|a, b| a.input.cmp(&b.input));
+
     // Step 1: Build string table and asset keys
     let mut strings = StringTable::new();
-    let (mesh_keys, keyframes_keys) = build_asset_keys(char_data, &mut strings)?;
+    let (mesh_keys, keyframes_keys) = build_asset_keys(&char_data, &mut strings)?;
 
     // Build animation-to-index map for pack_moves
     // The keys are sorted alphabetically, so we can create the map from the sorted animations
@@ -1361,6 +1366,8 @@ mod tests {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            base: None,
+            id: None,
         }
     }
 
@@ -1638,6 +1645,32 @@ mod tests {
     }
 
     #[test]
+    fn test_export_zx_fspack_is_deterministic_for_shuffled_moves() {
+        let move_a = make_test_move("5M", "stand_medium");
+        let move_b = make_test_move("5L", "stand_light");
+        let move_c = make_test_move("236P", "fireball");
+
+        let char_data1 = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![move_a.clone(), move_b.clone(), move_c.clone()],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let char_data2 = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![move_c, move_a, move_b],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let bytes1 = export_zx_fspack(&char_data1).unwrap();
+        let bytes2 = export_zx_fspack(&char_data2).unwrap();
+        assert_eq!(
+            bytes1, bytes2,
+            "Export should be deterministic regardless of move order"
+        );
+    }
+
+    #[test]
     fn test_export_zx_fspack_section_headers() {
         let char_data = CharacterData {
             character: make_test_character("test"),
@@ -1861,6 +1894,8 @@ mod tests {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            base: None,
+            id: None,
         }
     }
 
@@ -2581,20 +2616,28 @@ mod tests {
             cancels.len()
         );
 
-        // We expect: 5L has 2 targets (5M=1, 5H=2), 5M has 1 target (5H=2)
+        // Canonical ordering is by input string ascending.
+        // For these inputs, that yields: 5H=0, 5L=1, 5M=2.
+        // We expect: 5L has 2 targets (5M=2, 5H=0), 5M has 1 target (5H=0)
         // Total: 3 cancel entries = 6 bytes
         assert_eq!(cancels.len(), 6, "Expected 3 u16 cancel targets = 6 bytes");
 
-        // The first two u16 should be 5L's targets (indices 1 and 2)
+        // The first two u16 should be 5L's targets (indices 2 and 0)
         let target0 = u16::from_le_bytes([cancels[0], cancels[1]]);
         let target1 = u16::from_le_bytes([cancels[2], cancels[3]]);
-        // 5M is at index 1, 5H is at index 2
-        assert_eq!(target0, 1, "5L's first chain target should be move index 1 (5M)");
-        assert_eq!(target1, 2, "5L's second chain target should be move index 2 (5H)");
+        // 5M is at index 2, 5H is at index 0
+        assert_eq!(
+            target0, 2,
+            "5L's first chain target should be move index 2 (5M)"
+        );
+        assert_eq!(
+            target1, 0,
+            "5L's second chain target should be move index 0 (5H)"
+        );
 
-        // The third u16 should be 5M's target (index 2)
+        // The third u16 should be 5M's target (index 0)
         let target2 = u16::from_le_bytes([cancels[4], cancels[5]]);
-        assert_eq!(target2, 2, "5M's chain target should be move index 2 (5H)");
+        assert_eq!(target2, 0, "5M's chain target should be move index 0 (5H)");
     }
 
     /// Test that MoveExtras includes cancel offset/length for each move
@@ -2662,31 +2705,31 @@ mod tests {
         let extras = pack.state_extras().expect("MOVE_EXTRAS section");
         assert_eq!(extras.len(), 3);
 
-        // 5L (index 0) has 2 chain targets at offset 0
-        let ex0 = extras.get(0).expect("extras 0");
-        let (off0, len0) = ex0.cancels();
-        assert_eq!(off0, 0, "5L cancel offset should be 0");
-        assert_eq!(len0, 2, "5L should have 2 cancel targets");
+        // Canonical ordering is by input string ascending: 5H=0, 5L=1, 5M=2.
+        let ex_h = extras.get(0).expect("extras 5H");
+        let (_off_h, len_h) = ex_h.cancels();
+        assert_eq!(len_h, 0, "5H should have 0 cancel targets");
 
-        // 5M (index 1) has 1 chain target at offset 4 (after 5L's 2 targets * 2 bytes)
-        let ex1 = extras.get(1).expect("extras 1");
-        let (off1, len1) = ex1.cancels();
-        assert_eq!(off1, 4, "5M cancel offset should be 4");
-        assert_eq!(len1, 1, "5M should have 1 cancel target");
+        // 5L (index 1) has 2 chain targets at offset 0
+        let ex_l = extras.get(1).expect("extras 5L");
+        let (off_l, len_l) = ex_l.cancels();
+        assert_eq!(off_l, 0, "5L cancel offset should be 0");
+        assert_eq!(len_l, 2, "5L should have 2 cancel targets");
 
-        // 5H (index 2) has no chain targets
-        let ex2 = extras.get(2).expect("extras 2");
-        let (_off2, len2) = ex2.cancels();
-        assert_eq!(len2, 0, "5H should have 0 cancel targets");
+        // 5M (index 2) has 1 chain target at offset 4 (after 5L's 2 targets * 2 bytes)
+        let ex_m = extras.get(2).expect("extras 5M");
+        let (off_m, len_m) = ex_m.cancels();
+        assert_eq!(off_m, 4, "5M cancel offset should be 4");
+        assert_eq!(len_m, 1, "5M should have 1 cancel target");
 
         // Verify we can use CancelsView to read targets
         let cancels = pack.cancels().expect("cancels view");
 
         // Read 5L's targets
-        assert_eq!(cancels.get_at(off0, 0), Some(1), "5L -> 5M (index 1)");
-        assert_eq!(cancels.get_at(off0, 1), Some(2), "5L -> 5H (index 2)");
+        assert_eq!(cancels.get_at(off_l, 0), Some(2), "5L -> 5M (index 2)");
+        assert_eq!(cancels.get_at(off_l, 1), Some(0), "5L -> 5H (index 0)");
 
         // Read 5M's targets
-        assert_eq!(cancels.get_at(off1, 0), Some(2), "5M -> 5H (index 2)");
+        assert_eq!(cancels.get_at(off_m, 0), Some(0), "5M -> 5H (index 0)");
     }
 }

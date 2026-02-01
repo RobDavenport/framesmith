@@ -35,7 +35,7 @@ fn zx_fspack_export_roundtrips_through_reader() {
 fn zx_fspack_move_record_fields_match_reader_layout() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, Character, FrameHitbox, GuardType, MeterGain, State, Pushback, Rect,
+        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State,
         TriggerType,
     };
 
@@ -100,6 +100,8 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
             on_block: None,
             notifies: vec![],
             advanced_hurtboxes: None,
+            base: None,
+            id: None,
         }],
         cancel_table: CancelTable::default(),
     };
@@ -145,7 +147,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
         CancelTable, Character, CharacterResource, Cost, EventArgValue, EventEmit, GuardType,
-        MeterGain, State, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta,
+        MeterGain, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State,
         TriggerType,
     };
     use std::collections::BTreeMap;
@@ -280,11 +282,24 @@ fn zx_fspack_exports_resources_and_events_sections() {
     let emits = pack.event_emits().expect("expected EVENT_EMITS section");
     let args = pack.event_args().expect("expected EVENT_ARGS section");
 
-    // Move 0: on_hit emit -> id + args
-    let ex0 = extras.get(0).expect("extras 0");
-    let (on_hit_off, on_hit_len) = ex0.on_hit_emits();
+    let idx_5l = pack
+        .find_state_by_input("5L")
+        .expect("state 5L should exist")
+        .0;
+    let idx_5m = pack
+        .find_state_by_input("5M")
+        .expect("state 5M should exist")
+        .0;
+    let idx_236p = pack
+        .find_state_by_input("236P")
+        .expect("state 236P should exist")
+        .0;
+
+    // 5L: on_hit emit -> id + args
+    let ex_5l = extras.get(idx_5l).expect("extras 5L");
+    let (on_hit_off, on_hit_len) = ex_5l.on_hit_emits();
     assert_eq!(on_hit_len, 1);
-    let e0 = emits.get_at(on_hit_off, 0).expect("move0 on_hit emit 0");
+    let e0 = emits.get_at(on_hit_off, 0).expect("5L on_hit emit 0");
     let e0_id = pack
         .string(e0.id_off(), e0.id_len())
         .expect("emit id string");
@@ -297,12 +312,12 @@ fn zx_fspack_exports_resources_and_events_sections() {
         .expect("arg key string");
     assert!(a0_key == "scale" || a0_key == "strength");
 
-    // Move 1: notify event
+    // 5M: notify event
     let notifies = pack
         .move_notifies()
         .expect("expected MOVE_NOTIFIES section");
-    let ex1 = extras.get(1).expect("extras 1");
-    let (notify_off, notify_len) = ex1.notifies();
+    let ex_5m = extras.get(idx_5m).expect("extras 5M");
+    let (notify_off, notify_len) = ex_5m.notifies();
     assert_eq!(notify_len, 1);
     let n0 = notifies.get_at(notify_off, 0).expect("notify 0");
     assert_eq!(n0.frame(), 7);
@@ -314,7 +329,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
         .expect("notify id");
     assert_eq!(n_id, "vfx.swing_trail");
 
-    // Move 2: cost + precondition + on_use delta
+    // 236P: cost + precondition + on_use delta
     let costs = pack
         .move_resource_costs()
         .expect("expected MOVE_RESOURCE_COSTS section");
@@ -325,8 +340,8 @@ fn zx_fspack_exports_resources_and_events_sections() {
         .move_resource_deltas()
         .expect("expected MOVE_RESOURCE_DELTAS section");
 
-    let ex2 = extras.get(2).expect("extras 2");
-    let (cost_off, cost_len) = ex2.resource_costs();
+    let ex_236p = extras.get(idx_236p).expect("extras 236P");
+    let (cost_off, cost_len) = ex_236p.resource_costs();
     assert_eq!(cost_len, 1);
     let c0 = costs.get_at(cost_off, 0).expect("cost 0");
     let c0_name = pack
@@ -335,7 +350,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     assert_eq!(c0_name, "heat");
     assert_eq!(c0.amount(), 1);
 
-    let (pre_off, pre_len) = ex2.resource_preconditions();
+    let (pre_off, pre_len) = ex_236p.resource_preconditions();
     assert_eq!(pre_len, 1);
     let p0 = pre.get_at(pre_off, 0).expect("precondition 0");
     let p0_name = pack
@@ -345,7 +360,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
     assert_eq!(p0.min(), Some(1));
     assert_eq!(p0.max(), None);
 
-    let (d_off, d_len) = ex2.resource_deltas();
+    let (d_off, d_len) = ex_236p.resource_deltas();
     assert_eq!(d_len, 1);
     let d0 = deltas.get_at(d_off, 0).expect("delta 0");
     let d0_name = pack
@@ -362,9 +377,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
 #[test]
 fn zx_fspack_exports_move_input_notation() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, State, Pushback,
-    };
+    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
 
     fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
         u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
@@ -499,7 +512,8 @@ fn zx_fspack_cancel_table_roundtrips() {
         for (j, target) in targets.iter().enumerate() {
             let target_idx = *input_to_idx
                 .get(target.as_str())
-                .unwrap_or_else(|| panic!("target move {} should exist", target)) as u16;
+                .unwrap_or_else(|| panic!("target move {} should exist", target))
+                as u16;
             let packed_target = cancels.get_at(off, j).expect("cancel target");
             assert_eq!(
                 packed_target, target_idx,
@@ -527,7 +541,7 @@ fn zx_fspack_cancel_table_roundtrips() {
 fn tags_survive_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, State, Pushback, Tag,
+        CancelTable, Character, GuardType, MeterGain, Pushback, State, Tag,
     };
 
     let char_data = CharacterData {
@@ -548,10 +562,7 @@ fn tags_survive_roundtrip() {
             State {
                 input: "5L".to_string(),
                 name: "Light".to_string(),
-                tags: vec![
-                    Tag::new("normal").unwrap(),
-                    Tag::new("light").unwrap(),
-                ],
+                tags: vec![Tag::new("normal").unwrap(), Tag::new("light").unwrap()],
                 guard: GuardType::Mid,
                 animation: "5L".to_string(),
                 pushback: Pushback { hit: 0, block: 0 },
@@ -561,10 +572,7 @@ fn tags_survive_roundtrip() {
             State {
                 input: "5M".to_string(),
                 name: "Medium".to_string(),
-                tags: vec![
-                    Tag::new("normal").unwrap(),
-                    Tag::new("medium").unwrap(),
-                ],
+                tags: vec![Tag::new("normal").unwrap(), Tag::new("medium").unwrap()],
                 guard: GuardType::Mid,
                 animation: "5M".to_string(),
                 pushback: Pushback { hit: 0, block: 0 },
@@ -600,9 +608,7 @@ fn tags_survive_roundtrip() {
 #[test]
 fn empty_tags_roundtrip() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, State, Pushback,
-    };
+    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
 
     let char_data = CharacterData {
         character: Character {
@@ -645,8 +651,8 @@ fn empty_tags_roundtrip() {
 fn cancel_tag_rules_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, State,
-        Pushback, Tag,
+        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, Pushback,
+        State, Tag,
     };
 
     // Create moves with tags
@@ -719,19 +725,26 @@ fn cancel_tag_rules_roundtrip() {
     assert_eq!(rule.min_frame(), 0);
     assert_eq!(rule.max_frame(), 255);
 
-    // Verify tags on moves
-    let tags0: Vec<&str> = pack.state_tags(0).expect("state 0 tags").collect();
-    assert_eq!(tags0, vec!["normal"]);
-    let tags1: Vec<&str> = pack.state_tags(1).expect("state 1 tags").collect();
-    assert_eq!(tags1, vec!["special"]);
+    // Verify tags on moves (order-independent)
+    let idx_5l = pack
+        .find_state_by_input("5L")
+        .expect("state 5L should exist")
+        .0;
+    let idx_236p = pack
+        .find_state_by_input("236P")
+        .expect("state 236P should exist")
+        .0;
+
+    let tags_l: Vec<&str> = pack.state_tags(idx_5l).expect("5L tags").collect();
+    assert_eq!(tags_l, vec!["normal"]);
+    let tags_236p: Vec<&str> = pack.state_tags(idx_236p).expect("236P tags").collect();
+    assert_eq!(tags_236p, vec!["special"]);
 }
 
 #[test]
 fn cancel_denies_roundtrip() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, State, Pushback,
-    };
+    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
 
     // Create two moves
     let mv0 = State {

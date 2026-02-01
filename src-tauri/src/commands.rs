@@ -240,6 +240,9 @@ pub fn load_character(
         resolved_moves.push(resolved);
     }
 
+    // Canonicalize move ordering so indices are deterministic and match exporter/runtime.
+    resolved_moves.sort_by(|a, b| a.input.cmp(&b.input));
+
     Ok(CharacterData {
         character,
         moves: resolved_moves,
@@ -858,6 +861,8 @@ pub fn create_move(
         on_block: None,
         notifies: vec![],
         advanced_hurtboxes: None,
+        base: None,
+        id: None,
     };
 
     // Write the state file
@@ -986,6 +991,48 @@ mod tests {
         .unwrap();
 
         assert_eq!(b64, "aGVsbG8=");
+    }
+
+    #[test]
+    fn test_load_character_sorts_moves_by_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let characters_dir = setup_test_character(&temp_dir);
+
+        let char_dir = Path::new(&characters_dir).join("test-char");
+        fs::write(
+            char_dir.join("character.json"),
+            r#"{
+              "id": "test-char",
+              "name": "Test",
+              "archetype": "test",
+              "health": 10000,
+              "walk_speed": 4.0,
+              "back_walk_speed": 3.0,
+              "jump_height": 120,
+              "jump_duration": 45,
+              "dash_distance": 80,
+              "dash_duration": 18,
+              "resources": []
+            }"#,
+        )
+        .unwrap();
+
+        let states_dir = char_dir.join("states");
+        // Write in an order that is likely to differ from lexicographic sort.
+        fs::write(
+            states_dir.join("5M.json"),
+            r#"{ "input": "5M", "startup": 1, "active": 1 }"#,
+        )
+        .unwrap();
+        fs::write(
+            states_dir.join("5L.json"),
+            r#"{ "input": "5L", "startup": 1, "active": 1 }"#,
+        )
+        .unwrap();
+
+        let data = load_character(characters_dir, "test-char".to_string()).unwrap();
+        let inputs: Vec<&str> = data.moves.iter().map(|m| m.input.as_str()).collect();
+        assert_eq!(inputs, vec!["5L", "5M"]);
     }
 
     #[test]

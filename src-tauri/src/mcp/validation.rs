@@ -489,6 +489,8 @@ mod tests {
             on_use: None,
             on_block: None,
             notifies: vec![],
+            base: None,
+            id: None,
         }
     }
 
