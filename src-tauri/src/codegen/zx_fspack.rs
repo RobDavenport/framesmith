@@ -13,8 +13,8 @@ use super::zx_fspack_format::{
     SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
     SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
     SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
-    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_RESOURCE_DEFS,
-    SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_TAGS,
+    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_PUSH_WINDOWS,
+    SECTION_RESOURCE_DEFS, SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_TAGS,
     SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, SHAPE12_SIZE, SHAPE_KIND_AABB,
     STATE_EXTRAS72_SIZE, STATE_RECORD_SIZE, STRREF_SIZE,
 };
@@ -250,7 +250,7 @@ fn trigger_type_to_u8(trigger: Option<&crate::schema::TriggerType>) -> u8 {
 
 /// Pack a Move into a MoveRecord structure.
 ///
-/// MoveRecord layout (32 bytes):
+/// MoveRecord layout (36 bytes):
 /// - 0-1: move_id (u16)
 /// - 2-3: mesh_key (u16)
 /// - 4-5: keyframes_key (u16)
@@ -272,6 +272,8 @@ fn trigger_type_to_u8(trigger: Option<&crate::schema::TriggerType>) -> u8 {
 /// - 26-27: hit_windows_len (u16)
 /// - 28-29: hurt_windows_off (u16)
 /// - 30-31: hurt_windows_len (u16)
+/// - 32-33: push_windows_off (u16)
+/// - 34-35: push_windows_len (u16)
 #[allow(clippy::too_many_arguments)] // Binary record packing requires all fields
 fn pack_move_record(
     move_id: u16,
@@ -282,6 +284,8 @@ fn pack_move_record(
     hit_windows_len: u16,
     hurt_windows_off: u16,
     hurt_windows_len: u16,
+    push_windows_off: u16,
+    push_windows_len: u16,
     flags: u8,
 ) -> [u8; STATE_RECORD_SIZE] {
     let mut buf = [0u8; STATE_RECORD_SIZE];
@@ -311,6 +315,8 @@ fn pack_move_record(
     buf[26..28].copy_from_slice(&hit_windows_len.to_le_bytes()); // hit_windows_len
     buf[28..30].copy_from_slice(&hurt_windows_off.to_le_bytes()); // hurt_windows_off (u16)
     buf[30..32].copy_from_slice(&hurt_windows_len.to_le_bytes()); // hurt_windows_len
+    buf[32..34].copy_from_slice(&push_windows_off.to_le_bytes()); // push_windows_off (u16)
+    buf[34..36].copy_from_slice(&push_windows_len.to_le_bytes()); // push_windows_len
 
     buf
 }
@@ -335,7 +341,7 @@ pub struct CancelLookup<'a> {
 
 /// Packed move data with backing arrays.
 pub struct PackedMoveData {
-    /// MOVES section: array of MoveRecord (32 bytes each)
+    /// MOVES section: array of MoveRecord (36 bytes each)
     pub moves: Vec<u8>,
     /// SHAPES section: array of Shape12 (12 bytes each)
     pub shapes: Vec<u8>,
@@ -343,6 +349,8 @@ pub struct PackedMoveData {
     pub hit_windows: Vec<u8>,
     /// HURT_WINDOWS section: array of HurtWindow12 (12 bytes each)
     pub hurt_windows: Vec<u8>,
+    /// PUSH_WINDOWS section: array of PushWindow12 (12 bytes each, same format as HurtWindow12)
+    pub push_windows: Vec<u8>,
     /// CANCELS_U16 section: array of u16 move IDs
     pub cancels: Vec<u8>,
     /// Per-move cancel info: (byte_offset, count) into CANCELS_U16 section
@@ -368,6 +376,7 @@ pub fn pack_moves(
         shapes: Vec::new(),
         hit_windows: Vec::new(),
         hurt_windows: Vec::new(),
+        push_windows: Vec::new(),
         cancels: Vec::new(),
         cancel_info: Vec::with_capacity(moves.len()),
     };
@@ -389,6 +398,7 @@ pub fn pack_moves(
         // Track offsets before adding this move's data
         let hit_windows_off = checked_u32(packed.hit_windows.len(), "hit_windows_off")?;
         let hurt_windows_off = checked_u16(packed.hurt_windows.len(), "hurt_windows_off")?; // u16 for compact layout
+        let push_windows_off = checked_u16(packed.push_windows.len(), "push_windows_off")?; // u16 for compact layout
 
         // Pack hitboxes -> shapes + hit_windows
         for hb in &mv.hitboxes {
@@ -414,9 +424,19 @@ pub fn pack_moves(
                 .extend_from_slice(&pack_hurt_window(hb, shape_off));
         }
 
+        // Pack pushboxes -> shapes + push_windows (same 12-byte format as hurt windows)
+        for pb in &mv.pushboxes {
+            let shape_off = checked_u32(packed.shapes.len(), "shape_off")?;
+            packed.shapes.extend_from_slice(&pack_shape(&pb.r#box));
+            packed
+                .push_windows
+                .extend_from_slice(&pack_hurt_window(pb, shape_off));
+        }
+
         // Calculate lengths
         let hit_windows_len = checked_u16(mv.hitboxes.len(), "hit_windows_len")?;
         let hurt_windows_len = checked_u16(mv.hurtboxes.len(), "hurt_windows_len")?;
+        let push_windows_len = checked_u16(mv.pushboxes.len(), "push_windows_len")?;
 
         // Compute cancel flags and pack chain cancel routes
         let mut flags: u8 = 0;
@@ -464,6 +484,8 @@ pub fn pack_moves(
             hit_windows_len,
             hurt_windows_off,
             hurt_windows_len,
+            push_windows_off,
+            push_windows_len,
             flags,
         ));
     }
@@ -1218,6 +1240,11 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         bytes: packed.hurt_windows,
     });
     sections.push(SectionData {
+        kind: SECTION_PUSH_WINDOWS,
+        align: 4,
+        bytes: packed.push_windows,
+    });
+    sections.push(SectionData {
         kind: SECTION_SHAPES,
         align: 4,
         bytes: packed.shapes,
@@ -1710,9 +1737,9 @@ mod tests {
             "Total length should match actual output size"
         );
 
-        // Verify section count: 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
+        // Verify section count: 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 10, "Section count should be 10");
+        assert_eq!(section_count, 11, "Section count should be 11");
     }
 
     #[test]
@@ -1735,9 +1762,9 @@ mod tests {
         // Should still have valid FSPK header
         assert_eq!(&bytes[0..4], b"FSPK");
 
-        // Section count should be 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
+        // Section count should be 9 base + CHARACTER_PROPS = 10 (no moves = no STATE_EXTRAS)
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 9);
+        assert_eq!(section_count, 10);
     }
 
     #[test]
@@ -1784,7 +1811,9 @@ mod tests {
         );
 
         // Check that section kinds are correct (base v1 sections in order)
-        let expected_base_kinds = [1, 2, 3, 4, 5, 6, 7, 8]; // STRING_TABLE through CANCELS_U16
+        // STRING_TABLE(1), MESH_KEYS(2), KEYFRAMES_KEYS(3), STATES(4), HIT_WINDOWS(5),
+        // HURT_WINDOWS(6), PUSH_WINDOWS(22), SHAPES(7), CANCELS_U16(8)
+        let expected_base_kinds = [1, 2, 3, 4, 5, 6, 22, 7, 8];
         for (i, &expected_kind) in expected_base_kinds.iter().enumerate() {
             let offset = HEADER_SIZE + i * SECTION_HEADER_SIZE;
             let kind = u32::from_le_bytes([
@@ -1801,12 +1830,12 @@ mod tests {
         }
 
         // MOVE_EXTRAS and CHARACTER_PROPS are expected when there are moves.
-        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
+        // 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11
         assert_eq!(
-            section_count, 10,
+            section_count, 11,
             "Expected STATE_EXTRAS and CHARACTER_PROPS sections to be present"
         );
-        let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
+        let extras_kind_off = HEADER_SIZE + 9 * SECTION_HEADER_SIZE;
         let extras_kind = u32::from_le_bytes([
             bytes[extras_kind_off],
             bytes[extras_kind_off + 1],
@@ -2074,7 +2103,7 @@ mod tests {
     #[test]
     fn test_pack_move_record() {
         let mv = make_move_with_hitboxes();
-        let mr = pack_move_record(42, KEY_NONE, KEY_NONE, &mv, 100, 2, 200, 3, 0);
+        let mr = pack_move_record(42, KEY_NONE, KEY_NONE, &mv, 100, 2, 200, 3, 300, 4, 0);
 
         assert_eq!(mr.len(), STATE_RECORD_SIZE);
 
@@ -2140,6 +2169,14 @@ mod tests {
         // 30-31: hurt_windows_len
         let hurt_len = u16::from_le_bytes([mr[30], mr[31]]);
         assert_eq!(hurt_len, 3);
+
+        // 32-33: push_windows_off (u16)
+        let push_off = u16::from_le_bytes([mr[32], mr[33]]);
+        assert_eq!(push_off, 300);
+
+        // 34-35: push_windows_len
+        let push_len = u16::from_le_bytes([mr[34], mr[35]]);
+        assert_eq!(push_len, 4);
     }
 
     #[test]
@@ -2346,8 +2383,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10 sections
-        assert_eq!(pack.section_count(), 10);
+        // 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11 sections
+        assert_eq!(pack.section_count(), 11);
 
         // Verify move count matches
         let moves = pack.states().expect("should have MOVES section");
@@ -2459,8 +2496,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
-        assert_eq!(pack.section_count(), 9);
+        // 9 base + CHARACTER_PROPS = 10 (no moves = no STATE_EXTRAS)
+        assert_eq!(pack.section_count(), 10);
 
         // Verify moves section is empty
         let moves = pack.states().expect("should have MOVES section");
