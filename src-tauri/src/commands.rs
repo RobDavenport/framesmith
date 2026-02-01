@@ -40,6 +40,41 @@ fn project_rules_path(characters_dir: &str) -> PathBuf {
 /// Named states: Vec<(filename_without_extension, State)>
 type NamedStates = Vec<(String, State)>;
 
+/// Resolve global states and merge them with local states
+fn resolve_and_merge_globals(
+    characters_dir: &str,
+    char_path: &Path,
+    named_moves: Vec<(String, State)>,
+) -> Result<Vec<(String, State)>, String> {
+    // Collect local inputs for conflict detection
+    let local_inputs: std::collections::HashSet<String> = named_moves
+        .iter()
+        .map(|(_, state)| state.input.clone())
+        .collect();
+
+    // Resolve global states
+    let project_dir = Path::new(characters_dir)
+        .parent()
+        .ok_or_else(|| "Could not determine project directory".to_string())?;
+
+    let (global_states, global_warnings) =
+        crate::globals::resolve_globals(project_dir, char_path, &local_inputs)
+            .map_err(|e| e.to_string())?;
+
+    // Log warnings
+    for warning in &global_warnings {
+        eprintln!("Warning: {}", warning);
+    }
+
+    // Combine: local states + global states
+    let mut all_named_moves = named_moves;
+    for state in global_states {
+        all_named_moves.push((state.input.clone(), state));
+    }
+
+    Ok(all_named_moves)
+}
+
 fn load_character_files(
     characters_dir: &str,
     character_id: &str,
@@ -219,8 +254,8 @@ pub fn load_character(
     let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
 
-    // Flatten variants before applying rules
-    let moves = crate::variant::flatten_variants(named_moves)?;
+    let all_named_moves = resolve_and_merge_globals(&characters_dir, &char_path, named_moves)?;
+    let moves = crate::variant::flatten_variants(all_named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
@@ -403,8 +438,8 @@ pub fn export_character(
     let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
 
-    // Flatten variants before validation and rules application
-    let base_moves = crate::variant::flatten_variants(named_moves)?;
+    let all_named_moves = resolve_and_merge_globals(&characters_dir, &char_path, named_moves)?;
+    let base_moves = crate::variant::flatten_variants(all_named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
@@ -502,8 +537,8 @@ pub fn get_character_fspk(
     let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
 
-    // Flatten variants before rules application
-    let base_moves = crate::variant::flatten_variants(named_moves)?;
+    let all_named_moves = resolve_and_merge_globals(&characters_dir, &char_path, named_moves)?;
+    let base_moves = crate::variant::flatten_variants(all_named_moves)?;
 
     let project_rules_path = project_rules_path(&characters_dir);
     let project_rules = crate::rules::load_rules_file(&project_rules_path).map_err(|e| {
