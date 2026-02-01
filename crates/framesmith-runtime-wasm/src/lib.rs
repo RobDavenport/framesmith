@@ -4,6 +4,13 @@
 //! character simulations in the browser.
 
 use framesmith_fspack::PackView;
+
+/// Convert Q24.8 fixed-point to f64.
+///
+/// Q24.8 uses 8 fractional bits, so dividing by 256 converts to float.
+fn from_q24_8(raw: i32) -> f64 {
+    raw as f64 / 256.0
+}
 use framesmith_runtime::{
     available_cancels, check_hits, check_pushbox, init_resources, next_frame,
     CharacterState as RtCharacterState, FrameInput, HitResult as RtHitResult,
@@ -408,6 +415,50 @@ impl TrainingSession {
     pub fn set_positions(&mut self, player_x: i32, player_y: i32, dummy_x: i32, dummy_y: i32) {
         self.player_pos = (player_x, player_y);
         self.dummy_pos = (dummy_x, dummy_y);
+    }
+
+    /// Get a player character property by name.
+    ///
+    /// Returns the property value as f64 (converted from Q24.8 fixed-point),
+    /// or None if the property doesn't exist.
+    ///
+    /// # Arguments
+    /// * `name` - The property name (e.g., "health", "walk_speed")
+    pub fn get_property(&self, name: &str) -> Option<f64> {
+        let pack = PackView::parse(&self.player_pack_data).ok()?;
+        let props = pack.character_props()?;
+
+        for i in 0..props.len() {
+            let prop = props.get(i)?;
+            let (off, len) = prop.name();
+            let prop_name = pack.string(off, len)?;
+            if prop_name == name {
+                return Some(from_q24_8(prop.as_q24_8()));
+            }
+        }
+        None
+    }
+
+    /// Get a dummy character property by name.
+    ///
+    /// Returns the property value as f64 (converted from Q24.8 fixed-point),
+    /// or None if the property doesn't exist.
+    ///
+    /// # Arguments
+    /// * `name` - The property name (e.g., "health", "walk_speed")
+    pub fn get_dummy_property(&self, name: &str) -> Option<f64> {
+        let pack = PackView::parse(&self.dummy_pack_data).ok()?;
+        let props = pack.character_props()?;
+
+        for i in 0..props.len() {
+            let prop = props.get(i)?;
+            let (off, len) = prop.name();
+            let prop_name = pack.string(off, len)?;
+            if prop_name == name {
+                return Some(from_q24_8(prop.as_q24_8()));
+            }
+        }
+        None
     }
 }
 
