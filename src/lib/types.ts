@@ -368,6 +368,9 @@ export interface State {
   hitboxes: FrameHitbox[];
   hurtboxes: FrameHitbox[];
 
+  // Pushboxes (collision boxes for character-to-character pushing)
+  pushboxes?: FrameHitbox[];
+
   // v2: Advanced multi-hit support with shaped hitboxes
   hits?: Hit[];
 

@@ -36,6 +36,8 @@
   const HURTBOX_PLAYER_STROKE = 'rgba(50, 150, 255, 0.8)';
   const HURTBOX_DUMMY_COLOR = 'rgba(50, 255, 150, 0.4)';
   const HURTBOX_DUMMY_STROKE = 'rgba(50, 255, 150, 0.8)';
+  const PUSHBOX_COLOR = 'rgba(255, 255, 0, 0.4)';
+  const PUSHBOX_STROKE = '#FFFF00';
   const POSITION_MARKER_COLOR = 'rgba(255, 255, 255, 0.8)';
   const DEFAULT_BODY_COLOR = 'rgba(128, 128, 128, 0.3)';
   const DEFAULT_BODY_STROKE = 'rgba(128, 128, 128, 0.6)';
@@ -201,6 +203,15 @@
         }
       }
 
+      // Draw pushboxes
+      if (move.pushboxes) {
+        for (const pb of move.pushboxes) {
+          if (isFrameActive(pb.frames, frame)) {
+            drawRect(ctx, x, groundY, facing, pb.box, PUSHBOX_COLOR, PUSHBOX_STROKE);
+          }
+        }
+      }
+
       // Draw hitboxes (legacy format)
       for (const hitbox of move.hitboxes) {
         if (isFrameActive(hitbox.frames, frame)) {
@@ -325,6 +336,14 @@
     ctx.strokeRect(legendX, legendY + spacing * 2, boxSize, boxSize);
     ctx.fillStyle = 'white';
     ctx.fillText('CPU Hurtbox', legendX + boxSize + 6, legendY + spacing * 2 + boxSize / 2);
+
+    // Pushbox
+    ctx.fillStyle = PUSHBOX_COLOR;
+    ctx.fillRect(legendX, legendY + spacing * 3, boxSize, boxSize);
+    ctx.strokeStyle = PUSHBOX_STROKE;
+    ctx.strokeRect(legendX, legendY + spacing * 3, boxSize, boxSize);
+    ctx.fillStyle = 'white';
+    ctx.fillText('Pushbox', legendX + boxSize + 6, legendY + spacing * 3 + boxSize / 2);
   }
 
   $effect(() => {
