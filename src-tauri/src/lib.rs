@@ -8,8 +8,9 @@ pub mod globals;
 
 use commands::{
     clone_character, create_character, create_move, create_project, delete_character,
-    export_character, get_character_fspk, list_characters, load_character, load_character_assets,
-    load_rules_registry, open_folder_dialog, open_training_window, read_character_asset_base64,
+    delete_global_state, export_character, get_character_fspk, get_global_state, list_characters,
+    list_global_states, load_character, load_character_assets, load_rules_registry,
+    open_folder_dialog, open_training_window, read_character_asset_base64, save_global_state,
     save_move, validate_project,
 };
 
@@ -35,6 +36,10 @@ pub fn run() {
             delete_character,
             create_move,
             open_training_window,
+            list_global_states,
+            get_global_state,
+            save_global_state,
+            delete_global_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
