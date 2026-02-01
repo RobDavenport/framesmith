@@ -1088,6 +1088,52 @@ pub fn delete_global_state(project_path: String, state_id: String) -> Result<(),
     Ok(())
 }
 
+// =============================================================================
+// Character Globals Commands
+// =============================================================================
+
+#[tauri::command]
+pub fn get_character_globals(
+    project_path: String,
+    character_id: String,
+) -> Result<crate::schema::GlobalsManifest, String> {
+    validate_character_id(&character_id)?;
+
+    let char_path = std::path::Path::new(&project_path)
+        .join("characters")
+        .join(&character_id);
+    let globals_path = char_path.join("globals.json");
+
+    if !globals_path.exists() {
+        return Ok(crate::schema::GlobalsManifest::default());
+    }
+
+    let content = std::fs::read_to_string(&globals_path)
+        .map_err(|e| format!("Failed to read globals.json: {}", e))?;
+
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse globals.json: {}", e))
+}
+
+#[tauri::command]
+pub fn save_character_globals(
+    project_path: String,
+    character_id: String,
+    manifest: crate::schema::GlobalsManifest,
+) -> Result<(), String> {
+    validate_character_id(&character_id)?;
+
+    let char_path = std::path::Path::new(&project_path)
+        .join("characters")
+        .join(&character_id);
+    let globals_path = char_path.join("globals.json");
+
+    let content = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Failed to serialize globals: {}", e))?;
+
+    std::fs::write(&globals_path, content)
+        .map_err(|e| format!("Failed to write globals.json: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
