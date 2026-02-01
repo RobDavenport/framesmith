@@ -15,6 +15,9 @@
   "hurtboxes": [
     { "frames": [0, 1], "box": { "x": -15, "y": -70, "w": 30, "h": 70 } }
   ],
+  "pushboxes": [
+    { "frames": [0, 1], "box": { "x": -12, "y": -70, "w": 24, "h": 70 } }
+  ],
   "pushback": { "hit": 0, "block": 0 },
   "meter_gain": { "hit": 0, "whiff": 0 },
   "animation": "idle"
