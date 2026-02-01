@@ -34,6 +34,28 @@ pub struct CharacterIdParam {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GlobalStateIdParam {
+    #[schemars(description = "The ID of the global state (e.g., 'burst')")]
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateGlobalStateParam {
+    #[schemars(description = "The ID for the new global state")]
+    pub id: String,
+    #[schemars(description = "The state data")]
+    pub state: framesmith_lib::schema::State,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UpdateGlobalStateParam {
+    #[schemars(description = "The ID of the global state to update")]
+    pub id: String,
+    #[schemars(description = "The updated state data")]
+    pub state: framesmith_lib::schema::State,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StateIdParam {
     #[schemars(description = "The character ID (e.g., 'test_char')")]
     pub character_id: String,
@@ -595,6 +617,180 @@ impl FramesmithMcp {
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
+
+    #[tool(description = "List all global states in the project")]
+    async fn list_global_states(&self) -> Result<CallToolResult, McpError> {
+        let project_dir = project_root_from_characters_dir(&self.characters_dir);
+        let states = framesmith_lib::globals::list_global_states(&project_dir)
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                message: Cow::from(format!("Failed to list global states: {}", e)),
+                data: None,
+            })?;
+
+        let mut result: Vec<serde_json::Value> = Vec::new();
+        for name in &states {
+            let state = framesmith_lib::globals::load_global_state(&project_dir, name).ok();
+            result.push(serde_json::json!({
+                "id": name,
+                "name": state.as_ref().map(|s| s.name.as_str()),
+                "type": state.as_ref().and_then(|s| s.move_type.as_deref()),
+            }));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&result).unwrap(),
+        )]))
+    }
+
+    #[tool(description = "Get a specific global state by ID")]
+    async fn get_global_state(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<GlobalStateIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_global_state_id(&params.id)?;
+        let project_dir = project_root_from_characters_dir(&self.characters_dir);
+        let state = framesmith_lib::globals::load_global_state(&project_dir, &params.id)
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Failed to load global state: {}", e)),
+                data: None,
+            })?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&state).unwrap(),
+        )]))
+    }
+
+    #[tool(description = "Create a new global state")]
+    async fn create_global_state(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CreateGlobalStateParam>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_global_state_id(&params.id)?;
+        let project_dir = project_root_from_characters_dir(&self.characters_dir);
+        let globals_dir = project_dir.join("globals").join("states");
+
+        std::fs::create_dir_all(&globals_dir).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to create globals directory: {}", e)),
+            data: None,
+        })?;
+
+        let state_path = globals_dir.join(format!("{}.json", params.id));
+
+        if state_path.exists() {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Global state '{}' already exists", params.id)),
+                data: None,
+            });
+        }
+
+        let json = serde_json::to_string_pretty(&params.state).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to serialize state: {}", e)),
+            data: None,
+        })?;
+
+        std::fs::write(&state_path, json).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to write global state: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format!("Created global state '{}'", params.id),
+        )]))
+    }
+
+    #[tool(description = "Update an existing global state")]
+    async fn update_global_state(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateGlobalStateParam>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_global_state_id(&params.id)?;
+        let project_dir = project_root_from_characters_dir(&self.characters_dir);
+        let state_path = project_dir.join("globals").join("states").join(format!("{}.json", params.id));
+
+        if !state_path.exists() {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Global state '{}' not found", params.id)),
+                data: None,
+            });
+        }
+
+        let json = serde_json::to_string_pretty(&params.state).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to serialize state: {}", e)),
+            data: None,
+        })?;
+
+        std::fs::write(&state_path, json).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to write global state: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format!("Updated global state '{}'", params.id),
+        )]))
+    }
+
+    #[tool(description = "Delete a global state (checks for references first)")]
+    async fn delete_global_state(
+        &self,
+        rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<GlobalStateIdParam>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_global_state_id(&params.id)?;
+        let project_dir = project_root_from_characters_dir(&self.characters_dir);
+        let state_path = project_dir.join("globals").join("states").join(format!("{}.json", params.id));
+
+        if !state_path.exists() {
+            return Err(McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!("Global state '{}' not found", params.id)),
+                data: None,
+            });
+        }
+
+        // Check if any characters reference this state
+        let characters_dir = project_dir.join("characters");
+        if characters_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&characters_dir) {
+                for entry in entries.flatten() {
+                    let globals_path = entry.path().join("globals.json");
+                    if globals_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&globals_path) {
+                            if content.contains(&format!("\"state\": \"{}\"", params.id))
+                                || content.contains(&format!("\"state\":\"{}\"", params.id)) {
+                                return Err(McpError {
+                                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                                    message: Cow::from(format!(
+                                        "Cannot delete: global state '{}' is referenced by character '{}'",
+                                        params.id,
+                                        entry.file_name().to_string_lossy()
+                                    )),
+                                    data: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        std::fs::remove_file(&state_path).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to delete global state: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format!("Deleted global state '{}'", params.id),
+        )]))
+    }
 }
 
 #[tool_handler]
@@ -769,6 +965,25 @@ fn adapter_default_ext(adapter: &str) -> &'static str {
         "json-blob" => ".json",
         _ => ".bin",
     }
+}
+
+/// Validate a global state ID for path safety
+fn validate_global_state_id(id: &str) -> Result<(), McpError> {
+    if id.is_empty() {
+        return Err(McpError {
+            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+            message: Cow::from("Global state ID cannot be empty"),
+            data: None,
+        });
+    }
+    if id.contains("..") || id.contains('/') || id.contains('\\') {
+        return Err(McpError {
+            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+            message: Cow::from("Invalid global state ID"),
+            data: None,
+        });
+    }
+    Ok(())
 }
 
 fn find_character_dir_names(characters_dir: &str) -> Result<Vec<String>, String> {
