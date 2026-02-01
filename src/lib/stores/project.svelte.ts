@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { resetCharacterState, loadCharacterList } from "./character.svelte";
+import { resetGlobalsStore } from "./globals.svelte";
 
 interface ProjectInfo {
   name: string;
@@ -104,6 +105,7 @@ export async function createProject(): Promise<boolean> {
 
 export function closeProject(): void {
   resetCharacterState();
+  resetGlobalsStore();
   projectPath = null;
   projectName = null;
   error = null;
