@@ -459,3 +459,29 @@ export interface MergedRegistry {
   move_types?: StateTypesConfig;  // Field name preserved for backward compatibility
   chain_order?: string[];
 }
+
+// =============================================================================
+// Global States Types
+// =============================================================================
+
+/** A reference to a global state with optional overrides */
+export interface GlobalInclude {
+  /** Name of the global state file (without .json) */
+  state: string;
+  /** Alias for this character (the input name to use) */
+  as: string;
+  /** Optional field overrides (shallow merge) */
+  override?: Record<string, unknown>;
+}
+
+/** Character's global state manifest */
+export interface GlobalsManifest {
+  includes: GlobalInclude[];
+}
+
+/** Summary of a global state for listing */
+export interface GlobalStateSummary {
+  id: string;
+  name: string;
+  type?: string;
+}
