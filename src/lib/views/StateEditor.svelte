@@ -29,6 +29,7 @@
   // Collapsible section states
   let showPreconditions = $state(false);
   let showCosts = $state(false);
+  let showPushboxes = $state(false);
 
   // Watch for selected move changes and create a local copy
   $effect(() => {
@@ -148,6 +149,23 @@
       editingMove.super_freeze = { frames: 45 };
     }
     (editingMove.super_freeze as any)[field] = value;
+  }
+
+  function addPushbox() {
+    if (!editingMove) return;
+    const newPushbox = {
+      frames: [1, editingMove.startup + editingMove.active + editingMove.recovery] as [number, number],
+      box: { x: 0, y: 0, w: 50, h: 100 }
+    };
+    editingMove.pushboxes = [...(editingMove.pushboxes ?? []), newPushbox];
+  }
+
+  function removePushbox(index: number) {
+    if (!editingMove?.pushboxes) return;
+    editingMove.pushboxes = editingMove.pushboxes.filter((_, i) => i !== index);
+    if (editingMove.pushboxes.length === 0) {
+      editingMove.pushboxes = undefined;
+    }
   }
 </script>
 
@@ -579,6 +597,86 @@
           </div>
         </section>
 
+        <!-- Pushboxes Section -->
+        <section class="form-section">
+          <button type="button" class="section-title collapsible" onclick={() => showPushboxes = !showPushboxes}>
+            Pushboxes {editingMove.pushboxes?.length ? `(${editingMove.pushboxes.length})` : ''}
+            <span class="collapse-icon">{showPushboxes ? '▼' : '▶'}</span>
+          </button>
+          {#if showPushboxes}
+            <div class="array-editor">
+              {#if editingMove.pushboxes?.length}
+                {#each editingMove.pushboxes as pb, i}
+                  <div class="pushbox-item">
+                    <div class="pushbox-header">
+                      <span class="item-label">Pushbox {i + 1}</span>
+                      <button class="remove-btn" onclick={() => removePushbox(i)}>×</button>
+                    </div>
+                    <div class="pushbox-fields">
+                      <div class="pushbox-row">
+                        <label for="pb-{i}-frame-start">Frames:</label>
+                        <input
+                          id="pb-{i}-frame-start"
+                          type="number"
+                          min="1"
+                          value={pb.frames[0]}
+                          oninput={(e) => pb.frames = [parseInt(e.currentTarget.value) || 1, pb.frames[1]]}
+                        />
+                        <span>-</span>
+                        <input
+                          id="pb-{i}-frame-end"
+                          aria-label="Frame end"
+                          type="number"
+                          min="1"
+                          value={pb.frames[1]}
+                          oninput={(e) => pb.frames = [pb.frames[0], parseInt(e.currentTarget.value) || 1]}
+                        />
+                      </div>
+                      <div class="pushbox-row">
+                        <label for="pb-{i}-x">X:</label>
+                        <input
+                          id="pb-{i}-x"
+                          type="number"
+                          value={pb.box.x}
+                          oninput={(e) => pb.box.x = parseInt(e.currentTarget.value) || 0}
+                        />
+                        <label for="pb-{i}-y">Y:</label>
+                        <input
+                          id="pb-{i}-y"
+                          type="number"
+                          value={pb.box.y}
+                          oninput={(e) => pb.box.y = parseInt(e.currentTarget.value) || 0}
+                        />
+                      </div>
+                      <div class="pushbox-row">
+                        <label for="pb-{i}-w">W:</label>
+                        <input
+                          id="pb-{i}-w"
+                          type="number"
+                          min="1"
+                          value={pb.box.w}
+                          oninput={(e) => pb.box.w = parseInt(e.currentTarget.value) || 1}
+                        />
+                        <label for="pb-{i}-h">H:</label>
+                        <input
+                          id="pb-{i}-h"
+                          type="number"
+                          min="1"
+                          value={pb.box.h}
+                          oninput={(e) => pb.box.h = parseInt(e.currentTarget.value) || 1}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <p class="empty-hint">No pushboxes defined</p>
+              {/if}
+              <button type="button" class="add-btn" onclick={addPushbox}>+ Add Pushbox</button>
+            </div>
+          {/if}
+        </section>
+
         <div class="form-actions">
           <button class="save-btn" onclick={handleSave}>Save Move</button>
           {#if saveStatus}
@@ -814,6 +912,69 @@
   }
 
   .save-status.error {
+    color: var(--accent);
+  }
+
+  .pushbox-item {
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    padding: 12px;
+  }
+
+  .pushbox-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .pushbox-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pushbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pushbox-row label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 50px;
+  }
+
+  .pushbox-row input {
+    width: 60px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pushbox-row span {
+    color: var(--text-secondary);
+  }
+
+  .empty-hint {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-style: italic;
+    padding: 8px 0;
+  }
+
+  .add-btn {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .add-btn:hover {
+    border-color: var(--accent);
     color: var(--accent);
   }
 </style>
