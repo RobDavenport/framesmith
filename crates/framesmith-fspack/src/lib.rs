@@ -30,6 +30,8 @@ pub use view::{
     MoveResourcePreconditionView,
     MoveResourcePreconditionsView,
     PackView,
+    PushWindowView,
+    PushWindowsView,
     ResourceDefView,
     ResourceDefsView,
     ShapeView,
