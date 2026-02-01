@@ -9,6 +9,7 @@
   import StateEditor from "$lib/views/StateEditor.svelte";
   import CancelGraph from "$lib/views/CancelGraph.svelte";
   import TrainingMode from "$lib/views/TrainingMode.svelte";
+  import GlobalsManager from "$lib/views/GlobalsManager.svelte";
   import { getCurrentCharacter } from "$lib/stores/character.svelte";
   import { isProjectOpen } from "$lib/stores/project.svelte";
 
@@ -32,6 +33,8 @@
   <main class="main-content">
     {#if !projectOpen}
       <EmptyState />
+    {:else if currentView === "globals"}
+      <GlobalsManager />
     {:else if !currentCharacter}
       <div class="placeholder">
         <p>Select a character from the sidebar to begin editing.</p>

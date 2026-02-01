@@ -24,6 +24,7 @@
     { id: "frame-data", label: "Frame Data" },
     { id: "state-editor", label: "State Editor" },
     { id: "cancel-graph", label: "Cancel Graph" },
+    { id: "globals", label: "Globals" },
     { id: "training", label: "Training" },
   ];
 
