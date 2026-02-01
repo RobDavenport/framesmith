@@ -13,23 +13,32 @@ pub fn export_json_blob_pretty(character_data: &CharacterData) -> Result<String,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{CancelTable, Character, State};
+    use crate::schema::{CancelTable, Character, PropertyValue, State};
+    use std::collections::BTreeMap;
+
+    /// Create a minimal test character.
+    fn make_test_character(id: &str) -> Character {
+        let mut properties = BTreeMap::new();
+        properties.insert("archetype".to_string(), PropertyValue::String("rushdown".to_string()));
+        properties.insert("health".to_string(), PropertyValue::Number(1000.0));
+        properties.insert("walk_speed".to_string(), PropertyValue::Number(4.0));
+        properties.insert("back_walk_speed".to_string(), PropertyValue::Number(3.0));
+        properties.insert("jump_height".to_string(), PropertyValue::Number(100.0));
+        properties.insert("jump_duration".to_string(), PropertyValue::Number(40.0));
+        properties.insert("dash_distance".to_string(), PropertyValue::Number(80.0));
+        properties.insert("dash_duration".to_string(), PropertyValue::Number(15.0));
+
+        Character {
+            id: id.to_string(),
+            name: "Test".to_string(),
+            properties,
+            resources: vec![],
+        }
+    }
 
     #[test]
     fn export_includes_state_ids() {
-        let character = Character {
-            id: "test".to_string(),
-            name: "Test".to_string(),
-            archetype: "rushdown".to_string(),
-            health: 1000,
-            walk_speed: 4.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 15,
-            resources: vec![],
-        };
+        let character = make_test_character("test");
 
         let moves = vec![
             State {
@@ -80,19 +89,7 @@ mod tests {
             },
         ];
 
-        let character = Character {
-            id: "test".to_string(),
-            name: "Test".to_string(),
-            archetype: "test".to_string(),
-            health: 10000,
-            walk_speed: 4.0,
-            back_walk_speed: 3.0,
-            jump_height: 120,
-            jump_duration: 45,
-            dash_distance: 80,
-            dash_duration: 18,
-            resources: vec![],
-        };
+        let character = make_test_character("test");
 
         let cancel_table = CancelTable::default();
 

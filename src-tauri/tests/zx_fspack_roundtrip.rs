@@ -1,5 +1,28 @@
 use framesmith_lib::{codegen, commands};
 
+/// Create a minimal test character for use in tests.
+fn make_test_character(id: &str) -> framesmith_lib::schema::Character {
+    use framesmith_lib::schema::{Character, PropertyValue};
+    use std::collections::BTreeMap;
+
+    let mut properties = BTreeMap::new();
+    properties.insert("archetype".to_string(), PropertyValue::String("test".to_string()));
+    properties.insert("health".to_string(), PropertyValue::Number(1000.0));
+    properties.insert("walk_speed".to_string(), PropertyValue::Number(3.0));
+    properties.insert("back_walk_speed".to_string(), PropertyValue::Number(3.0));
+    properties.insert("jump_height".to_string(), PropertyValue::Number(100.0));
+    properties.insert("jump_duration".to_string(), PropertyValue::Number(40.0));
+    properties.insert("dash_distance".to_string(), PropertyValue::Number(80.0));
+    properties.insert("dash_duration".to_string(), PropertyValue::Number(20.0));
+
+    Character {
+        id: id.to_string(),
+        name: "T".to_string(),
+        properties,
+        resources: vec![],
+    }
+}
+
 #[test]
 fn zx_fspack_export_roundtrips_through_reader() {
     let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
@@ -35,24 +58,11 @@ fn zx_fspack_export_roundtrips_through_reader() {
 fn zx_fspack_move_record_fields_match_reader_layout() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, Character, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State,
-        TriggerType,
+        CancelTable, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State, TriggerType,
     };
 
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![State {
             input: "5L".to_string(),
             name: "Test Jab".to_string(),
@@ -146,9 +156,8 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
 fn zx_fspack_exports_resources_and_events_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, Character, CharacterResource, Cost, EventArgValue, EventEmit, GuardType,
-        MeterGain, MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State,
-        TriggerType,
+        CancelTable, CharacterResource, Cost, EventArgValue, EventEmit, GuardType, MeterGain,
+        MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State, TriggerType,
     };
     use std::collections::BTreeMap;
 
@@ -221,24 +230,15 @@ fn zx_fspack_exports_resources_and_events_sections() {
         ..Default::default()
     };
 
+    let mut character = make_test_character("t");
+    character.resources = vec![CharacterResource {
+        name: "heat".to_string(),
+        start: 0,
+        max: 10,
+    }];
+
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![CharacterResource {
-                name: "heat".to_string(),
-                start: 0,
-                max: 10,
-            }],
-        },
+        character,
         moves: vec![
             State {
                 pushback: Pushback { hit: 0, block: 0 },
@@ -377,7 +377,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
 #[test]
 fn zx_fspack_exports_move_input_notation() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
 
     fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
         u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
@@ -390,19 +390,7 @@ fn zx_fspack_exports_move_input_notation() {
     // Minimal character with a single move and no optional extras.
     // MOVE_EXTRAS should still be present because every move has an input.
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![State {
             input: "5L".to_string(),
             name: "Test Jab".to_string(),
@@ -541,23 +529,11 @@ fn zx_fspack_cancel_table_roundtrips() {
 fn tags_survive_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, Character, GuardType, MeterGain, Pushback, State, Tag,
+        CancelTable, GuardType, MeterGain, Pushback, State, Tag,
     };
 
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![
             State {
                 input: "5L".to_string(),
@@ -608,22 +584,10 @@ fn tags_survive_roundtrip() {
 #[test]
 fn empty_tags_roundtrip() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
 
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![State {
             input: "5L".to_string(),
             name: "Light".to_string(),
@@ -651,7 +615,7 @@ fn empty_tags_roundtrip() {
 fn cancel_tag_rules_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelCondition, CancelTable, CancelTagRule, Character, GuardType, MeterGain, Pushback,
+        CancelCondition, CancelTable, CancelTagRule, GuardType, MeterGain, Pushback,
         State, Tag,
     };
 
@@ -690,19 +654,7 @@ fn cancel_tag_rules_roundtrip() {
     };
 
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![mv0, mv1],
         cancel_table,
     };
@@ -744,7 +696,7 @@ fn cancel_tag_rules_roundtrip() {
 #[test]
 fn cancel_denies_roundtrip() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{CancelTable, Character, GuardType, MeterGain, Pushback, State};
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
 
     // Create two moves
     let mv0 = State {
@@ -776,19 +728,7 @@ fn cancel_denies_roundtrip() {
     };
 
     let char_data = CharacterData {
-        character: Character {
-            id: "t".to_string(),
-            name: "T".to_string(),
-            archetype: "test".to_string(),
-            health: 1000,
-            walk_speed: 3.0,
-            back_walk_speed: 3.0,
-            jump_height: 100,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
-            resources: vec![],
-        },
+        character: make_test_character("t"),
         moves: vec![mv0, mv1],
         cancel_table,
     };

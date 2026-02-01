@@ -93,19 +93,22 @@ fn optional_frame_range_schema(gen: &mut schemars::SchemaGenerator) -> schemars:
     gen.subschema_for::<Option<[u8; 2]>>()
 }
 
+/// A character property value (dynamic key-value).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub enum PropertyValue {
+    Number(f64),
+    Bool(bool),
+    String(String),
+}
+
 /// Complete character definition
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Character {
     pub id: String,
     pub name: String,
-    pub archetype: String,
-    pub health: u32,
-    pub walk_speed: f32,
-    pub back_walk_speed: f32,
-    pub jump_height: u32,
-    pub jump_duration: u32,
-    pub dash_distance: u32,
-    pub dash_duration: u32,
+    #[serde(default)]
+    pub properties: BTreeMap<String, PropertyValue>,
     #[serde(default)]
     pub resources: Vec<CharacterResource>,
 }
@@ -713,17 +716,32 @@ mod tests {
         let json = r#"{
           "id": "test",
           "name": "Test",
-          "archetype": "rushdown",
-          "health": 10000,
-          "walk_speed": 4.0,
-          "back_walk_speed": 3.0,
-          "jump_height": 120,
-          "jump_duration": 45,
-          "dash_distance": 80,
-          "dash_duration": 18
+          "properties": {
+            "archetype": "rushdown",
+            "health": 10000,
+            "walk_speed": 4.0,
+            "back_walk_speed": 3.0,
+            "jump_height": 120,
+            "jump_duration": 45,
+            "dash_distance": 80,
+            "dash_duration": 18
+          }
         }"#;
 
         let character: Character = serde_json::from_str(json).expect("character should parse");
+        assert!(character.resources.is_empty());
+        assert!(character.properties.contains_key("health"));
+    }
+
+    #[test]
+    fn character_json_with_empty_properties_deserializes() {
+        let json = r#"{
+          "id": "test",
+          "name": "Test"
+        }"#;
+
+        let character: Character = serde_json::from_str(json).expect("character should parse");
+        assert!(character.properties.is_empty());
         assert!(character.resources.is_empty());
     }
 

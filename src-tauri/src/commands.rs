@@ -1,5 +1,5 @@
 use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
-use crate::schema::{CancelTable, Character, CharacterAssets, State};
+use crate::schema::{CancelTable, Character, CharacterAssets, PropertyValue, State};
 use base64::Engine;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -148,7 +148,7 @@ pub struct CharacterData {
 pub struct CharacterSummary {
     pub id: String,
     pub name: String,
-    pub archetype: String,
+    pub archetype: Option<String>,
     pub move_count: usize,
 }
 
@@ -195,10 +195,18 @@ pub fn list_characters(characters_dir: String) -> Result<Vec<CharacterSummary>, 
             0
         };
 
+        let archetype = character.properties.get("archetype").and_then(|v| {
+            if let PropertyValue::String(s) = v {
+                Some(s.clone())
+            } else {
+                None
+            }
+        });
+
         summaries.push(CharacterSummary {
             id: character.id.clone(),
             name: character.name,
-            archetype: character.archetype,
+            archetype,
             move_count,
         });
     }
@@ -742,17 +750,20 @@ pub fn create_character(
         .map_err(|e| format!("Failed to create character directory: {}", e))?;
 
     // Create character.json with default stats
+    let mut properties = std::collections::BTreeMap::new();
+    properties.insert("archetype".to_string(), PropertyValue::String(archetype));
+    properties.insert("health".to_string(), PropertyValue::Number(10000.0));
+    properties.insert("walk_speed".to_string(), PropertyValue::Number(4.0));
+    properties.insert("back_walk_speed".to_string(), PropertyValue::Number(3.0));
+    properties.insert("jump_height".to_string(), PropertyValue::Number(120.0));
+    properties.insert("jump_duration".to_string(), PropertyValue::Number(45.0));
+    properties.insert("dash_distance".to_string(), PropertyValue::Number(80.0));
+    properties.insert("dash_duration".to_string(), PropertyValue::Number(18.0));
+
     let character = Character {
         id: id.clone(),
         name,
-        archetype,
-        health: 10000,
-        walk_speed: 4.0,
-        back_walk_speed: 3.0,
-        jump_height: 120,
-        jump_duration: 45,
-        dash_distance: 80,
-        dash_duration: 18,
+        properties,
         resources: vec![],
     };
 

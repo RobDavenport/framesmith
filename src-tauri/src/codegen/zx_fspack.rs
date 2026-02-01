@@ -1338,17 +1338,23 @@ mod tests {
 
     /// Create a minimal test character.
     fn make_test_character(id: &str) -> Character {
+        use crate::schema::PropertyValue;
+        use std::collections::BTreeMap;
+
+        let mut properties = BTreeMap::new();
+        properties.insert("archetype".to_string(), PropertyValue::String("rushdown".to_string()));
+        properties.insert("health".to_string(), PropertyValue::Number(1000.0));
+        properties.insert("walk_speed".to_string(), PropertyValue::Number(3.5));
+        properties.insert("back_walk_speed".to_string(), PropertyValue::Number(2.5));
+        properties.insert("jump_height".to_string(), PropertyValue::Number(120.0));
+        properties.insert("jump_duration".to_string(), PropertyValue::Number(40.0));
+        properties.insert("dash_distance".to_string(), PropertyValue::Number(80.0));
+        properties.insert("dash_duration".to_string(), PropertyValue::Number(20.0));
+
         Character {
             id: id.to_string(),
             name: "Test Character".to_string(),
-            archetype: "rushdown".to_string(),
-            health: 1000,
-            walk_speed: 3.5,
-            back_walk_speed: 2.5,
-            jump_height: 120,
-            jump_duration: 40,
-            dash_distance: 80,
-            dash_duration: 20,
+            properties,
             resources: vec![],
         }
     }
@@ -2486,19 +2492,7 @@ mod tests {
         chains.insert("5L".to_string(), vec!["5M".to_string()]);
 
         let char_data = CharacterData {
-            character: Character {
-                id: "t".into(),
-                name: "T".into(),
-                archetype: "test".into(),
-                health: 1000,
-                walk_speed: 3.0,
-                back_walk_speed: 3.0,
-                jump_height: 100,
-                jump_duration: 40,
-                dash_distance: 80,
-                dash_duration: 20,
-                resources: vec![],
-            },
+            character: make_test_character("t"),
             moves: vec![
                 State {
                     input: "5L".into(),
@@ -2580,19 +2574,7 @@ mod tests {
         chains.insert("5M".to_string(), vec!["5H".to_string()]);
 
         let char_data = CharacterData {
-            character: Character {
-                id: "t".into(),
-                name: "T".into(),
-                archetype: "test".into(),
-                health: 1000,
-                walk_speed: 3.0,
-                back_walk_speed: 3.0,
-                jump_height: 100,
-                jump_duration: 40,
-                dash_distance: 80,
-                dash_duration: 20,
-                resources: vec![],
-            },
+            character: make_test_character("t"),
             moves: vec![
                 State {
                     input: "5L".into(),
@@ -2676,19 +2658,7 @@ mod tests {
         chains.insert("5M".to_string(), vec!["5H".to_string()]);
 
         let char_data = CharacterData {
-            character: Character {
-                id: "t".into(),
-                name: "T".into(),
-                archetype: "test".into(),
-                health: 1000,
-                walk_speed: 3.0,
-                back_walk_speed: 3.0,
-                jump_height: 100,
-                jump_duration: 40,
-                dash_distance: 80,
-                dash_duration: 20,
-                resources: vec![],
-            },
+            character: make_test_character("t"),
             moves: vec![
                 State {
                     input: "5L".into(),
