@@ -85,6 +85,24 @@
   }
 
   /**
+   * Handle keyboard events on the dialog overlay (Escape to close)
+   */
+  function handleOverlayKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      closeAddDialog();
+    }
+  }
+
+  /**
+   * Handle click on the dialog overlay (close when clicking backdrop)
+   */
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeAddDialog();
+    }
+  }
+
+  /**
    * Add a new property
    */
   function addProperty() {
@@ -213,7 +231,16 @@
   {/if}
 
   {#if showAddDialog}
-    <div class="add-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="add-dialog-title">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="add-dialog-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-dialog-title"
+      tabindex="-1"
+      onclick={handleOverlayClick}
+      onkeydown={handleOverlayKeydown}
+    >
       <div class="add-dialog">
         <h5 id="add-dialog-title">Add Property</h5>
 
