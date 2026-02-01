@@ -182,6 +182,8 @@ if let Some(states) = pack.states() {
 | STATE_TAGS | 18 | Array of StrRef pointing to tag strings |
 | CANCEL_TAG_RULES | 19 | Array of CancelTagRule24 structs |
 | CANCEL_DENIES | 20 | Array of CancelDeny4 structs |
+| CHARACTER_PROPS | 21 | Array of CharacterProp12 structs (dynamic key-value properties) |
+| PUSH_WINDOWS | 22 | Array of PushWindow12 structs (body collision boxes) |
 
 ### Data Structures
 
@@ -195,7 +197,7 @@ String references point into the STRING_TABLE section:
 | 4 | 2 | len | String length in bytes |
 | 6 | 2 | _pad | Padding (reserved) |
 
-#### StateRecord (32 bytes)
+#### StateRecord (36 bytes)
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
@@ -220,6 +222,8 @@ String references point into the STRING_TABLE section:
 | 26 | 2 | hit_windows_len | Number of hit windows |
 | 28 | 2 | hurt_windows_off | Byte offset within HURT_WINDOWS section (compressed to u16) |
 | 30 | 2 | hurt_windows_len | Number of hurt windows |
+| 32 | 2 | push_windows_off | Byte offset within PUSH_WINDOWS section (compressed to u16) |
+| 34 | 2 | push_windows_len | Number of push windows |
 
 **State Flags (StateRecord.flags byte):**
 
@@ -421,6 +425,43 @@ Explicit cancel denial between two specific states (overrides tag-based rules).
 | 0 | 2 | from_idx | Source state index |
 | 2 | 2 | to_idx | Target state index |
 
+#### CharacterProp12 (12 bytes)
+
+Dynamic key-value character property. Supports numeric (Q24.8 fixed-point), boolean, and string values.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | name_off | Byte offset into STRING_TABLE |
+| 4 | 2 | name_len | Property name length in bytes |
+| 6 | 1 | value_type | Value type (see below) |
+| 7 | 1 | _reserved | Reserved (0) |
+| 8 | 4 | value | Type-dependent payload |
+
+**Value type encoding:**
+
+| Type | ID | Value encoding |
+|------|----|----------------|
+| number | 0 | Q24.8 signed fixed-point (i32) |
+| bool | 1 | 0=false, nonzero=true |
+| string | 2 | Packed StrRef: off(u16) + len(u16) |
+
+Q24.8 provides a range of approximately +/-8 million with 1/256 precision, suitable for values like health (0-99999), speeds (0.0-100.0), and frame counts.
+
+#### PushWindow12 (12 bytes)
+
+Body collision box frame ranges. Uses the same format as HurtWindow12.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | start_f | Start frame |
+| 1 | 1 | end_f | End frame |
+| 2 | 2 | flags | Reserved (currently unused for push boxes) |
+| 4 | 4 | shapes_off | Offset into SHAPES section |
+| 8 | 2 | shapes_len | Number of shapes |
+| 10 | 2 | _reserved | Reserved |
+
+Push windows define the body collision volume used for character-to-character pushing. When two characters' push boxes overlap, they are separated horizontally to prevent overlap.
+
 ## Error Handling
 
 The `framesmith-fspack` crate returns specific errors for parse failures:
@@ -468,6 +509,15 @@ Planned for future versions:
 - **TBD**: Optional per-section compression
 
 ## Changelog
+
+### v1.3 (2026-02-02)
+
+- Added dynamic character properties:
+  - Section 21: `CHARACTER_PROPS` - key-value properties with Q24.8/bool/string values
+  - Replaces fixed character fields (health, walk_speed, etc.) with flexible map
+- Added push boxes for body collision:
+  - Section 22: `PUSH_WINDOWS` - body collision boxes (same format as hurt windows)
+  - StateRecord expanded from 32 to 36 bytes to include push_windows_off/len
 
 ### v1.2 (2026-02-01)
 

@@ -1,7 +1,7 @@
 # Framesmith Data Formats
 
 **Status:** Active
-**Last reviewed:** 2026-01-30
+**Last reviewed:** 2026-02-02
 
 Framesmith stores character data as a directory of JSON files. The Rust types in `src-tauri/src/schema/mod.rs` are the canonical definitions.
 
@@ -30,25 +30,50 @@ Notes:
 
 ## `characters/<id>/character.json`
 
-Character identity + global properties.
+Character identity + dynamic properties.
 
 ```json
 {
   "id": "test_char",
   "name": "GLITCH",
-  "archetype": "rushdown",
-  "health": 10000,
-  "walk_speed": 4.0,
-  "back_walk_speed": 3.0,
-  "jump_height": 120,
-  "jump_duration": 45,
-  "dash_distance": 80,
-  "dash_duration": 18,
+  "properties": {
+    "archetype": "rushdown",
+    "health": 10000,
+    "walk_speed": 4.0,
+    "back_walk_speed": 3.0,
+    "jump_height": 120,
+    "jump_duration": 45,
+    "dash_distance": 80,
+    "dash_duration": 18
+  },
   "resources": [
     { "name": "heat", "start": 0, "max": 10 }
   ]
 }
 ```
+
+### Properties Map
+
+The `properties` field is a flexible key-value map that replaces the old fixed fields. Property values can be:
+
+- **Number**: floating-point values (exported as Q24.8 fixed-point)
+- **Boolean**: true/false
+- **String**: text values (e.g., archetype names)
+
+Common property keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `health` | number | Maximum health points |
+| `walk_speed` | number | Forward walk speed (units/frame) |
+| `back_walk_speed` | number | Backward walk speed (units/frame) |
+| `jump_height` | number | Jump apex height in pixels |
+| `jump_duration` | number | Jump duration in frames |
+| `dash_distance` | number | Dash travel distance in pixels |
+| `dash_duration` | number | Dash duration in frames |
+| `archetype` | string | Character archetype (informational) |
+
+Games can define additional custom properties as needed. Property names are validated against the rules registry if configured.
 
 `resources[]` is optional; if omitted it defaults to `[]`.
 
@@ -130,6 +155,9 @@ These “core” fields are what the current UI surfaces and what the current ex
   "hurtboxes": [
     { "frames": [0, 6], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } }
   ],
+  "pushboxes": [
+    { "frames": [0, 17], "box": { "x": -12, "y": -70, "w": 24, "h": 70 } }
+  ],
 
   "pushback": { "hit": 5, "block": 8 },
   "meter_gain": { "hit": 5, "whiff": 2 },
@@ -153,6 +181,7 @@ Moves also support additional optional fields (all are optional unless stated ot
 - `on_use`, `on_hit`, `on_block`: gameplay effects + notification events
 - `notifies[]`: timeline-triggered notification events
 - `advanced_hurtboxes[]`: shaped hurtboxes with flags (currently not exported by `zx-fspack` v1)
+- `pushboxes[]`: body collision boxes for character-to-character push separation (same format as hurtboxes)
 
 ## Events (Notification)
 
