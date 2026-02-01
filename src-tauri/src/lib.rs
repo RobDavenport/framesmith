@@ -3,6 +3,7 @@ pub mod commands;
 pub mod mcp;
 pub mod rules;
 pub mod schema;
+pub mod variant;
 
 use commands::{
     clone_character, create_character, create_move, create_project, delete_character,
