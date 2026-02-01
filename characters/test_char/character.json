@@ -1,14 +1,16 @@
 {
   "id": "test_char",
   "name": "TEST_CHAR",
-  "archetype": "all-rounder",
-  "health": 1000,
-  "walk_speed": 4.5,
-  "back_walk_speed": 3.2,
-  "jump_height": 120,
-  "jump_duration": 45,
-  "dash_distance": 80,
-  "dash_duration": 18,
+  "properties": {
+    "archetype": "all-rounder",
+    "health": 1000,
+    "walk_speed": 4.5,
+    "back_walk_speed": 3.2,
+    "jump_height": 120,
+    "jump_duration": 45,
+    "dash_distance": 80,
+    "dash_duration": 18
+  },
   "resources": [
     { "name": "heat", "start": 0, "max": 100 },
     { "name": "ammo", "start": 6, "max": 6 },

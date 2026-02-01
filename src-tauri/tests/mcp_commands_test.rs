@@ -34,19 +34,21 @@ fn create_test_character(characters_dir: &str, id: &str) {
     let char_path = Path::new(characters_dir).join(id);
     fs::create_dir_all(&char_path).unwrap();
 
-    // Create character.json
+    // Create character.json (using new format with properties map)
     let character_json = format!(
         r#"{{
             "id": "{}",
             "name": "Test Character",
-            "archetype": "balanced",
-            "health": 10000,
-            "walk_speed": 4.0,
-            "back_walk_speed": 3.0,
-            "jump_height": 120,
-            "jump_duration": 45,
-            "dash_distance": 80,
-            "dash_duration": 18,
+            "properties": {{
+                "archetype": "balanced",
+                "health": 10000,
+                "walk_speed": 4.0,
+                "back_walk_speed": 3.0,
+                "jump_height": 120,
+                "jump_duration": 45,
+                "dash_distance": 80,
+                "dash_duration": 18
+            }},
             "resources": []
         }}"#,
         id
