@@ -47,3 +47,5 @@ export {
   type TrainingSyncMessage,
   type TrainingSyncCallbacks,
 } from './TrainingSync';
+
+export { buildMoveList, type CanonicalMoveRef } from './buildMoveList';

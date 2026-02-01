@@ -1,7 +1,13 @@
 <script lang="ts">
   import type { AnimationClip, CharacterAssets, FrameHitbox, State, Rect } from "$lib/types";
-  import SpritePreview from "$lib/components/preview/SpritePreview.svelte";
-  import GltfPreview from "$lib/components/preview/GltfPreview.svelte";
+  import { onDestroy } from "svelte";
+
+  import { getProjectPath } from "$lib/stores/project.svelte";
+  import { RenderCore } from "$lib/rendercore/RenderCore";
+  import { TauriAssetProvider } from "$lib/rendercore/assets/TauriAssetProvider";
+  import { buildActorSpec } from "$lib/rendercore/buildActorSpec";
+  import { PREVIEW_ORIGIN_Y_FRAC } from "$lib/rendercore/config";
+  import type { ActorSpec } from "$lib/rendercore/types";
 
   type Layer = "hitboxes" | "hurtboxes";
   type Tool = "select" | "draw";
@@ -61,6 +67,12 @@
   let viewportEl = $state<HTMLDivElement | null>(null);
   let overlayCanvasEl = $state<HTMLCanvasElement | null>(null);
 
+  let core = $state<RenderCore | null>(null);
+  let coreKey = $state<string | null>(null);
+  let coreActorError = $state<string | null>(null);
+
+  const ACTOR_ID = "p1";
+
   let editLayer = $state<Layer>("hitboxes");
   let editTool = $state<Tool>("select");
   let selection = $state<Selection | null>(null);
@@ -69,6 +81,7 @@
   let liveOverride = $state<{ layer: Layer; index: number; rect: Rect } | null>(null);
 
   let resizeObs: ResizeObserver | null = null;
+  let resizeRaf = 0;
   let lastDpr = 1;
 
   const effectiveTotal = $derived.by(() => {
@@ -104,6 +117,57 @@
   const gltfModelPath = $derived.by((): string | null => {
     if (!assets || !gltfClip) return null;
     return assets.models[gltfClip.model] ?? null;
+  });
+
+  const charactersDir = $derived.by((): string | null => {
+    const projectPath = getProjectPath();
+    if (!projectPath) return null;
+    return `${projectPath}/characters`;
+  });
+
+  const actorBuild = $derived.by(() => {
+    if (!clip) return { spec: null as ActorSpec | null, error: null as string | null };
+    if (clip.mode === "sprite") {
+      return buildActorSpec({
+        id: ACTOR_ID,
+        pos: { x: 0, y: 0 },
+        facing: "right",
+        clip,
+        texturePath: spriteTexturePath,
+        frameIndex,
+      });
+    }
+
+    return buildActorSpec({
+      id: ACTOR_ID,
+      pos: { x: 0, y: 0 },
+      facing: "right",
+      clip,
+      modelPath: gltfModelPath,
+      frameIndex,
+    });
+  });
+
+  const actorBuildError = $derived.by((): string | null => {
+    if (!clip) return null;
+    if (clip.mode === "sprite") {
+      return buildActorSpec({
+        id: ACTOR_ID,
+        pos: { x: 0, y: 0 },
+        facing: "right",
+        clip,
+        texturePath: spriteTexturePath,
+        frameIndex: 0,
+      }).error;
+    }
+    return buildActorSpec({
+      id: ACTOR_ID,
+      pos: { x: 0, y: 0 },
+      facing: "right",
+      clip,
+      modelPath: gltfModelPath,
+      frameIndex: 0,
+    }).error;
   });
 
   function clampFrame(next: number): number {
@@ -183,6 +247,7 @@
 
   const message = $derived.by(() => {
     if (!characterId) return "No character selected";
+    if (!charactersDir) return "No project open";
     if (assetsError) return `Assets error: ${assetsError}`;
     if (assetsLoading && !assets) return "Loading assets...";
     if (!assets) return "No assets loaded (assets.json not loaded yet)";
@@ -197,7 +262,83 @@
       if (!assets.models[clip.model]) return `Model key not found: '${clip.model}'`;
     }
 
+    if (actorBuildError) return `Animation preview error: ${actorBuildError}`;
+
     return null;
+  });
+
+  function ensureCoreViewportSize(): void {
+    if (!core || !viewportEl) return;
+    if (typeof window === "undefined") return;
+    const rect = viewportEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    core.setViewportSize(rect.width, rect.height, dpr);
+  }
+
+  $effect(() => {
+    const host = viewportEl;
+    const dir = charactersDir;
+
+    if (!host || !dir || !characterId || message) {
+      coreActorError = null;
+      if (core) {
+        core.unmount();
+        core = null;
+        coreKey = null;
+      }
+      return;
+    }
+
+    const key = `${dir}::${characterId}`;
+    if (!core || coreKey !== key) {
+      core?.unmount();
+
+      const next = new RenderCore(() => new TauriAssetProvider(dir, characterId));
+      next.setClockMode("manual");
+      next.setSceneMode("single");
+      next.mount(host);
+
+      core = next;
+      coreKey = key;
+    }
+
+    ensureCoreViewportSize();
+  });
+
+  $effect(() => {
+    if (!core) return;
+    if (message) return;
+    const spec = actorBuild.spec;
+    if (!spec) return;
+
+    core.setActors([spec]);
+    core.renderOnce();
+
+    const status = core.getActorStatus(spec.id);
+    const initError = core.getInitError();
+    coreActorError = initError ? `RenderCore init error: ${initError}` : (status.error ?? null);
+  });
+
+  $effect(() => {
+    const c = core;
+    if (!c) return;
+    if (message) return;
+
+    const refresh = () => {
+      const initError = c.getInitError();
+      if (initError) {
+        coreActorError = `RenderCore init error: ${initError}`;
+        return;
+      }
+
+      const status = c.getActorStatus(ACTOR_ID);
+      coreActorError = status.error ?? null;
+    };
+
+    refresh();
+    const handle = window.setInterval(refresh, 250);
+    return () => window.clearInterval(handle);
   });
 
   const phases = $derived.by(() => {
@@ -335,7 +476,7 @@
     const deviceY = (e.clientY - rect.top) * px;
 
     const originX = Math.floor(overlayCanvasEl.width * 0.5);
-    const originY = Math.floor(overlayCanvasEl.height * 0.78);
+    const originY = Math.floor(overlayCanvasEl.height * PREVIEW_ORIGIN_Y_FRAC);
 
     return {
       x: (deviceX - originX) / px,
@@ -368,6 +509,7 @@
   function ensureOverlaySize(): void {
     if (!overlayCanvasEl || !viewportEl) return;
     const rect = viewportEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const w = Math.max(1, Math.floor(rect.width * dpr));
     const h = Math.max(1, Math.floor(rect.height * dpr));
@@ -393,7 +535,7 @@
     if (!move || message) return;
 
     const originX = Math.floor(w * 0.5);
-    const originY = Math.floor(h * 0.78);
+    const originY = Math.floor(h * PREVIEW_ORIGIN_Y_FRAC);
     const px = lastDpr;
 
     const drawRects = (
@@ -736,19 +878,40 @@
   $effect(() => {
     if (!viewportEl) return;
     resizeObs?.disconnect();
-    resizeObs = new ResizeObserver(() => drawOverlay());
+    const schedule = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        ensureCoreViewportSize();
+        core?.renderOnce();
+        drawOverlay();
+      });
+    };
+
+    resizeObs = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (cr && (cr.width <= 0 || cr.height <= 0)) return;
+      schedule();
+    });
     resizeObs.observe(viewportEl);
 
-    const onResize = () => drawOverlay();
-    window.addEventListener("resize", onResize);
-
-    queueMicrotask(() => drawOverlay());
+    queueMicrotask(schedule);
 
     return () => {
-      window.removeEventListener("resize", onResize);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = 0;
       resizeObs?.disconnect();
       resizeObs = null;
     };
+  });
+
+  onDestroy(() => {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = 0;
+    core?.unmount();
+    core = null;
+    coreKey = null;
+    coreActorError = null;
   });
 </script>
 
@@ -842,22 +1005,8 @@
     {#if message}
       <div class="message">{message}</div>
     {:else}
-      {#if spriteClip}
-        <SpritePreview
-          characterId={characterId!}
-          texturePath={spriteTexturePath!}
-          clip={spriteClip}
-          frameIndex={frameIndex}
-        />
-      {:else if gltfClip}
-        <GltfPreview
-          characterId={characterId!}
-          modelPath={gltfModelPath!}
-          clip={gltfClip}
-          frameIndex={frameIndex}
-        />
-      {:else}
-        <div class="message">Unsupported animation mode</div>
+      {#if coreActorError}
+        <div class="core-error">{coreActorError}</div>
       {/if}
       <canvas
         bind:this={overlayCanvasEl}
@@ -1033,6 +1182,7 @@
     pointer-events: auto;
     touch-action: none;
     cursor: default;
+    z-index: 2;
   }
 
   .hitbox-overlay.tool-draw {
@@ -1087,5 +1237,31 @@
     text-align: center;
     color: var(--text-secondary);
     font-size: 13px;
+    z-index: 3;
+  }
+
+  .viewport :global(canvas.rendercore-canvas) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .core-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    background: rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+    z-index: 1;
   }
 </style>

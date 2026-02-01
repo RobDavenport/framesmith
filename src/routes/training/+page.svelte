@@ -10,9 +10,7 @@
   import { page } from '$app/stores';
   import { invoke } from '@tauri-apps/api/core';
   import "$lib/../app.css";
-  import TrainingViewport, {
-    type HitboxData,
-  } from '$lib/components/training/TrainingViewport.svelte';
+  import TrainingViewport from '$lib/components/training/TrainingViewport.svelte';
   import TrainingHUD from '$lib/components/training/TrainingHUD.svelte';
   import InputHistory from '$lib/components/training/InputHistory.svelte';
   import PlaybackControls, { type PlaybackSpeed } from '$lib/components/training/PlaybackControls.svelte';
@@ -32,12 +30,18 @@
     calculateSimpleFrameAdvantage,
     createDetachedWindowSync,
     type TrainingInputConfig,
-    type MoveList,
-    type MoveDefinition,
     type InputSnapshot,
     type SyncMode,
   } from '$lib/training';
-  import type { CharacterData } from '$lib/types';
+  import { pickAnimationKey } from '$lib/training/pickAnimationKey';
+  import { buildMoveList } from '$lib/training/buildMoveList';
+  import type { CharacterAssets, CharacterData } from '$lib/types';
+  import type { ActorSpec, Facing } from '$lib/rendercore/types';
+  import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
+
+  const devLog = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.debug(...args);
+  };
 
   // Get URL params
   let characterId = $derived($page.url.searchParams.get('character') ?? '');
@@ -48,6 +52,15 @@
   let projectPath = $state<string | null>(null);
   let currentCharacter = $state<CharacterData | null>(null);
 
+  const charactersDir = $derived.by((): string | null => {
+    if (!projectPath) return null;
+    return `${projectPath}/characters`;
+  });
+
+  const activeCharacterId = $derived.by((): string | null => {
+    return currentCharacter?.character.id ?? null;
+  });
+
   // Training state
   let session: TrainingSession | null = $state(null);
   let inputManager: InputManager | null = $state(null);
@@ -57,6 +70,16 @@
   let animationFrameId: number | null = $state(null);
   let isInitializing = $state(true);
   let initError = $state<string | null>(null);
+
+  let initSeq = 0;
+  let sessionSeq = 0;
+  let destroyed = false;
+
+  // Rendering assets (loaded via Tauri)
+  let renderAssets = $state<CharacterAssets | null>(null);
+  let renderAssetsLoading = $state(false);
+  let renderAssetsError = $state<string | null>(null);
+  let renderAssetsSeq = 0;
 
   // Game state
   let frameCount = $state(0);
@@ -114,102 +137,80 @@
     },
   };
 
-  // Build move list from character moves
-  function buildMoveList(): MoveList {
-    const moves: MoveDefinition[] = [];
-    const moveNameToIndex = new Map<string, number>();
+  // NOTE: Move list building lives in $lib/training/buildMoveList to keep
+  // canonical indices aligned with the backend/exporter.
 
-    if (!currentCharacter?.moves) {
-      return { moves, moveNameToIndex };
-    }
-
-    const sortedMoves = [...currentCharacter.moves].sort((a, b) => {
-      const priorityA = getMoveTypePriority(a.type);
-      const priorityB = getMoveTypePriority(b.type);
-      return priorityB - priorityA;
-    });
-
-    for (const move of sortedMoves) {
-      const index = moves.length;
-      const parsed = parseInputNotation(move.input);
-      if (parsed) {
-        moves.push({
-          name: move.input,
-          input: parsed,
-          priority: getMoveTypePriority(move.type),
-        });
-        moveNameToIndex.set(move.input, index);
-      }
-    }
-
-    return { moves, moveNameToIndex };
-  }
-
-  function getMoveTypePriority(type: string | undefined): number {
-    switch (type) {
-      case 'super':
-        return 100;
-      case 'ex':
-        return 90;
-      case 'special':
-        return 80;
-      case 'rekka':
-        return 70;
-      case 'command_normal':
-        return 60;
-      case 'normal':
-      default:
-        return 50;
+  function formatError(e: unknown): string {
+    if (e instanceof Error) return e.message;
+    if (typeof e === 'string') return e;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
     }
   }
 
-  function parseInputNotation(input: string): MoveDefinition['input'] | null {
-    const simpleMatch = input.match(/^([1-9])([LMHPKS])$/);
-    if (simpleMatch) {
-      return {
-        type: 'simple',
-        direction: parseInt(simpleMatch[1]),
-        button: simpleMatch[2] as any,
-      };
+  $effect(() => {
+    const dir = charactersDir;
+    const id = activeCharacterId;
+
+    if (!dir) {
+      renderAssets = null;
+      renderAssetsLoading = false;
+      renderAssetsError = 'No project open';
+      return;
+    }
+    if (!id) {
+      renderAssets = null;
+      renderAssetsLoading = false;
+      renderAssetsError = 'No character selected';
+      return;
     }
 
-    const motionMatch = input.match(/^(\d{3,})([LMHPKS])$/);
-    if (motionMatch) {
-      const sequence = motionMatch[1].split('').map(d => parseInt(d));
-      return {
-        type: 'motion',
-        sequence,
-        button: motionMatch[2] as any,
-      };
-    }
+    const seq = ++renderAssetsSeq;
+    renderAssetsLoading = true;
+    renderAssetsError = null;
+    void invoke<CharacterAssets>('load_character_assets', {
+      charactersDir: dir,
+      characterId: id,
+    })
+      .then((next) => {
+        if (seq !== renderAssetsSeq) return;
+        renderAssets = next;
+      })
+      .catch((e) => {
+        if (seq !== renderAssetsSeq) return;
+        renderAssets = null;
+        renderAssetsError = formatError(e);
+      })
+      .finally(() => {
+        if (seq === renderAssetsSeq) renderAssetsLoading = false;
+      });
+  });
 
-    return null;
-  }
 
   // Handle character update from sync
   async function handleCharacterUpdate(character: CharacterData) {
-    console.log('Received character update:', character.character.id);
+    if (destroyed) return;
     currentCharacter = character;
 
-    // Reinitialize session with new character data
-    if (session) {
-      await reinitializeSession();
-    }
+    // Always (re)initialize on new character payload.
+    // Don't await here so burst updates coalesce via sessionSeq.
+    void reinitializeSession();
   }
 
   // Initialize or reinitialize the training session
   async function reinitializeSession() {
+    const seq = ++sessionSeq;
     if (!currentCharacter || !projectPath) return;
 
     try {
       // Stop current game loop
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
+      stopGameLoop();
 
       // Free old session
       session?.free();
+      session = null;
 
       // Get FSPK bytes
       const charactersDir = `${projectPath}/characters`;
@@ -218,6 +219,8 @@
         characterId: currentCharacter.character.id,
       });
 
+      if (destroyed || seq !== sessionSeq) return;
+
       const binaryString = atob(fspkBase64);
       const fspkBytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -225,10 +228,17 @@
       }
 
       // Create new session
-      session = await TrainingSession.create(fspkBytes, fspkBytes);
+      const nextSession = await TrainingSession.create(fspkBytes, fspkBytes);
+
+      if (destroyed || seq !== sessionSeq) {
+        nextSession.free();
+        return;
+      }
+
+      session = nextSession;
 
       // Update move resolver
-      moveResolver = new MoveResolver(buildMoveList());
+      moveResolver = new MoveResolver(buildMoveList(currentCharacter?.moves));
 
       // Reset health
       maxHealth = currentCharacter.character.health;
@@ -240,48 +250,75 @@
       dummyState = session.dummyState();
 
       // Restart game loop
-      startGameLoop();
+      startGameLoop(seq);
     } catch (e) {
       console.error('Failed to reinitialize session:', e);
+      if (destroyed || seq !== sessionSeq) return;
       initError = e instanceof Error ? e.message : String(e);
     }
   }
 
   // Initialize training mode
   async function initialize() {
+    const seq = ++initSeq;
     isInitializing = true;
     initError = null;
+
+    cleanup();
 
     try {
       // Initialize WASM
       await initWasm();
 
+      if (destroyed || seq !== initSeq) return;
+
       // Create sync channel
-      trainingSync = createDetachedWindowSync(
+      const nextSync = createDetachedWindowSync(
         handleCharacterUpdate,
         (path) => {
           projectPath = path;
+          // Project path and character data can arrive in either order.
+          void reinitializeSession();
         },
         syncMode
       );
+
+      if (destroyed || seq !== initSeq) {
+        nextSync.destroy();
+        return;
+      }
+
+      trainingSync = nextSync;
 
       // Request initial data from main window
       trainingSync.requestSync();
 
       // Initialize input system
-      inputManager = new InputManager(defaultInputConfig);
-      inputBuffer = new InputBuffer();
-      dummyController = new DummyController();
-      moveResolver = new MoveResolver(buildMoveList());
+      const nextInputManager = new InputManager(defaultInputConfig);
+      const nextInputBuffer = new InputBuffer();
+      const nextDummyController = new DummyController();
+      const nextMoveResolver = new MoveResolver(buildMoveList(currentCharacter?.moves));
+
+      if (destroyed || seq !== initSeq) {
+        nextInputManager.reset();
+        return;
+      }
+
+      inputManager = nextInputManager;
+      inputBuffer = nextInputBuffer;
+      dummyController = nextDummyController;
+      moveResolver = nextMoveResolver;
 
       // Wait for main window to respond using ping/pong retry mechanism
       const mainWindowReady = await trainingSync.waitForMainWindow(5, 100);
 
+      if (destroyed || seq !== initSeq) return;
+
       if (!currentCharacter && characterId) {
         if (!mainWindowReady) {
-          console.log('No sync data received, main window may not be ready...');
+          devLog('No sync data received, main window may not be ready...');
         } else {
-          console.log('Main window responded but no character data yet, waiting...');
+          devLog('Main window responded but no character data yet, waiting...');
         }
       }
 
@@ -293,16 +330,19 @@
       }
     } catch (e) {
       console.error('Failed to initialize:', e);
+      if (destroyed || seq !== initSeq) return;
       initError = e instanceof Error ? e.message : String(e);
       isInitializing = false;
     }
   }
 
   // Game loop
-  function startGameLoop() {
+  function startGameLoop(loopSeq: number) {
+    stopGameLoop();
     let lastTime = performance.now();
 
     function gameLoop(currentTime: number) {
+      if (destroyed || loopSeq !== sessionSeq) return;
       if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
         return;
       }
@@ -337,6 +377,13 @@
     }
 
     animationFrameId = requestAnimationFrame(gameLoop);
+  }
+
+  function stopGameLoop() {
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
   }
 
   function tickOneFrame() {
@@ -469,11 +516,13 @@
 
   // Cleanup
   function cleanup() {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
+    sessionSeq++;
+    stopGameLoop();
     inputManager?.reset();
+    inputManager = null;
+    inputBuffer = null;
+    moveResolver = null;
+    dummyController = null;
     session?.free();
     session = null;
     trainingSync?.destroy();
@@ -488,33 +537,59 @@
   });
 
   onDestroy(() => {
+    destroyed = true;
+    initSeq++;
+    sessionSeq++;
+    renderAssetsSeq++;
+    renderAssetsLoading = false;
     cleanup();
     window.removeEventListener('keydown', handleKeyDown);
     window.removeEventListener('keyup', handleKeyUp);
   });
 
-  // Derived display data
-  const playerDisplay = $derived.by(() => ({
-    x: playerX,
-    y: playerY,
-    width: 60,
-    height: 120,
-    facingRight: true,
-    currentMove: playerState && moveResolver
-      ? moveResolver.getMove(playerState.current_state)?.name
-      : undefined,
-  }));
+  const renderBuild = $derived.by((): { actors: ActorSpec[]; error: string | null } => {
+    const errs: string[] = [];
+    const specs: ActorSpec[] = [];
 
-  const dummyDisplay = $derived.by(() => ({
-    x: dummyX,
-    y: dummyY,
-    width: 60,
-    height: 120,
-    facingRight: false,
-    currentMove: dummyState && moveResolver
-      ? moveResolver.getMove(dummyState.current_state)?.name
-      : undefined,
-  }));
+    const assets = renderAssets;
+    const char = currentCharacter;
+
+    if (!assets) {
+      if (renderAssetsLoading) errs.push('Loading assets...');
+      else if (renderAssetsError) errs.push(`Assets error: ${renderAssetsError}`);
+    }
+
+    if (!assets || !char || !playerState || !dummyState) {
+      return { actors: specs, error: errs.length ? errs.join('\n') : null };
+    }
+
+    const resolveOne = (actorId: string, state: CharacterState, pos: { x: number; y: number }, facing: Facing) => {
+      const move = getMoveForStateIndex(char.moves, state.current_state);
+      if (!move) {
+        errs.push(`${actorId}: State index out of bounds: ${state.current_state}`);
+      }
+
+      const picked = pickAnimationKey(assets, move?.animation ?? '');
+      if (picked.note) errs.push(`${actorId}: ${picked.note}`);
+      if (!picked.key) return;
+
+      const built = buildActorSpecForMoveAnimation({
+        assets,
+        animationKey: picked.key,
+        actorId,
+        pos,
+        facing,
+        frameIndex: state.frame,
+      });
+      if (built.error) errs.push(`${actorId}: ${built.error}`);
+      if (built.spec) specs.push(built.spec);
+    };
+
+    resolveOne('p1', playerState, { x: playerX, y: playerY }, 'right');
+    resolveOne('cpu', dummyState, { x: dummyX, y: dummyY }, 'left');
+
+    return { actors: specs, error: errs.length ? errs.join('\n') : null };
+  });
 
   const playerStatus = $derived.by(() => ({
     health: playerHealth,
@@ -656,13 +731,14 @@
     <!-- Main content -->
     <div class="main-content">
       <div class="viewport-container">
-        <TrainingViewport
-          player={playerDisplay}
-          dummy={dummyDisplay}
-          viewportWidth={800}
-          viewportHeight={400}
-          showHitboxes={showHitboxes}
-        />
+        <div class="viewport-frame">
+          <TrainingViewport
+            charactersDir={charactersDir ?? ''}
+            characterId={activeCharacterId ?? ''}
+            actors={renderBuild.actors}
+            error={renderBuild.error}
+          />
+        </div>
       </div>
 
       <div class="sidebar">
@@ -800,6 +876,13 @@
     display: flex;
     justify-content: center;
     flex: 1;
+    min-height: 0;
+  }
+
+  .viewport-frame {
+    width: 800px;
+    height: 400px;
+    min-width: 0;
     min-height: 0;
   }
 

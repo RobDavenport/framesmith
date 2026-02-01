@@ -2,6 +2,7 @@
   import type { AnimationClip } from "$lib/types";
   import { readAssetBase64 } from "$lib/stores/assets.svelte";
   import { onDestroy } from "svelte";
+  import { PREVIEW_ORIGIN_Y_FRAC } from "$lib/rendercore/config";
 
   type Props = {
     characterId: string;
@@ -80,7 +81,7 @@
     }
 
     const originX = Math.floor(w * 0.5);
-    const originY = Math.floor(h * 0.78);
+    const originY = Math.floor(h * PREVIEW_ORIGIN_Y_FRAC);
     ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.beginPath();
     ctx.moveTo(0, originY + 0.5);
