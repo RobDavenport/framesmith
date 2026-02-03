@@ -11,7 +11,7 @@ Framesmith is an engine-agnostic fighting game character authoring tool. It edit
 
 - **Desktop framework:** Tauri (Rust backend + web frontend)
 - **Frontend:** Svelte + TypeScript
-- **3D rendering:** Threlte / Three.js (dependency; preview UI is not yet implemented)
+- **3D rendering:** Threlte / Three.js (sprite + GLTF preview, training mode)
 - **Data format:** JSON (directory-based, one file per state)
 
 ## Project + Character Data Layout
@@ -62,6 +62,8 @@ ZX FSPK details: `docs/zx-fspack.md`.
 2. **Frame Data Table** - Spreadsheet view with configurable type-based filtering
 3. **State Editor** - Form-based editing with sprite and GLTF animation preview
 4. **Cancel Graph** - Visualization of cancel relationships (supports both explicit cancel tables and tag-based rules)
+5. **Globals Manager** - Browse and edit project-wide global states
+6. **Training Mode** - WASM-based runtime testing with hitbox overlay and frame stepping
 
 ## MCP Server
 

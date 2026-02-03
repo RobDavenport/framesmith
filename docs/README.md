@@ -17,6 +17,7 @@
 | Runtime integration | [`runtime-guide.md`](runtime-guide.md) |
 | Runtime API reference | [`runtime-api.md`](runtime-api.md) |
 | CLI | [`cli.md`](cli.md) |
+| Global states | [`global-states.md`](global-states.md) |
 
 ## Start Here
 

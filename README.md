@@ -5,7 +5,7 @@ Engine-agnostic fighting game character authoring tool. Define portable fighting
 ## Features
 
 - **Frame Data Table** - Spreadsheet view of all moves with sorting and filtering
-- **Move Editor** - Form-based editing (with support for advanced/optional fields); animation preview is currently a placeholder
+- **Move Editor** - Form-based editing with sprite/GLTF animation preview
 - **Cancel Graph** - Visual node graph showing move cancel relationships
 - **Export Adapters** - `json-blob` (single JSON) and `zx-fspack` (compact binary pack)
 - **Rules System** - Project/character rules for defaults + validation, plus a registry for resources/events
@@ -80,7 +80,7 @@ See `docs/cli.md`.
 |-----------|------------|
 | Desktop framework | Tauri (Rust backend + web frontend) |
 | Frontend | Svelte + TypeScript |
-| 3D rendering | Threlte / Three.js (dependency; preview UI is not yet implemented) |
+| 3D rendering | Threlte / Three.js (sprite + GLTF preview) |
 | Data format | JSON (directory-based, one file per move) |
 
 ## Recommended IDE Setup

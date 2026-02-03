@@ -26,8 +26,8 @@ framesmith/
       bin/generate_schema.rs # Generates JSON schema artifacts
       codegen/             # Export adapters
         json_blob.rs       # JSON blob adapter
-        zx_fspack.rs        # ZX FSPK pack exporter
-        zx_fspack_format.rs # ZX FSPK format constants
+        fspk/              # ZX FSPK pack exporter (modular)
+        fspk_format.rs     # ZX FSPK format constants
       schema/              # Character data types
       commands.rs          # Tauri commands
       rules/                # Rules system (defaults + validation)

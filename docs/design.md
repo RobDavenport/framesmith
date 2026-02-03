@@ -24,7 +24,7 @@ Implemented (today):
 - Projects (open/create): a folder containing `framesmith.rules.json` and `characters/`
 - Character management: create/clone/delete
 - Move management: create, edit, save
-- Views: Character Overview, Frame Data Table, State Editor, Cancel Graph
+- Views: Character Overview, Frame Data Table, State Editor, Cancel Graph, Globals Manager, Training Mode
 - State Editor preview: 2D sprite + 3D glTF animation preview with frame scrubber and hitbox/hurtbox overlay editing
 - Rules system: apply defaults + validate moves; optional registry for resources/events
 - Export adapters:
@@ -42,7 +42,7 @@ Canonical Rust types:
 
 - Character: `src-tauri/src/schema/mod.rs`
 - Rules: `src-tauri/src/rules/mod.rs`
-- ZX FSPK format constants: `src-tauri/src/codegen/zx_fspack_format.rs`
+- ZX FSPK format constants: `src-tauri/src/codegen/fspk_format.rs`
 
 On disk, a character folder is primarily:
 

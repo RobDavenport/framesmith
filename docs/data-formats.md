@@ -129,6 +129,27 @@ Practical guidance:
 - Avoid filesystem-hostile characters in `input` (especially on Windows: `<>:"/\\|?*`).
 - The UI "Create State" flow enforces a conservative subset; MCP/manual creation can still use additional characters as long as the OS supports the filename.
 
+### Variant States (Inheritance)
+
+States can inherit from a base state using the `base` field:
+
+```json
+{
+  "input": "j.5L",
+  "base": "5L",
+  "name": "Jumping Light",
+  "damage": 25
+}
+```
+
+Or use filename convention: `5L~aerial.json` creates a variant of `5L`.
+
+Inheritance rules:
+- Single-level only (no chaining)
+- Variant fields override base fields (shallow merge)
+- `null` removes inherited fields
+- Resolved `id` field is set during loading
+
 ### Minimal (Core) State
 
 These “core” fields are what the current UI surfaces and what the current exporters primarily use.
