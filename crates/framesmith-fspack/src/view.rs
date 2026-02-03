@@ -1998,7 +1998,7 @@ impl<'a> StateTagRangesView<'a> {
 /// Binary layout (24 bytes):
 /// - from_tag StrRef: offset(4) + len(2) + pad(2) = 8 bytes (0xFFFFFFFF offset = "any")
 /// - to_tag StrRef: offset(4) + len(2) + pad(2) = 8 bytes
-/// - condition: u8 (0=always, 1=hit, 2=block, 3=whiff)
+/// - condition: u8 bitfield (bit 0=hit, bit 1=block, bit 2=whiff; 7=always)
 /// - min_frame: u8
 /// - max_frame: u8
 /// - flags: u8
@@ -2029,7 +2029,10 @@ impl<'a> CancelTagRuleView<'a> {
         self.pack.string(off, len)
     }
 
-    /// Get the condition (0=always, 1=hit, 2=block, 3=whiff).
+    /// Get the condition bitfield.
+    ///
+    /// Bits: 0=hit, 1=block, 2=whiff
+    /// Common values: 7=always, 3=hit+block, 1=hit, 2=block, 4=whiff
     pub fn condition(&self) -> u8 {
         read_u8(self.data, 16).unwrap_or(0)
     }
