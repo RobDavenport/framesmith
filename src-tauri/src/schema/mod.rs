@@ -369,15 +369,142 @@ pub struct MeterGain {
     pub whiff: u16,
 }
 
-/// Condition for when a cancel rule applies
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum CancelCondition {
-    #[default]
-    Always,
-    Hit,
-    Block,
-    Whiff,
+/// Bit flags for cancel conditions
+pub mod cancel_flags {
+    pub const HIT: u8 = 0b001;
+    pub const BLOCK: u8 = 0b010;
+    pub const WHIFF: u8 = 0b100;
+    pub const ALWAYS: u8 = 0b111;
+}
+
+/// Cancel condition as a bitfield.
+///
+/// Serializes as either a string shorthand ("always", "hit", "block", "whiff")
+/// or an array of conditions (["hit", "block"]).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CancelCondition(pub u8);
+
+impl CancelCondition {
+    pub const ALWAYS: Self = Self(cancel_flags::ALWAYS);
+    pub const HIT: Self = Self(cancel_flags::HIT);
+    pub const BLOCK: Self = Self(cancel_flags::BLOCK);
+    pub const WHIFF: Self = Self(cancel_flags::WHIFF);
+
+    /// Check if this condition matches the given hit/block state.
+    pub fn matches(&self, hit_confirmed: bool, block_confirmed: bool) -> bool {
+        if hit_confirmed && (self.0 & cancel_flags::HIT != 0) {
+            return true;
+        }
+        if block_confirmed && (self.0 & cancel_flags::BLOCK != 0) {
+            return true;
+        }
+        if !hit_confirmed && !block_confirmed && (self.0 & cancel_flags::WHIFF != 0) {
+            return true;
+        }
+        false
+    }
+
+    /// Convert to the binary format value (same as inner u8).
+    pub fn to_binary(&self) -> u8 {
+        self.0
+    }
+}
+
+impl schemars::JsonSchema for CancelCondition {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("CancelCondition")
+    }
+
+    fn json_schema(_gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Accept string or array of strings
+        serde_json::from_value(serde_json::json!({
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": ["always", "hit", "block", "whiff"]
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["hit", "block", "whiff"]
+                    },
+                    "minItems": 1
+                }
+            ]
+        }))
+        .unwrap()
+    }
+}
+
+impl Serialize for CancelCondition {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.0 {
+            cancel_flags::ALWAYS => serializer.serialize_str("always"),
+            cancel_flags::HIT => serializer.serialize_str("hit"),
+            cancel_flags::BLOCK => serializer.serialize_str("block"),
+            cancel_flags::WHIFF => serializer.serialize_str("whiff"),
+            bits => {
+                // Serialize as array for combinations
+                use serde::ser::SerializeSeq;
+                let mut seq = serializer.serialize_seq(None)?;
+                if bits & cancel_flags::HIT != 0 {
+                    seq.serialize_element("hit")?;
+                }
+                if bits & cancel_flags::BLOCK != 0 {
+                    seq.serialize_element("block")?;
+                }
+                if bits & cancel_flags::WHIFF != 0 {
+                    seq.serialize_element("whiff")?;
+                }
+                seq.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CancelCondition {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, Visitor, SeqAccess};
+
+        struct CancelConditionVisitor;
+
+        impl<'de> Visitor<'de> for CancelConditionVisitor {
+            type Value = CancelCondition;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string ('always', 'hit', 'block', 'whiff') or array of conditions")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v {
+                    "always" => Ok(CancelCondition(cancel_flags::ALWAYS)),
+                    "hit" => Ok(CancelCondition(cancel_flags::HIT)),
+                    "block" => Ok(CancelCondition(cancel_flags::BLOCK)),
+                    "whiff" => Ok(CancelCondition(cancel_flags::WHIFF)),
+                    _ => Err(de::Error::unknown_variant(v, &["always", "hit", "block", "whiff"])),
+                }
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut bits: u8 = 0;
+                while let Some(s) = seq.next_element::<&str>()? {
+                    match s {
+                        "hit" => bits |= cancel_flags::HIT,
+                        "block" => bits |= cancel_flags::BLOCK,
+                        "whiff" => bits |= cancel_flags::WHIFF,
+                        _ => return Err(de::Error::unknown_variant(s, &["hit", "block", "whiff"])),
+                    }
+                }
+                if bits == 0 {
+                    return Err(de::Error::custom("cancel condition array cannot be empty"));
+                }
+                Ok(CancelCondition(bits))
+            }
+        }
+
+        deserializer.deserialize_any(CancelConditionVisitor)
+    }
 }
 
 /// Tag-based cancel rule
@@ -427,19 +554,9 @@ pub struct CancelTable {
     /// Tag-based cancel rules (general patterns)
     #[serde(default)]
     pub tag_rules: Vec<CancelTagRule>,
-    /// Explicit chain routes (target combos, rekkas)
-    #[serde(default)]
-    pub chains: std::collections::HashMap<String, Vec<String>>,
     /// Explicit deny overrides
     #[serde(default)]
     pub deny: std::collections::HashMap<String, Vec<String>>,
-    // Legacy fields for backward compat during migration
-    #[serde(default)]
-    pub special_cancels: Vec<String>,
-    #[serde(default)]
-    pub super_cancels: Vec<String>,
-    #[serde(default)]
-    pub jump_cancels: Vec<String>,
 }
 
 // ============================================================================
@@ -935,7 +1052,6 @@ mod tests {
             { "from": "normal", "to": "special", "on": "hit" },
             { "from": "hitstun", "to": "burst" }
           ],
-          "chains": { "5L": ["5M", "5H"] },
           "deny": { "2H": ["jump"] }
         }"#;
 
