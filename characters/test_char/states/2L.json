@@ -2,6 +2,7 @@
   "input": "2L",
   "name": "Crouching Light",
   "type": "normal",
+  "tags": ["2l"],
   "startup": 6,
   "active": 3,
   "recovery": 9,

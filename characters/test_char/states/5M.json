@@ -2,6 +2,7 @@
   "input": "5M",
   "name": "Standing Medium",
   "type": "normal",
+  "tags": ["5m"],
   "startup": 10,
   "active": 4,
   "recovery": 14,

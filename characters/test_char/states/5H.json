@@ -2,6 +2,7 @@
   "input": "5H",
   "name": "Standing Heavy",
   "type": "normal",
+  "tags": ["5h"],
   "startup": 14,
   "active": 5,
   "recovery": 20,

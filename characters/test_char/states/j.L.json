@@ -2,6 +2,7 @@
   "input": "j.L",
   "name": "Jumping Light",
   "type": "normal",
+  "tags": ["aerial", "j_l"],
   "startup": 5,
   "active": 6,
   "recovery": 3,

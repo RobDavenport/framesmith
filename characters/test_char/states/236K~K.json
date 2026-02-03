@@ -2,6 +2,7 @@
   "input": "K",
   "name": "Rekka 2",
   "type": "special",
+  "tags": ["236k_k"],
   "parent": "236K",
   "startup": 10,
   "active": 5,

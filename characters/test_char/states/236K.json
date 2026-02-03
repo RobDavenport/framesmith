@@ -2,6 +2,7 @@
   "input": "236K",
   "name": "Rekka 1",
   "type": "special",
+  "tags": ["236k"],
   "startup": 14,
   "active": 4,
   "recovery": 12,
