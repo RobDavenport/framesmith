@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use super::zx_fspack_format::{
     to_q12_4, to_q12_4_unsigned, to_q24_8, write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED,
     HEADER_SIZE, HIT_WINDOW24_SIZE, HURT_WINDOW12_SIZE, KEY_NONE, MAGIC, PROP_TYPE_BOOL,
-    PROP_TYPE_Q24_8, PROP_TYPE_STR, SECTION_CANCELS_U16, SECTION_CANCEL_DENIES,
+    PROP_TYPE_Q24_8, PROP_TYPE_STR, SECTION_CANCEL_DENIES,
     SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS, SECTION_EVENT_ARGS, SECTION_EVENT_EMITS,
     SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS,
     SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
@@ -323,19 +323,9 @@ fn pack_move_record(
 
 /// Cancel lookup data for export.
 ///
-/// Contains HashSets for each cancel type, keyed by move input notation.
+/// Maps move input notation to move index for resolving cancel denies.
 pub struct CancelLookup<'a> {
-    /// Moves that have chain cancel routes (keys in chains HashMap)
-    pub chains: std::collections::HashSet<&'a str>,
-    /// Chain routes: maps source move input -> list of target move inputs
-    pub chain_routes: &'a std::collections::HashMap<String, Vec<String>>,
-    /// Moves that can cancel into specials
-    pub specials: std::collections::HashSet<&'a str>,
-    /// Moves that can cancel into supers
-    pub supers: std::collections::HashSet<&'a str>,
-    /// Moves that can cancel into jump
-    pub jumps: std::collections::HashSet<&'a str>,
-    /// Maps move input notation -> move index (for resolving chain targets)
+    /// Map from input notation to move index
     pub input_to_index: HashMap<&'a str, u16>,
 }
 
@@ -351,10 +341,6 @@ pub struct PackedMoveData {
     pub hurt_windows: Vec<u8>,
     /// PUSH_WINDOWS section: array of PushWindow12 (12 bytes each, same format as HurtWindow12)
     pub push_windows: Vec<u8>,
-    /// CANCELS_U16 section: array of u16 move IDs
-    pub cancels: Vec<u8>,
-    /// Per-move cancel info: (byte_offset, count) into CANCELS_U16 section
-    pub cancel_info: Vec<(u32, u16)>,
 }
 
 /// Pack all moves into binary sections.
@@ -377,8 +363,6 @@ pub fn pack_moves(
         hit_windows: Vec::new(),
         hurt_windows: Vec::new(),
         push_windows: Vec::new(),
-        cancels: Vec::new(),
-        cancel_info: Vec::with_capacity(moves.len()),
     };
 
     for (idx, mv) in moves.iter().enumerate() {
@@ -438,41 +422,9 @@ pub fn pack_moves(
         let hurt_windows_len = checked_u16(mv.hurtboxes.len(), "hurt_windows_len")?;
         let push_windows_len = checked_u16(mv.pushboxes.len(), "push_windows_len")?;
 
-        // Compute cancel flags and pack chain cancel routes
-        let mut flags: u8 = 0;
-        let cancels_off = checked_u32(packed.cancels.len(), "cancels_off")?;
-        let mut cancels_len: u16 = 0;
-
-        if let Some(lookup) = cancel_lookup {
-            let input = mv.input.as_str();
-            if lookup.chains.contains(input) {
-                flags |= super::zx_fspack_format::CANCEL_FLAG_CHAIN;
-            }
-            if lookup.specials.contains(input) {
-                flags |= super::zx_fspack_format::CANCEL_FLAG_SPECIAL;
-            }
-            if lookup.supers.contains(input) {
-                flags |= super::zx_fspack_format::CANCEL_FLAG_SUPER;
-            }
-            if lookup.jumps.contains(input) {
-                flags |= super::zx_fspack_format::CANCEL_FLAG_JUMP;
-            }
-
-            // Pack chain cancel routes into CANCELS_U16 section
-            if let Some(targets) = lookup.chain_routes.get(input) {
-                for target_input in targets {
-                    if let Some(&target_idx) = lookup.input_to_index.get(target_input.as_str()) {
-                        packed.cancels.extend_from_slice(&target_idx.to_le_bytes());
-                        cancels_len = cancels_len
-                            .checked_add(1)
-                            .ok_or_else(|| "cancel count overflow".to_string())?;
-                    }
-                }
-            }
-        }
-
-        // Track cancel offset/length for this move
-        packed.cancel_info.push((cancels_off, cancels_len));
+        // Cancel flags are now handled via tag_rules, so MoveRecord.flags is always 0
+        let flags: u8 = 0;
+        let _ = cancel_lookup; // Silence unused warning; used later for deny resolution
 
         // Pack move record - mesh_key and keyframes_key both use the same animation index
         packed.moves.extend_from_slice(&pack_move_record(
@@ -678,35 +630,8 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         .map(|(i, m)| (m.input.as_str(), i as u16))
         .collect();
 
-    // Build cancel lookup from cancel_table
-    let cancel_lookup = CancelLookup {
-        chains: char_data
-            .cancel_table
-            .chains
-            .keys()
-            .map(|s| s.as_str())
-            .collect(),
-        chain_routes: &char_data.cancel_table.chains,
-        specials: char_data
-            .cancel_table
-            .special_cancels
-            .iter()
-            .map(|s| s.as_str())
-            .collect(),
-        supers: char_data
-            .cancel_table
-            .super_cancels
-            .iter()
-            .map(|s| s.as_str())
-            .collect(),
-        jumps: char_data
-            .cancel_table
-            .jump_cancels
-            .iter()
-            .map(|s| s.as_str())
-            .collect(),
-        input_to_index,
-    };
+    // Build cancel lookup for resolving deny entries
+    let cancel_lookup = CancelLookup { input_to_index };
 
     // Step 2: Pack moves with animation indices and cancel lookup
     let packed = pack_moves(&char_data.moves, Some(&anim_to_index), Some(&cancel_lookup))?;
@@ -739,12 +664,12 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let mut move_resource_deltas_data: Vec<u8> = Vec::new();
 
     // MOVE_EXTRAS is always parallel to MOVES when present.
-    // Now 9 fields: 8 original + cancels
-    let mut move_extras_records: Vec<[(u32, u16); 9]> = Vec::with_capacity(char_data.moves.len());
+    // 8 fields: on_use_emits, on_hit_emits, on_block_emits, notifies, costs, pre, deltas, input
+    let mut move_extras_records: Vec<[(u32, u16); 8]> = Vec::with_capacity(char_data.moves.len());
 
     let mut any_move_extras = false;
 
-    for (move_idx, mv) in char_data.moves.iter().enumerate() {
+    for mv in &char_data.moves {
         let on_use_events = mv
             .on_use
             .as_ref()
@@ -1048,9 +973,6 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         // Intern the move input notation string.
         let input_ref = strings.intern(&mv.input)?;
 
-        // Get cancel info from packed data
-        let (cancel_off, cancel_len) = packed.cancel_info[move_idx];
-
         let record = [
             (on_use_emits_off, on_use_emits_len),
             (on_hit_emits_off, on_hit_emits_len),
@@ -1060,7 +982,6 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             (pre_off, pre_len),
             (deltas_off, deltas_len),
             (input_ref.0, input_ref.1),
-            (cancel_off, cancel_len),
         ];
 
         // Always emit MOVE_EXTRAS when there are moves, since every move has an input.
@@ -1163,13 +1084,8 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             write_strref(&mut cancel_tag_rules_data, (off, len));
         }
 
-        // condition (1 byte)
-        let condition: u8 = match rule.on {
-            crate::schema::CancelCondition::Always => 0,
-            crate::schema::CancelCondition::Hit => 1,
-            crate::schema::CancelCondition::Block => 2,
-            crate::schema::CancelCondition::Whiff => 3,
-        };
+        // condition (1 byte) - now a bitfield
+        let condition: u8 = rule.on.to_binary();
         write_u8(&mut cancel_tag_rules_data, condition);
         // min_frame (1 byte)
         write_u8(&mut cancel_tag_rules_data, rule.after_frame);
@@ -1248,11 +1164,6 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         kind: SECTION_SHAPES,
         align: 4,
         bytes: packed.shapes,
-    });
-    sections.push(SectionData {
-        kind: SECTION_CANCELS_U16,
-        align: 2,
-        bytes: packed.cancels,
     });
 
     // Optional sections (only present if data)
@@ -1426,7 +1337,6 @@ mod tests {
         CancelTable, Character, CharacterResource, FrameHitbox, GuardType, MeterGain, Pushback,
         Rect, State,
     };
-    use std::collections::HashMap;
 
     fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
         u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
@@ -1737,9 +1647,9 @@ mod tests {
             "Total length should match actual output size"
         );
 
-        // Verify section count: 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11
+        // Verify section count: 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 11, "Section count should be 11");
+        assert_eq!(section_count, 10, "Section count should be 10");
     }
 
     #[test]
@@ -1762,9 +1672,9 @@ mod tests {
         // Should still have valid FSPK header
         assert_eq!(&bytes[0..4], b"FSPK");
 
-        // Section count should be 9 base + CHARACTER_PROPS = 10 (no moves = no STATE_EXTRAS)
+        // Section count should be 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 10);
+        assert_eq!(section_count, 9);
     }
 
     #[test]
@@ -1812,8 +1722,9 @@ mod tests {
 
         // Check that section kinds are correct (base v1 sections in order)
         // STRING_TABLE(1), MESH_KEYS(2), KEYFRAMES_KEYS(3), STATES(4), HIT_WINDOWS(5),
-        // HURT_WINDOWS(6), PUSH_WINDOWS(22), SHAPES(7), CANCELS_U16(8)
-        let expected_base_kinds = [1, 2, 3, 4, 5, 6, 22, 7, 8];
+        // HURT_WINDOWS(6), PUSH_WINDOWS(22), SHAPES(7)
+        // (CANCELS_U16 removed - chains are deprecated)
+        let expected_base_kinds = [1, 2, 3, 4, 5, 6, 22, 7];
         for (i, &expected_kind) in expected_base_kinds.iter().enumerate() {
             let offset = HEADER_SIZE + i * SECTION_HEADER_SIZE;
             let kind = u32::from_le_bytes([
@@ -1830,12 +1741,12 @@ mod tests {
         }
 
         // MOVE_EXTRAS and CHARACTER_PROPS are expected when there are moves.
-        // 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11
+        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
         assert_eq!(
-            section_count, 11,
+            section_count, 10,
             "Expected STATE_EXTRAS and CHARACTER_PROPS sections to be present"
         );
-        let extras_kind_off = HEADER_SIZE + 9 * SECTION_HEADER_SIZE;
+        let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
         let extras_kind = u32::from_le_bytes([
             bytes[extras_kind_off],
             bytes[extras_kind_off + 1],
@@ -2203,7 +2114,6 @@ mod tests {
         assert_eq!(packed.shapes.len(), 2 * SHAPE12_SIZE); // 1 hit + 1 hurt shape
         assert_eq!(packed.hit_windows.len(), HIT_WINDOW24_SIZE);
         assert_eq!(packed.hurt_windows.len(), HURT_WINDOW12_SIZE);
-        assert_eq!(packed.cancels.len(), 0); // empty for v1
     }
 
     #[test]
@@ -2290,7 +2200,6 @@ mod tests {
         assert_eq!(packed.shapes.len(), 0);
         assert_eq!(packed.hit_windows.len(), 0);
         assert_eq!(packed.hurt_windows.len(), 0);
-        assert_eq!(packed.cancels.len(), 0);
     }
 
     #[test]
@@ -2383,8 +2292,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // 9 base + STATE_EXTRAS + CHARACTER_PROPS = 11 sections
-        assert_eq!(pack.section_count(), 11);
+        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10 sections
+        assert_eq!(pack.section_count(), 10);
 
         // Verify move count matches
         let moves = pack.states().expect("should have MOVES section");
@@ -2496,8 +2405,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // 9 base + CHARACTER_PROPS = 10 (no moves = no STATE_EXTRAS)
-        assert_eq!(pack.section_count(), 10);
+        // 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
+        assert_eq!(pack.section_count(), 9);
 
         // Verify moves section is empty
         let moves = pack.states().expect("should have MOVES section");
@@ -2592,248 +2501,6 @@ mod tests {
         assert_eq!(mv1.keyframes_key(), framesmith_fspack::KEY_NONE);
     }
 
-    /// Test that cancel flags are correctly exported to MoveRecord.flags
-    #[test]
-    fn test_cancel_flags_exported() {
-        use crate::commands::CharacterData;
-
-        let mut chains = HashMap::new();
-        chains.insert("5L".to_string(), vec!["5M".to_string()]);
-
-        let char_data = CharacterData {
-            character: make_test_character("t"),
-            moves: vec![
-                State {
-                    input: "5L".into(),
-                    name: "Jab".into(),
-                    guard: GuardType::Mid,
-                    animation: "a".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-                State {
-                    input: "5M".into(),
-                    name: "Medium".into(),
-                    guard: GuardType::Mid,
-                    animation: "b".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-            ],
-            cancel_table: CancelTable {
-                chains,
-                special_cancels: vec!["5L".to_string()],
-                super_cancels: vec!["5M".to_string()],
-                jump_cancels: vec!["5L".to_string()],
-                ..Default::default()
-            },
-        };
-
-        let bytes = export_zx_fspack(&char_data).unwrap();
-        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
-        let moves = pack.states().unwrap();
-
-        // 5L should have: chain + special + jump flags
-        let mv0 = moves.get(0).unwrap();
-        assert_eq!(
-            mv0.flags() & 0x01,
-            0x01,
-            "5L should have CHAIN flag (flags=0x{:02x})",
-            mv0.flags()
-        );
-        assert_eq!(
-            mv0.flags() & 0x02,
-            0x02,
-            "5L should have SPECIAL flag (flags=0x{:02x})",
-            mv0.flags()
-        );
-        assert_eq!(
-            mv0.flags() & 0x08,
-            0x08,
-            "5L should have JUMP flag (flags=0x{:02x})",
-            mv0.flags()
-        );
-
-        // 5M should have: super flag only
-        let mv1 = moves.get(1).unwrap();
-        assert_eq!(
-            mv1.flags() & 0x04,
-            0x04,
-            "5M should have SUPER flag (flags=0x{:02x})",
-            mv1.flags()
-        );
-        assert_eq!(
-            mv1.flags() & 0x01,
-            0x00,
-            "5M should NOT have CHAIN flag (flags=0x{:02x})",
-            mv1.flags()
-        );
-    }
-
-    /// Test that chain cancel routes are packed into CANCELS_U16 section
-    #[test]
-    fn test_chain_cancel_routes_exported() {
-        use crate::commands::CharacterData;
-
-        // Create chains: 5L -> [5M, 5H], 5M -> [5H]
-        let mut chains = HashMap::new();
-        chains.insert("5L".to_string(), vec!["5M".to_string(), "5H".to_string()]);
-        chains.insert("5M".to_string(), vec!["5H".to_string()]);
-
-        let char_data = CharacterData {
-            character: make_test_character("t"),
-            moves: vec![
-                State {
-                    input: "5L".into(),
-                    name: "Jab".into(),
-                    guard: GuardType::Mid,
-                    animation: "a".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-                State {
-                    input: "5M".into(),
-                    name: "Medium".into(),
-                    guard: GuardType::Mid,
-                    animation: "b".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-                State {
-                    input: "5H".into(),
-                    name: "Heavy".into(),
-                    guard: GuardType::Mid,
-                    animation: "c".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-            ],
-            cancel_table: CancelTable {
-                chains,
-                ..Default::default()
-            },
-        };
-
-        let bytes = export_zx_fspack(&char_data).unwrap();
-        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
-
-        // Get raw CANCELS_U16 section
-        let cancels = pack
-            .get_section(framesmith_fspack::SECTION_CANCELS_U16)
-            .expect("CANCELS_U16 section should exist");
-        assert!(
-            !cancels.is_empty(),
-            "CANCELS_U16 should not be empty (got {} bytes)",
-            cancels.len()
-        );
-
-        // Canonical ordering is by input string ascending.
-        // For these inputs, that yields: 5H=0, 5L=1, 5M=2.
-        // We expect: 5L has 2 targets (5M=2, 5H=0), 5M has 1 target (5H=0)
-        // Total: 3 cancel entries = 6 bytes
-        assert_eq!(cancels.len(), 6, "Expected 3 u16 cancel targets = 6 bytes");
-
-        // The first two u16 should be 5L's targets (indices 2 and 0)
-        let target0 = u16::from_le_bytes([cancels[0], cancels[1]]);
-        let target1 = u16::from_le_bytes([cancels[2], cancels[3]]);
-        // 5M is at index 2, 5H is at index 0
-        assert_eq!(
-            target0, 2,
-            "5L's first chain target should be move index 2 (5M)"
-        );
-        assert_eq!(
-            target1, 0,
-            "5L's second chain target should be move index 0 (5H)"
-        );
-
-        // The third u16 should be 5M's target (index 0)
-        let target2 = u16::from_le_bytes([cancels[4], cancels[5]]);
-        assert_eq!(target2, 0, "5M's chain target should be move index 0 (5H)");
-    }
-
-    /// Test that MoveExtras includes cancel offset/length for each move
-    #[test]
-    fn test_move_extras_cancel_offsets() {
-        use crate::commands::CharacterData;
-
-        // Create chains: 5L -> [5M, 5H], 5M -> [5H]
-        let mut chains = HashMap::new();
-        chains.insert("5L".to_string(), vec!["5M".to_string(), "5H".to_string()]);
-        chains.insert("5M".to_string(), vec!["5H".to_string()]);
-
-        let char_data = CharacterData {
-            character: make_test_character("t"),
-            moves: vec![
-                State {
-                    input: "5L".into(),
-                    name: "Jab".into(),
-                    guard: GuardType::Mid,
-                    animation: "a".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-                State {
-                    input: "5M".into(),
-                    name: "Medium".into(),
-                    guard: GuardType::Mid,
-                    animation: "b".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-                State {
-                    input: "5H".into(),
-                    name: "Heavy".into(),
-                    guard: GuardType::Mid,
-                    animation: "c".into(),
-                    pushback: Pushback { hit: 0, block: 0 },
-                    meter_gain: MeterGain { hit: 0, whiff: 0 },
-                    ..Default::default()
-                },
-            ],
-            cancel_table: CancelTable {
-                chains,
-                ..Default::default()
-            },
-        };
-
-        let bytes = export_zx_fspack(&char_data).unwrap();
-        let pack = framesmith_fspack::PackView::parse(&bytes).unwrap();
-
-        let extras = pack.state_extras().expect("MOVE_EXTRAS section");
-        assert_eq!(extras.len(), 3);
-
-        // Canonical ordering is by input string ascending: 5H=0, 5L=1, 5M=2.
-        let ex_h = extras.get(0).expect("extras 5H");
-        let (_off_h, len_h) = ex_h.cancels();
-        assert_eq!(len_h, 0, "5H should have 0 cancel targets");
-
-        // 5L (index 1) has 2 chain targets at offset 0
-        let ex_l = extras.get(1).expect("extras 5L");
-        let (off_l, len_l) = ex_l.cancels();
-        assert_eq!(off_l, 0, "5L cancel offset should be 0");
-        assert_eq!(len_l, 2, "5L should have 2 cancel targets");
-
-        // 5M (index 2) has 1 chain target at offset 4 (after 5L's 2 targets * 2 bytes)
-        let ex_m = extras.get(2).expect("extras 5M");
-        let (off_m, len_m) = ex_m.cancels();
-        assert_eq!(off_m, 4, "5M cancel offset should be 4");
-        assert_eq!(len_m, 1, "5M should have 1 cancel target");
-
-        // Verify we can use CancelsView to read targets
-        let cancels = pack.cancels().expect("cancels view");
-
-        // Read 5L's targets
-        assert_eq!(cancels.get_at(off_l, 0), Some(2), "5L -> 5M (index 2)");
-        assert_eq!(cancels.get_at(off_l, 1), Some(0), "5L -> 5H (index 0)");
-
-        // Read 5M's targets
-        assert_eq!(cancels.get_at(off_m, 0), Some(0), "5M -> 5H (index 0)");
-    }
+    // NOTE: Chain cancel tests removed - chains are deprecated.
+    // Cancel rules are now handled through tag_rules with bitfield conditions.
 }
