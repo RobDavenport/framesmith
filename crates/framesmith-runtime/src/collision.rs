@@ -57,15 +57,12 @@ pub struct Capsule {
 impl Capsule {
     /// Create a Capsule from a ShapeView at a given position offset.
     pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
-        // Capsule: a,b = p1; c,d = p2; e = radius
-        // a_raw, b_raw are Q12.4 for x1, y1
-        // c_raw, d_raw are Q12.4 for x2, y2
-        // e_raw is Q8.8 for radius
-        let x1 = shape.x_px() + offset_x;
-        let y1 = shape.y_px() + offset_y;
-        let x2 = ((shape.c_raw() as i32) >> 4) + offset_x;
-        let y2 = ((shape.d_raw() as i32) >> 4) + offset_y;
-        let r = ((shape.e_raw() as i32) >> 8).max(0) as u32;
+        // Use typed fixed-point accessors for clarity
+        let x1 = shape.x_fixed().to_int() + offset_x;
+        let y1 = shape.y_fixed().to_int() + offset_y;
+        let x2 = shape.x2_fixed().to_int() + offset_x;
+        let y2 = shape.y2_fixed().to_int() + offset_y;
+        let r = shape.radius_fixed().to_int().max(0) as u32;
         Capsule { x1, y1, x2, y2, r }
     }
 }

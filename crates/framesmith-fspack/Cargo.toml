@@ -7,7 +7,8 @@ description = "no_std reader for Framesmith FSPK binary packs"
 [features]
 default = []
 alloc = []
-std = ["alloc"]
+std = ["alloc", "float"]
+float = []  # f32 conversion methods for fixed-point types
 
 [dev-dependencies]
 # For tests only

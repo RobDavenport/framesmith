@@ -5,9 +5,11 @@ extern crate alloc;
 
 pub mod bytes;
 pub mod error;
+pub mod fixed;
 pub mod view;
 
 pub use error::Error;
+pub use fixed::{Q12_4, Q24_8, Q8_8};
 pub use view::{
     CancelFlags,
     CancelsView,

@@ -4,6 +4,7 @@ use crate::bytes::{
     read_f32_le, read_i32_le, read_i64_le, read_u16_le, read_u32_le, read_u64_le, read_u8,
 };
 use crate::error::Error;
+use crate::fixed::{Q12_4, Q8_8};
 
 /// Magic bytes identifying an FSPK file.
 pub const MAGIC: [u8; 4] = [b'F', b'S', b'P', b'K'];
@@ -1522,6 +1523,22 @@ impl<'a> HitWindowView<'a> {
     pub fn block_pushback_px(&self) -> i32 {
         (self.block_pushback_raw() as i32) >> 4
     }
+
+    // -------------------------------------------------------------------------
+    // Typed fixed-point accessors
+    // -------------------------------------------------------------------------
+
+    /// Hit pushback as Q12.4 fixed-point.
+    #[inline]
+    pub fn hit_pushback_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.hit_pushback_raw())
+    }
+
+    /// Block pushback as Q12.4 fixed-point.
+    #[inline]
+    pub fn block_pushback_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.block_pushback_raw())
+    }
 }
 
 // =============================================================================
@@ -1824,6 +1841,58 @@ impl<'a> ShapeView<'a> {
     /// Check if this is an AABB shape.
     pub fn is_aabb(&self) -> bool {
         self.kind() == SHAPE_KIND_AABB
+    }
+
+    // -------------------------------------------------------------------------
+    // Typed fixed-point accessors
+    // -------------------------------------------------------------------------
+
+    /// X coordinate as Q12.4 fixed-point (valid for kind=0,1,2).
+    /// For capsule: x1 coordinate.
+    #[inline]
+    pub fn x_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.a_raw())
+    }
+
+    /// Y coordinate as Q12.4 fixed-point (valid for kind=0,1,2).
+    /// For capsule: y1 coordinate.
+    #[inline]
+    pub fn y_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.b_raw())
+    }
+
+    /// Width as Q12.4 fixed-point (valid for kind=0,1).
+    /// For circle: radius.
+    /// For capsule: x2 coordinate.
+    #[inline]
+    pub fn width_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.c_raw())
+    }
+
+    /// Height as Q12.4 fixed-point (valid for kind=0,1).
+    /// For capsule: y2 coordinate.
+    #[inline]
+    pub fn height_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.d_raw())
+    }
+
+    /// Capsule x2 coordinate as Q12.4 fixed-point.
+    #[inline]
+    pub fn x2_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.c_raw())
+    }
+
+    /// Capsule y2 coordinate as Q12.4 fixed-point.
+    #[inline]
+    pub fn y2_fixed(&self) -> Q12_4 {
+        Q12_4::from_raw(self.d_raw())
+    }
+
+    /// Capsule radius as Q8.8 fixed-point.
+    /// Also used for rect rotation angle.
+    #[inline]
+    pub fn radius_fixed(&self) -> Q8_8 {
+        Q8_8::from_raw(self.e_raw())
     }
 }
 
@@ -3319,5 +3388,149 @@ mod tests {
         assert_eq!(ranges.len(), 0);
         assert!(ranges.is_empty());
         assert!(ranges.get(0).is_none());
+    }
+
+    // =========================================================================
+    // Fixed-point accessor tests
+    // =========================================================================
+
+    /// Helper to build a Shape12 record (12 bytes).
+    fn build_shape(kind: u8, flags: u8, a: i16, b: i16, c: i16, d: i16, e: i16) -> [u8; 12] {
+        let mut shape = [0u8; 12];
+        shape[0] = kind;
+        shape[1] = flags;
+        shape[2..4].copy_from_slice(&(a as u16).to_le_bytes());
+        shape[4..6].copy_from_slice(&(b as u16).to_le_bytes());
+        shape[6..8].copy_from_slice(&(c as u16).to_le_bytes());
+        shape[8..10].copy_from_slice(&(d as u16).to_le_bytes());
+        shape[10..12].copy_from_slice(&(e as u16).to_le_bytes());
+        shape
+    }
+
+    #[test]
+    fn shape_view_fixed_accessors() {
+        // Build a pack with a SHAPES section containing one AABB
+        // AABB at (10.5, -5.25) with size (32.0, 16.0)
+        // Q12.4: 10.5 = 168, -5.25 = -84, 32.0 = 512, 16.0 = 256
+        let x_raw: i16 = 168;  // 10.5 * 16
+        let y_raw: i16 = -84;  // -5.25 * 16
+        let w_raw: i16 = 512;  // 32.0 * 16
+        let h_raw: i16 = 256;  // 16.0 * 16
+
+        let shape_data = build_shape(SHAPE_KIND_AABB, 0, x_raw, y_raw, w_raw, h_raw, 0);
+
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off + SHAPE_SIZE as u32;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_SHAPES,
+            data_off,
+            SHAPE_SIZE as u32,
+            4,
+        ));
+        data.extend_from_slice(&shape_data);
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let shapes = pack.shapes().expect("shapes view");
+        let shape = shapes.get(0).expect("get shape 0");
+
+        // Test fixed-point accessors
+        assert_eq!(shape.x_fixed().raw(), x_raw);
+        assert_eq!(shape.y_fixed().raw(), y_raw);
+        assert_eq!(shape.width_fixed().raw(), w_raw);
+        assert_eq!(shape.height_fixed().raw(), h_raw);
+
+        // Verify to_int gives expected pixel values
+        assert_eq!(shape.x_fixed().to_int(), 10);  // 168 / 16 = 10
+        assert_eq!(shape.y_fixed().to_int(), -6);  // -84 / 16 = -6 (floor)
+        assert_eq!(shape.width_fixed().to_int(), 32);
+        assert_eq!(shape.height_fixed().to_int(), 16);
+
+        // Verify matches existing px accessors
+        assert_eq!(shape.x_fixed().to_int(), shape.x_px());
+        assert_eq!(shape.y_fixed().to_int(), shape.y_px());
+        assert_eq!(shape.width_fixed().to_int(), shape.width_px() as i32);
+        assert_eq!(shape.height_fixed().to_int(), shape.height_px() as i32);
+    }
+
+    #[test]
+    fn shape_view_capsule_fixed_accessors() {
+        // Build a capsule shape with endpoints and radius
+        // Capsule: p1=(10, 20), p2=(30, 40), radius=5.5
+        // Q12.4: 10*16=160, 20*16=320, 30*16=480, 40*16=640
+        // Q8.8: 5.5*256=1408
+        let x1_raw: i16 = 160;
+        let y1_raw: i16 = 320;
+        let x2_raw: i16 = 480;
+        let y2_raw: i16 = 640;
+        let r_raw: i16 = 1408;
+
+        let shape_data = build_shape(SHAPE_KIND_CAPSULE, 0, x1_raw, y1_raw, x2_raw, y2_raw, r_raw);
+
+        let section_count = 1u32;
+        let data_off = (HEADER_SIZE + SECTION_HEADER_SIZE) as u32;
+        let total_len = data_off + SHAPE_SIZE as u32;
+
+        let mut data = std::vec::Vec::new();
+        data.extend_from_slice(&build_header(0, total_len, section_count));
+        data.extend_from_slice(&build_section_header(
+            SECTION_SHAPES,
+            data_off,
+            SHAPE_SIZE as u32,
+            4,
+        ));
+        data.extend_from_slice(&shape_data);
+
+        let pack = PackView::parse(&data).expect("parse pack");
+        let shapes = pack.shapes().expect("shapes view");
+        let shape = shapes.get(0).expect("get shape 0");
+
+        // Test capsule-specific fixed-point accessors
+        assert_eq!(shape.x_fixed().raw(), x1_raw);
+        assert_eq!(shape.y_fixed().raw(), y1_raw);
+        assert_eq!(shape.x2_fixed().raw(), x2_raw);
+        assert_eq!(shape.y2_fixed().raw(), y2_raw);
+        assert_eq!(shape.radius_fixed().raw(), r_raw);
+
+        // Verify integer conversions
+        assert_eq!(shape.x_fixed().to_int(), 10);
+        assert_eq!(shape.y_fixed().to_int(), 20);
+        assert_eq!(shape.x2_fixed().to_int(), 30);
+        assert_eq!(shape.y2_fixed().to_int(), 40);
+        assert_eq!(shape.radius_fixed().to_int(), 5);  // 1408 / 256 = 5
+    }
+
+    #[test]
+    fn hit_window_fixed_pushback_accessors() {
+        // Build a HitWindow with 28 bytes (extended with pushback data)
+        // Same approach as hit_window_has_pushback_accessors test
+        let mut hw_data = [0u8; 28];
+        hw_data[0] = 1;   // start_frame
+        hw_data[1] = 10;  // end_frame
+
+        // hit_pushback at offset 24: Q12.4, let's use -2.5 = -40 raw
+        let hit_pb_raw: i16 = -40;
+        hw_data[24..26].copy_from_slice(&(hit_pb_raw as u16).to_le_bytes());
+
+        // block_pushback at offset 26: Q12.4, let's use 1.25 = 20 raw
+        let block_pb_raw: i16 = 20;
+        hw_data[26..28].copy_from_slice(&(block_pb_raw as u16).to_le_bytes());
+
+        let hw = HitWindowView { data: &hw_data };
+
+        // Test fixed-point pushback accessors
+        assert_eq!(hw.hit_pushback_fixed().raw(), hit_pb_raw);
+        assert_eq!(hw.block_pushback_fixed().raw(), block_pb_raw);
+
+        // Verify to_int matches px accessors
+        assert_eq!(hw.hit_pushback_fixed().to_int(), hw.hit_pushback_px());
+        assert_eq!(hw.block_pushback_fixed().to_int(), hw.block_pushback_px());
+
+        // Verify expected values
+        assert_eq!(hw.hit_pushback_fixed().to_int(), -3);  // -40 / 16 = -3 (floor)
+        assert_eq!(hw.block_pushback_fixed().to_int(), 1);  // 20 / 16 = 1
     }
 }
