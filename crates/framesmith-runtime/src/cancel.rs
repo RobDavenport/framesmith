@@ -22,10 +22,9 @@ fn state_has_tag(pack: &PackView, state_idx: u16, tag: &str) -> bool {
 ///
 /// This checks (in priority order):
 /// 1. Explicit denies - block specific cancels
-/// 2. Explicit chain cancels from move extras (rekkas, target combos)
-/// 3. Tag-based rules (general patterns like "normal->special on hit")
+/// 2. Tag-based rules (patterns like "normal->special on hit+block")
 ///
-/// Resource preconditions are checked for both explicit chains and tag rules.
+/// Resource preconditions are checked for tag rules.
 ///
 /// # Arguments
 /// * `state` - Current character state
@@ -55,27 +54,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
         return false;
     }
 
-    // 2. Check explicit chain cancels from move extras (rekkas, target combos)
-    if let Some(extras) = pack.state_extras() {
-        if let Some(extra) = extras.get(state.current_state as usize) {
-            if let Some(cancels) = pack.cancels() {
-                let (off, len) = extra.cancels();
-                for i in 0..len as usize {
-                    if let Some(cancel_target) = cancels.get_at(off, i) {
-                        if cancel_target == target {
-                            // Check resource preconditions
-                            if !crate::resource::check_resource_preconditions(state, pack, target) {
-                                continue;
-                            }
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Check tag-based cancel rules
+    // 2. Check tag-based cancel rules
     if let Some(rules) = pack.cancel_tag_rules() {
         for rule in rules.iter() {
             // Check from_tag matches (None means "any")
@@ -96,13 +75,15 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
                 continue;
             }
 
-            // Check condition (0=always, 1=on_hit, 2=on_block, 3=on_whiff)
-            let condition_met = match rule.condition() {
-                0 => true,                                            // always
-                1 => state.hit_confirmed,                             // on_hit
-                2 => state.block_confirmed,                           // on_block
-                3 => !state.hit_confirmed && !state.block_confirmed,  // on_whiff
-                _ => false, // unknown condition - treat as not met
+            // Check condition bitfield
+            // bit 0 = hit, bit 1 = block, bit 2 = whiff
+            let condition = rule.condition();
+            let condition_met = if state.hit_confirmed {
+                condition & 0b001 != 0  // HIT bit
+            } else if state.block_confirmed {
+                condition & 0b010 != 0  // BLOCK bit
+            } else {
+                condition & 0b100 != 0  // WHIFF bit
             };
             if !condition_met {
                 continue;
@@ -155,73 +136,15 @@ fn check_action_cancel(
     }
 }
 
-/// Get all valid cancel targets from current state.
-///
-/// Returns move IDs (< move_count) and action IDs (>= move_count).
-#[cfg(feature = "alloc")]
-pub fn available_cancels(state: &CharacterState, pack: &PackView) -> alloc::vec::Vec<u16> {
-    let mut result = alloc::vec::Vec::new();
-
-    if let Some(extras) = pack.state_extras() {
-        if let Some(extra) = extras.get(state.current_state as usize) {
-            if let Some(cancels) = pack.cancels() {
-                let (off, len) = extra.cancels();
-                for i in 0..len as usize {
-                    if let Some(target) = cancels.get_at(off, i) {
-                        // Filter by resource preconditions (timing windows not yet implemented)
-                        if crate::resource::check_resource_preconditions(state, pack, target) {
-                            result.push(target);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    result
-}
-
-/// Get available cancels into a fixed-size buffer.
-///
-/// Returns the number of cancels written.
-pub fn available_cancels_buf(
-    state: &CharacterState,
-    pack: &PackView,
-    buf: &mut [u16],
-) -> usize {
-    let mut count = 0;
-
-    if let Some(extras) = pack.state_extras() {
-        if let Some(extra) = extras.get(state.current_state as usize) {
-            if let Some(cancels) = pack.cancels() {
-                let (off, len) = extra.cancels();
-                for i in 0..len as usize {
-                    if count >= buf.len() {
-                        break;
-                    }
-                    if let Some(target) = cancels.get_at(off, i) {
-                        // Filter by resource preconditions (timing windows not yet implemented)
-                        if crate::resource::check_resource_preconditions(state, pack, target) {
-                            buf[count] = target;
-                            count += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    count
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn cancel_module_compiles() {
-        // Basic smoke test
-        assert!(true);
+        // Basic smoke test - verify types exist and constants are accessible
+        let _ = ACTION_CHAIN;
+        let _ = ACTION_SPECIAL;
     }
 
     #[test]
