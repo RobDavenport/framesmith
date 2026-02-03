@@ -24,11 +24,11 @@ fn make_test_character(id: &str) -> framesmith_lib::schema::Character {
 }
 
 #[test]
-fn zx_fspack_export_roundtrips_through_reader() {
+fn fspk_export_roundtrips_through_reader() {
     let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
         .expect("load test_char character");
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
     assert!(!bytes.is_empty(), "export should produce non-empty output");
 
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
@@ -55,7 +55,7 @@ fn zx_fspack_export_roundtrips_through_reader() {
 }
 
 #[test]
-fn zx_fspack_move_record_fields_match_reader_layout() {
+fn fspk_move_record_fields_match_reader_layout() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
         CancelTable, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State, TriggerType,
@@ -117,7 +117,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     let moves = pack.states().expect("moves section");
@@ -154,7 +154,7 @@ fn zx_fspack_move_record_fields_match_reader_layout() {
 }
 
 #[test]
-fn zx_fspack_exports_resources_and_events_sections() {
+fn fspk_exports_resources_and_events_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
         CancelTable, CharacterResource, Cost, EventArgValue, EventEmit, GuardType, MeterGain,
@@ -260,7 +260,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     // Resources section exists and decodes
@@ -376,7 +376,7 @@ fn zx_fspack_exports_resources_and_events_sections() {
 }
 
 #[test]
-fn zx_fspack_exports_move_input_notation() {
+fn fspk_exports_move_input_notation() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
 
@@ -404,7 +404,7 @@ fn zx_fspack_exports_move_input_notation() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     let extras_data = pack
@@ -456,7 +456,7 @@ fn tags_survive_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify state tag sections exist
@@ -498,7 +498,7 @@ fn empty_tags_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Tag sections should not exist when no move has tags
@@ -557,7 +557,7 @@ fn cancel_tag_rules_roundtrip() {
     };
 
     // Export and parse
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify cancel tag rules section exists
@@ -631,7 +631,7 @@ fn cancel_denies_roundtrip() {
     };
 
     // Export and parse
-    let bytes = codegen::export_zx_fspack(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify deny exists: move 0 (5L) to move 1 (jump)

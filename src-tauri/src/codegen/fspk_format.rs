@@ -1,6 +1,6 @@
-//! ZX FSPK (Framesmith Pack) Binary Format Constants
+//! FSPK (Framesmith Pack) Binary Format Constants
 //!
-//! This module defines the binary format for exporting character data to the ZX runtime.
+//! This module defines the binary format for exporting character data.
 //! All multi-byte integers are little-endian.
 //!
 //! # Container Header (16 bytes)

@@ -94,7 +94,7 @@
 
     exportStatus = null;
     let extension: string;
-    if (exportAdapter === "zx-fspack") {
+    if (exportAdapter === "fspk") {
       extension = "fspk";
     } else if (exportAdapter === "json-blob") {
       extension = "json";
@@ -192,13 +192,13 @@
       <div class="export-controls">
         <select bind:value={exportAdapter}>
           <option value="json-blob">JSON Blob</option>
-          <option value="zx-fspack">ZX FSPK (Binary)</option>
+          <option value="fspk">FSPK (Binary)</option>
         </select>
         <label class="checkbox-label">
           <input
             type="checkbox"
             bind:checked={exportPretty}
-            disabled={exportAdapter === "zx-fspack"}
+            disabled={exportAdapter === "fspk"}
           />
           Pretty print
         </label>

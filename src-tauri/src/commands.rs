@@ -1,4 +1,4 @@
-use crate::codegen::{export_json_blob, export_json_blob_pretty, export_zx_fspack};
+use crate::codegen::{export_fspk, export_json_blob, export_json_blob_pretty};
 use crate::schema::{CancelTable, Character, CharacterAssets, PropertyValue, State};
 use base64::Engine;
 use std::fs;
@@ -528,8 +528,8 @@ pub fn export_character(
                 export_json_blob(&char_data)?
             }
         }
-        "zx-fspack" => {
-            let bytes = export_zx_fspack(&char_data)?;
+        "fspk" => {
+            let bytes = export_fspk(&char_data)?;
             fs::write(&output_path, bytes)
                 .map_err(|e| format!("Failed to write export file: {}", e))?;
             return Ok(());
@@ -620,7 +620,7 @@ pub fn get_character_fspk(
         cancel_table,
     };
 
-    let bytes = export_zx_fspack(&char_data)?;
+    let bytes = export_fspk(&char_data)?;
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
