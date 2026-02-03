@@ -664,8 +664,8 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let mut move_resource_deltas_data: Vec<u8> = Vec::new();
 
     // MOVE_EXTRAS is always parallel to MOVES when present.
-    // 8 fields: on_use_emits, on_hit_emits, on_block_emits, notifies, costs, pre, deltas, input
-    let mut move_extras_records: Vec<[(u32, u16); 8]> = Vec::with_capacity(char_data.moves.len());
+    // 9 fields: on_use_emits, on_hit_emits, on_block_emits, notifies, costs, pre, deltas, input, cancels
+    let mut move_extras_records: Vec<[(u32, u16); 9]> = Vec::with_capacity(char_data.moves.len());
 
     let mut any_move_extras = false;
 
@@ -982,6 +982,7 @@ pub fn export_zx_fspack(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             (pre_off, pre_len),
             (deltas_off, deltas_len),
             (input_ref.0, input_ref.1),
+            (0, 0), // cancels field (reserved, chains removed)
         ];
 
         // Always emit MOVE_EXTRAS when there are moves, since every move has an input.
