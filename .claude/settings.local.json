@@ -21,7 +21,10 @@
       "Bash(npm run wasm:build:*)",
       "Bash(npm run test:run:*)",
       "Bash(npm run build:wasm:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(test:*)",
+      "Bash(npx svelte-check:*)"
     ]
   },
   "disabledMcpjsonServers": [

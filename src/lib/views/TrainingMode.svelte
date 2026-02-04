@@ -17,9 +17,7 @@
   import {
     TrainingSession,
     initWasm,
-    NO_INPUT,
     type CharacterState,
-    type FrameResult,
   } from '$lib/training/TrainingSession';
   import {
     InputManager,
@@ -28,16 +26,15 @@
     DummyController,
     calculateSimpleFrameAdvantage,
     type TrainingInputConfig,
-    type InputSnapshot,
   } from '$lib/training';
   import { pickAnimationKey } from '$lib/training/pickAnimationKey';
   import { buildMoveList } from '$lib/training/buildMoveList';
+  import { TrainingLoop } from './training/TrainingLoop';
   import { getCurrentCharacter, getTrainingSync } from '$lib/stores/character.svelte';
   import { getProjectPath } from '$lib/stores/project.svelte';
-  import type { Character, CharacterAssets } from '$lib/types';
+  import type { CharacterAssets } from '$lib/types';
   import type { ActorSpec, Facing } from '$lib/rendercore/types';
   import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
-  import { getCharProp } from '$lib/utils';
 
   // Props
   interface Props {
@@ -47,12 +44,9 @@
   let { onExit }: Props = $props();
 
   // State
-  let session: TrainingSession | null = $state(null);
-  let inputManager: InputManager | null = $state(null);
-  let inputBuffer: InputBuffer | null = $state(null);
-  let moveResolver: MoveResolver | null = $state(null);
+  let trainingLoop: TrainingLoop | null = $state(null);
   let dummyController: DummyController | null = $state(null);
-  let animationFrameId: number | null = $state(null);
+  let moveResolver: MoveResolver | null = $state(null);
   let isInitializing = $state(true);
   let initError = $state<string | null>(null);
 
@@ -65,47 +59,29 @@
   let renderAssetsError = $state<string | null>(null);
   let renderAssetsSeq = 0;
 
-  // Game state
-  let frameCount = $state(0);
-  let playerState = $state<CharacterState | null>(null);
-  let dummyState = $state<CharacterState | null>(null);
-
-  // Character display state
-  // Positions are in screen pixels. Characters need to be close enough for hitboxes to collide.
-  // Typical hitbox reach is ~30-50 pixels, so characters should be ~100 pixels apart to test hits.
-  let playerX = $state(350);
-  let playerY = $state(0);
-  let dummyX = $state(450);
-  let dummyY = $state(0);
-
-  // Health tracking (separate from WASM state for reset functionality)
-  // Note: Player damage is not yet implemented because the dummy cannot attack.
-  // Once dummy AI or playback is added, player health will decrease from hits.
-  let playerHealth = $state(10000);
-  let dummyHealth = $state(10000);
-  let maxHealth = $state(10000);
-
-  // Combo tracking
-  let comboHits = $state(0);
-  let comboDamage = $state(0);
-  let comboResetTimer = $state(0);
-  const COMBO_RESET_FRAMES = 60; // Reset combo after 1 second of no hits
-
-  // Input history (stores recent snapshots for display)
-  let inputHistory = $state<InputSnapshot[]>([]);
-  const INPUT_HISTORY_MAX = 30;
-
-  // Playback controls
-  let isPlaying = $state(true);
-  let playbackSpeed = $state<PlaybackSpeed>(1);
-  let frameAccumulator = $state(0);
-
   // Developer overlay toggles
   let showBoxOverlay = $state(false);
   let showHitboxes = $state(true);
   let showHurtboxes = $state(true);
   let showPushboxes = $state(true);
   let dummySettingsCollapsed = $state(false);
+
+  // Subscribe to training loop state
+  import type { TrainingLoopState } from './training/TrainingLoop';
+  let loopState = $state<TrainingLoopState | null>(null);
+
+  $effect(() => {
+    if (!trainingLoop) {
+      loopState = null;
+      return;
+    }
+
+    const unsubscribe = trainingLoop.state.subscribe(value => {
+      loopState = value;
+    });
+
+    return unsubscribe;
+  });
 
   // Current character data
   const currentCharacter = $derived(getCurrentCharacter());
@@ -232,42 +208,53 @@
       }
 
       // Create training session (using same character for player and dummy)
-      const nextSession = await TrainingSession.create(fspkBytes, fspkBytes);
+      const session = await TrainingSession.create(fspkBytes, fspkBytes);
 
       if (destroyed || seq !== initSeq) {
-        nextSession.free();
+        session.free();
         return;
       }
 
       // Initialize input system
-      const nextInputManager = new InputManager(defaultInputConfig);
-      const nextInputBuffer = new InputBuffer();
+      const inputManager = new InputManager(defaultInputConfig);
+      const inputBuffer = new InputBuffer();
       const nextMoveResolver = new MoveResolver(buildMoveList(currentCharacter?.moves));
       const nextDummyController = new DummyController();
 
       if (destroyed || seq !== initSeq) {
-        nextInputManager.reset();
-        nextSession.free();
+        inputManager.reset();
+        session.free();
         return;
       }
 
-      session = nextSession;
-      inputManager = nextInputManager;
-      inputBuffer = nextInputBuffer;
       moveResolver = nextMoveResolver;
       dummyController = nextDummyController;
 
-      // Set initial health from character data
-      maxHealth = getCharProp(currentCharacter.character, 'health', 1000);
-      playerHealth = maxHealth;
-      dummyHealth = maxHealth;
+      // Create training loop
+      const loop = new TrainingLoop({
+        session,
+        inputManager,
+        inputBuffer,
+        moveResolver: nextMoveResolver,
+        dummyController: nextDummyController,
+        character: currentCharacter.character,
+        moves: currentCharacter.moves,
+        onError: (error) => {
+          initError = error;
+        },
+      });
 
-      // Get initial state
-      playerState = session.playerState();
-      dummyState = session.dummyState();
+      if (destroyed || seq !== initSeq) {
+        loop.dispose();
+        inputManager.reset();
+        session.free();
+        return;
+      }
+
+      trainingLoop = loop;
 
       // Start game loop
-      startGameLoop(seq);
+      loop.start();
 
       // Initialize training sync for detached windows
       getTrainingSync();
@@ -295,167 +282,10 @@
     }
   }
 
-  // Game loop
-  function startGameLoop(loopSeq: number) {
-    stopGameLoop();
-    let lastTime = performance.now();
-
-    function gameLoop(currentTime: number) {
-      if (destroyed || loopSeq !== initSeq) return;
-      if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
-        return;
-      }
-
-      // Handle playback speed
-      if (!isPlaying) {
-        // Still schedule next frame but don't tick
-        animationFrameId = requestAnimationFrame(gameLoop);
-        lastTime = currentTime;
-        return;
-      }
-
-      // Speed control (0 = frame-by-frame, handled separately)
-      if (playbackSpeed === 0) {
-        animationFrameId = requestAnimationFrame(gameLoop);
-        lastTime = currentTime;
-        return;
-      }
-
-      // Accumulate time for sub-speed playback
-      const deltaTime = currentTime - lastTime;
-      lastTime = currentTime;
-
-      // Calculate how many frames to run based on speed
-      // At 60fps, one frame is ~16.67ms
-      const frameTime = 16.67;
-      frameAccumulator += deltaTime * playbackSpeed;
-
-      if (frameAccumulator < frameTime) {
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
-      }
-
-      // Run one frame (don't accumulate multiple to keep it smooth)
-      frameAccumulator = Math.min(frameAccumulator - frameTime, frameTime);
-
-      tickOneFrame();
-
-      // Schedule next frame
-      animationFrameId = requestAnimationFrame(gameLoop);
-    }
-
-    animationFrameId = requestAnimationFrame(gameLoop);
-  }
-
-  // Tick one frame of simulation
-  function tickOneFrame() {
-    if (!session || !inputManager || !inputBuffer || !moveResolver || !dummyController) {
-      return;
-    }
-
-    // Get input snapshot and add to buffer
-    const snapshot = inputManager.getSnapshot();
-    inputBuffer.push(snapshot);
-
-    // Store input in history for display
-    inputHistory = [...inputHistory.slice(-(INPUT_HISTORY_MAX - 1)), snapshot];
-
-    // Resolve move from input
-    const newlyPressed = inputManager.newlyPressedButtons;
-    const resolved = moveResolver.resolve(inputBuffer, newlyPressed, session.availableCancels());
-    inputManager.consumeNewlyPressed();
-
-    // Get move index or NO_INPUT
-    const playerInput = resolved ? resolved.index : NO_INPUT;
-
-    // Get dummy state
-    const wasmDummyState = dummyController.getWasmState();
-
-    // Sync positions to WASM for hit detection
-    session.setPositions(playerX, playerY, dummyX, dummyY);
-
-    // Tick simulation with error handling for WASM errors
-    let result: FrameResult;
-    try {
-      result = session.tick(playerInput, wasmDummyState);
-    } catch (e) {
-      console.error('WASM tick error:', e);
-      // Stop the game loop on WASM error to prevent spam
-      stopGameLoop();
-      initError = `WASM error: ${e instanceof Error ? e.message : String(e)}`;
-      return;
-    }
-
-    // Update state
-    const prevState = playerState?.current_state;
-    playerState = result.player;
-    dummyState = result.dummy;
-
-    // Log state transitions for debugging
-    if (prevState !== result.player.current_state) {
-      const move = currentCharacter?.moves[result.player.current_state];
-      console.log('[STATE]', {
-        from: prevState,
-        to: result.player.current_state,
-        moveName: move?.input ?? 'unknown',
-        hitboxes: move?.hitboxes?.length ?? 0,
-      });
-    }
-
-    // Apply movement
-    applyMovement(snapshot, result.player);
-
-    // Process hits and track combos
-    const hits = result.hits;
-    if (hits.length > 0) {
-      console.log('[HIT]', {
-        playerPos: { x: playerX, y: playerY },
-        dummyPos: { x: dummyX, y: dummyY },
-        playerState: result.player.current_state,
-        playerFrame: result.player.frame,
-        hits: hits.map(h => ({ damage: h.damage, move: h.attacker_move })),
-      });
-      for (const hit of hits) {
-        // Apply damage to dummy (player attacking)
-        dummyHealth = Math.max(0, dummyHealth - hit.damage);
-        // Track combo
-        comboHits++;
-        comboDamage += hit.damage;
-      }
-      // Reset combo timer on hit
-      comboResetTimer = COMBO_RESET_FRAMES;
-    } else {
-      // Decrease combo timer
-      if (comboResetTimer > 0) {
-        comboResetTimer--;
-        if (comboResetTimer === 0) {
-          // Reset combo
-          comboHits = 0;
-          comboDamage = 0;
-        }
-      }
-    }
-
-    // Apply push separation when characters' pushboxes overlap
-    if (result.push_separation) {
-      playerX += result.push_separation.player_dx;
-      dummyX += result.push_separation.dummy_dx;
-    }
-
-    frameCount++;
-  }
-
-  // Stop game loop
-  function stopGameLoop() {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
-  }
 
   // Handle keyboard events
   function handleKeyDown(event: KeyboardEvent) {
-    if (!inputManager) return;
+    if (!trainingLoop) return;
 
     // Handle special keys
     if (event.code === 'Escape') {
@@ -463,18 +293,18 @@
       return;
     }
     if (event.code === 'KeyR') {
-      resetHealth();
+      trainingLoop.resetHealth();
       return;
     }
     // Playback controls
     if (event.code === 'Space') {
       event.preventDefault();
-      togglePlayPause();
+      trainingLoop.togglePlayPause();
       return;
     }
     if (event.code === 'Period') {
       // Step forward
-      stepForward();
+      trainingLoop.stepForward();
       return;
     }
     if (event.code === 'Comma') {
@@ -500,94 +330,21 @@
       return;
     }
 
-    inputManager.handleKeyDown(event.code);
-  }
-
-  // Playback control functions
-  function togglePlayPause() {
-    isPlaying = !isPlaying;
-  }
-
-  function stepForward() {
-    if (isPlaying) {
-      isPlaying = false;
-    }
-    tickOneFrame();
-  }
-
-  function stepBack() {
-    // Step back requires state history/rollback - not implemented yet
-    // This would be a feature for Phase 6 (sequence recorder)
-  }
-
-  function setPlaybackSpeed(speed: PlaybackSpeed) {
-    playbackSpeed = speed;
+    // Forward input to training loop's input manager
+    trainingLoop.inputManager.handleKeyDown(event.code);
   }
 
   function handleKeyUp(event: KeyboardEvent) {
-    if (!inputManager) return;
-    inputManager.handleKeyUp(event.code);
-  }
-
-  // Apply movement based on current state and input
-  function applyMovement(snapshot: InputSnapshot, state: CharacterState) {
-    if (!currentCharacter) return;
-
-    const char = currentCharacter.character;
-    const move = currentCharacter.moves[state.current_state];
-
-    // Stage boundaries (prevent going off screen)
-    const MIN_X = 50;
-    const MAX_X = 750;
-
-    // Check if in a movement state with movement data
-    if (move?.movement) {
-      const movement = move.movement;
-      const totalFrames = move.total ?? (move.startup + move.active + move.recovery);
-
-      if (movement.distance && movement.direction) {
-        // Calculate per-frame movement
-        const perFrame = movement.distance / totalFrames;
-        const direction = movement.direction === 'forward' ? 1 : -1;
-
-        // Apply movement (player faces right)
-        playerX = Math.max(MIN_X, Math.min(MAX_X, playerX + perFrame * direction));
-      }
-    }
-    // Walking: apply when in system state (idle/crouch) and holding direction
-    else if (state.current_state <= 1) {
-      // Direction 4 = back (left), 6 = forward (right)
-      // Also handle diagonals: 1, 4, 7 = back; 3, 6, 9 = forward
-      const isHoldingBack = [1, 4, 7].includes(snapshot.direction);
-      const isHoldingForward = [3, 6, 9].includes(snapshot.direction);
-
-      if (isHoldingBack) {
-        const backWalkSpeed = getCharProp(char, 'back_walk_speed', 3.2);
-        playerX = Math.max(MIN_X, playerX - backWalkSpeed);
-      } else if (isHoldingForward) {
-        const walkSpeed = getCharProp(char, 'walk_speed', 4.5);
-        playerX = Math.min(MAX_X, playerX + walkSpeed);
-      }
-    }
-  }
-
-  // Reset health
-  function resetHealth() {
-    playerHealth = maxHealth;
-    dummyHealth = maxHealth;
-    session?.reset();
+    if (!trainingLoop) return;
+    trainingLoop.inputManager.handleKeyUp(event.code);
   }
 
   // Cleanup
   function cleanup() {
-    stopGameLoop();
-    inputManager?.reset();
-    inputManager = null;
-    inputBuffer = null;
+    trainingLoop?.dispose();
+    trainingLoop = null;
     moveResolver = null;
     dummyController = null;
-    session?.free();
-    session = null;
   }
 
   // Lifecycle
@@ -613,20 +370,21 @@
 
     const assets = renderAssets;
     const char = currentCharacter;
+    const state = loopState;
 
     if (!assets) {
       if (renderAssetsLoading) errs.push('Loading assets...');
       else if (renderAssetsError) errs.push(`Assets error: ${renderAssetsError}`);
     }
 
-    if (!assets || !char || !playerState || !dummyState) {
+    if (!assets || !char || !state?.playerState || !state?.dummyState) {
       return { actors: specs, error: errs.length ? errs.join('\n') : null };
     }
 
-    const resolveOne = (actorId: string, state: CharacterState, pos: { x: number; y: number }, facing: Facing) => {
-      const move = getMoveForStateIndex(char.moves, state.current_state);
+    const resolveOne = (actorId: string, charState: CharacterState, pos: { x: number; y: number }, facing: Facing) => {
+      const move = getMoveForStateIndex(char.moves, charState.current_state);
       if (!move) {
-        errs.push(`${actorId}: State index out of bounds: ${state.current_state}`);
+        errs.push(`${actorId}: State index out of bounds: ${charState.current_state}`);
       }
 
       const picked = pickAnimationKey(assets, move?.animation ?? '');
@@ -639,45 +397,54 @@
         actorId,
         pos,
         facing,
-        frameIndex: state.frame,
+        frameIndex: charState.frame,
       });
       if (built.error) errs.push(`${actorId}: ${built.error}`);
       if (built.spec) specs.push(built.spec);
     };
 
-    resolveOne('p1', playerState, { x: playerX, y: playerY }, 'right');
-    resolveOne('cpu', dummyState, { x: dummyX, y: dummyY }, 'left');
+    resolveOne('p1', state.playerState, { x: state.playerX, y: state.playerY }, 'right');
+    resolveOne('cpu', state.dummyState, { x: state.dummyX, y: state.dummyY }, 'left');
 
     return { actors: specs, error: errs.length ? errs.join('\n') : null };
   });
 
-  const playerStatus = $derived.by(() => ({
-    health: playerHealth,
-    maxHealth: maxHealth,
-    resources: playerState?.resources
-      ? playerState.resources.slice(0, 2).map((v, i) => ({
-          name: i === 0 ? 'Meter' : 'Heat',
-          value: v,
-          max: 100,
-        }))
-      : [],
-  }));
+  const playerStatus = $derived.by(() => {
+    const state = loopState;
+    if (!state) return { health: 0, maxHealth: 0, resources: [] };
+    return {
+      health: state.playerHealth,
+      maxHealth: state.maxHealth,
+      resources: state.playerState?.resources
+        ? state.playerState.resources.slice(0, 2).map((v, i) => ({
+            name: i === 0 ? 'Meter' : 'Heat',
+            value: v,
+            max: 100,
+          }))
+        : [],
+    };
+  });
 
-  const dummyStatusState = $derived.by(() => ({
-    health: dummyHealth,
-    maxHealth: maxHealth,
-    resources: dummyState?.resources
-      ? dummyState.resources.slice(0, 2).map((v, i) => ({
-          name: i === 0 ? 'Meter' : 'Heat',
-          value: v,
-          max: 100,
-        }))
-      : [],
-  }));
+  const dummyStatusState = $derived.by(() => {
+    const state = loopState;
+    if (!state) return { health: 0, maxHealth: 0, resources: [] };
+    return {
+      health: state.dummyHealth,
+      maxHealth: state.maxHealth,
+      resources: state.dummyState?.resources
+        ? state.dummyState.resources.slice(0, 2).map((v, i) => ({
+            name: i === 0 ? 'Meter' : 'Heat',
+            value: v,
+            max: 100,
+          }))
+        : [],
+    };
+  });
 
   const currentMoveInfo = $derived.by(() => {
-    if (!playerState || !currentCharacter || !moveResolver) return null;
-    const moveDef = moveResolver.getMove(playerState.current_state);
+    const state = loopState;
+    if (!state?.playerState || !currentCharacter || !moveResolver) return null;
+    const moveDef = moveResolver.getMove(state.playerState.current_state);
     if (!moveDef) return null;
 
     const move = currentCharacter.moves.find(m => m.input === moveDef.name);
@@ -699,7 +466,7 @@
       startup: move.startup,
       active: move.active,
       recovery: move.recovery,
-      currentFrame: playerState.frame,
+      currentFrame: state.playerState.frame,
       totalFrames,
       advantageOnHit: advantage.onHit,
       advantageOnBlock: advantage.onBlock,
@@ -708,8 +475,8 @@
 
   // Available cancels as move names
   const availableCancelNames = $derived.by(() => {
-    if (!session || !moveResolver) return [];
-    const cancelIndices = session.availableCancels();
+    if (!trainingLoop || !moveResolver) return [];
+    const cancelIndices = trainingLoop.session.availableCancels();
     const resolver = moveResolver; // Capture in local variable for TypeScript
     return cancelIndices
       .map(idx => resolver.getMove(idx)?.name)
@@ -717,34 +484,40 @@
   });
 
   // Combo info
-  const comboInfo = $derived.by(() => ({
-    hitCount: comboHits,
-    totalDamage: comboDamage,
-  }));
+  const comboInfo = $derived.by(() => {
+    const state = loopState;
+    if (!state) return { hitCount: 0, totalDamage: 0 };
+    return {
+      hitCount: state.comboHits,
+      totalDamage: state.comboDamage,
+    };
+  });
 
   // Hitbox overlay data
   const playerHitboxData = $derived.by(() => {
-    const move = playerState && currentCharacter
-      ? getMoveForStateIndex(currentCharacter.moves, playerState.current_state)
+    const state = loopState;
+    const move = state?.playerState && currentCharacter
+      ? getMoveForStateIndex(currentCharacter.moves, state.playerState.current_state)
       : null;
     return {
       move,
-      frame: playerState?.frame ?? 0,
-      x: playerX,
-      y: playerY,
+      frame: state?.playerState?.frame ?? 0,
+      x: state?.playerX ?? 0,
+      y: state?.playerY ?? 0,
       facing: 'right' as const,
     };
   });
 
   const dummyHitboxData = $derived.by(() => {
-    const move = dummyState && currentCharacter
-      ? getMoveForStateIndex(currentCharacter.moves, dummyState.current_state)
+    const state = loopState;
+    const move = state?.dummyState && currentCharacter
+      ? getMoveForStateIndex(currentCharacter.moves, state.dummyState.current_state)
       : null;
     return {
       move,
-      frame: dummyState?.frame ?? 0,
-      x: dummyX,
-      y: dummyY,
+      frame: state?.dummyState?.frame ?? 0,
+      x: state?.dummyX ?? 0,
+      y: state?.dummyY ?? 0,
       facing: 'left' as const,
     };
   });
@@ -795,7 +568,7 @@
       dummyStatus={dummyStatusDisplay}
       availableCancels={availableCancelNames}
       comboInfo={comboInfo}
-      onResetHealth={resetHealth}
+      onResetHealth={() => trainingLoop?.resetHealth()}
     />
 
     <!-- Main content area with viewport and sidebar -->
@@ -824,7 +597,7 @@
 
       <!-- Right sidebar with input history and dummy settings -->
       <div class="sidebar">
-        <InputHistory inputs={inputHistory} maxDisplay={15} />
+        <InputHistory inputs={loopState?.inputHistory ?? []} maxDisplay={15} />
         {#if dummyController}
           <DummySettings
             config={dummyController.config}
@@ -843,12 +616,12 @@
     <!-- Bottom bar with playback controls and keyboard help -->
     <div class="bottom-bar">
       <PlaybackControls
-        isPlaying={isPlaying}
-        speed={playbackSpeed}
-        onPlayPause={togglePlayPause}
-        onStepBack={stepBack}
-        onStepForward={stepForward}
-        onSpeedChange={setPlaybackSpeed}
+        isPlaying={loopState?.isPlaying ?? false}
+        speed={loopState?.playbackSpeed ?? 1}
+        onPlayPause={() => trainingLoop?.togglePlayPause()}
+        onStepBack={() => {}}
+        onStepForward={() => trainingLoop?.stepForward()}
+        onSpeedChange={(speed) => trainingLoop?.setPlaybackSpeed(speed)}
       />
 
       <!-- Detach button -->
@@ -889,7 +662,7 @@
 
     <!-- Frame counter (debug) -->
     <div class="frame-counter">
-      Frame: {frameCount}
+      Frame: {loopState?.frameCount ?? 0}
     </div>
   {/if}
 </div>

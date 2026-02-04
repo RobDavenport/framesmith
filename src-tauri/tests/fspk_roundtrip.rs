@@ -28,7 +28,7 @@ fn fspk_export_roundtrips_through_reader() {
     let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
         .expect("load test_char character");
 
-    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export zx-fspack bytes");
     assert!(!bytes.is_empty(), "export should produce non-empty output");
 
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
@@ -118,7 +118,7 @@ fn fspk_move_record_fields_match_reader_layout() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     let moves = pack.states().expect("moves section");
@@ -255,7 +255,7 @@ fn fspk_pushbox_chain_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     let moves = pack.states().expect("moves section");
@@ -396,7 +396,7 @@ fn fspk_exports_resources_and_events_sections() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     // Resources section exists and decodes
@@ -540,7 +540,7 @@ fn fspk_exports_move_input_notation() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export zx-fspack bytes");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export zx-fspack bytes");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
 
     let extras_data = pack
@@ -592,7 +592,7 @@ fn tags_survive_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify state tag sections exist
@@ -634,7 +634,7 @@ fn empty_tags_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Tag sections should not exist when no move has tags
@@ -693,7 +693,7 @@ fn cancel_tag_rules_roundtrip() {
     };
 
     // Export and parse
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify cancel tag rules section exists
@@ -767,7 +767,7 @@ fn cancel_denies_roundtrip() {
     };
 
     // Export and parse
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify deny exists: move 0 (5L) to move 1 (jump)
@@ -914,7 +914,7 @@ fn state_properties_scalar_survive_roundtrip() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Verify STATE_PROPS section exists
@@ -978,7 +978,7 @@ fn state_properties_nested_flattened_on_export() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     let props_raw = pack.state_props_raw(0).expect("state 0 should have props");
@@ -1024,7 +1024,7 @@ fn state_without_properties_has_no_props_raw() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // STATE_PROPS section should not exist when no state has properties
@@ -1079,7 +1079,7 @@ fn mixed_states_with_and_without_properties() {
         cancel_table: CancelTable::default(),
     };
 
-    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
 
     // Moves are sorted by input: "236P" (idx 0), "5L" (idx 1)
@@ -1102,5 +1102,244 @@ fn mixed_states_with_and_without_properties() {
     assert_eq!(
         decoded.get("damage_bonus"),
         Some(&DecodedPropValue::Number(10.0))
+    );
+}
+
+// =============================================================================
+// Schema-Based Property Export Tests
+// =============================================================================
+
+#[test]
+fn schema_section_present_when_rules_have_property_schema() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::rules::{MergedRules, PropertySchema, RulesFile};
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    // Create a move with properties
+    let mut props = BTreeMap::new();
+    props.insert("damage".to_string(), PropertyValue::Number(100.0));
+    props.insert("is_super".to_string(), PropertyValue::Bool(true));
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            properties: props,
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    // Create rules with property schema
+    // Must include all character props from make_test_character()
+    let rules = RulesFile {
+        version: 1,
+        registry: None,
+        apply: vec![],
+        validate: vec![],
+        properties: Some(PropertySchema {
+            character: vec![
+                "archetype".to_string(),
+                "back_walk_speed".to_string(),
+                "dash_distance".to_string(),
+                "dash_duration".to_string(),
+                "health".to_string(),
+                "jump_duration".to_string(),
+                "jump_height".to_string(),
+                "walk_speed".to_string(),
+            ],
+            state: vec!["damage".to_string(), "is_super".to_string()],
+        }),
+        tags: Some(vec!["normal".to_string(), "special".to_string()]),
+    };
+    let merged = MergedRules::merge(Some(&rules), None);
+
+    // Export with schema
+    let bytes = codegen::export_fspk(&char_data, Some(&merged)).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify SECTION_SCHEMA exists
+    assert!(
+        pack.get_section(framesmith_fspack::SECTION_SCHEMA).is_some(),
+        "SECTION_SCHEMA should be present when rules have property schema"
+    );
+
+    // Verify schema can be read
+    let schema = pack.schema().expect("schema should be parseable");
+    assert_eq!(schema.char_prop_count(), 8);  // 8 character props
+    assert_eq!(schema.state_prop_count(), 2); // 2 state props
+    assert_eq!(schema.tag_count(), 2);
+
+    // Verify a few property names are accessible (order matches schema definition)
+    assert_eq!(schema.char_prop_name(0), Some("archetype"));
+    assert_eq!(schema.char_prop_name(4), Some("health"));
+    assert_eq!(schema.state_prop_name(0), Some("damage"));
+    assert_eq!(schema.state_prop_name(1), Some("is_super"));
+    assert_eq!(schema.tag_name(0), Some("normal"));
+    assert_eq!(schema.tag_name(1), Some("special"));
+}
+
+#[test]
+fn schema_section_absent_when_no_property_schema() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    // Export without rules (no schema)
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify SECTION_SCHEMA is absent
+    assert!(
+        pack.get_section(framesmith_fspack::SECTION_SCHEMA).is_none(),
+        "SECTION_SCHEMA should be absent when no property schema"
+    );
+    assert!(pack.schema().is_none());
+}
+
+#[test]
+fn schema_based_property_records_are_8_bytes() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::rules::{MergedRules, PropertySchema, RulesFile};
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    // Create character with properties
+    let mut char_props = BTreeMap::new();
+    char_props.insert("health".to_string(), PropertyValue::Number(1000.0));
+    char_props.insert("walkSpeed".to_string(), PropertyValue::Number(3.5));
+
+    let mut character = make_test_character("t");
+    character.properties = char_props;
+
+    let char_data = CharacterData {
+        character,
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    // Create rules with property schema
+    let rules = RulesFile {
+        version: 1,
+        registry: None,
+        apply: vec![],
+        validate: vec![],
+        properties: Some(PropertySchema {
+            character: vec!["health".to_string(), "walkSpeed".to_string()],
+            state: vec![],
+        }),
+        tags: None,
+    };
+    let merged = MergedRules::merge(Some(&rules), None);
+
+    // Export with schema
+    let bytes = codegen::export_fspk(&char_data, Some(&merged)).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify CHARACTER_PROPS section size matches 8-byte records
+    // 2 properties * 8 bytes = 16 bytes
+    let char_props_section = pack
+        .get_section(framesmith_fspack::SECTION_CHARACTER_PROPS)
+        .expect("CHARACTER_PROPS section");
+    assert_eq!(
+        char_props_section.len(),
+        16,
+        "With schema, CHARACTER_PROPS should use 8-byte records (2 props * 8 = 16)"
+    );
+
+    // Verify we can read schema-based properties
+    let schema_props = pack.schema_character_props().expect("schema character props");
+    assert_eq!(schema_props.len(), 2);
+
+    // Get the schema for name lookups
+    let schema = pack.schema().expect("schema");
+
+    // Read the properties
+    let prop0 = schema_props.get(0).expect("prop 0");
+    let prop0_name = schema.char_prop_name(prop0.schema_id()).expect("prop 0 name");
+    assert!(prop0_name == "health" || prop0_name == "walkSpeed");
+}
+
+#[test]
+fn export_with_schema_rejects_unknown_property() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::rules::{MergedRules, PropertySchema, RulesFile};
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    // Create a move with a property NOT in the schema
+    let mut props = BTreeMap::new();
+    props.insert("unknownProp".to_string(), PropertyValue::Number(42.0));
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            properties: props,
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    // Create rules with property schema that doesn't include "unknownProp"
+    let rules = RulesFile {
+        version: 1,
+        registry: None,
+        apply: vec![],
+        validate: vec![],
+        properties: Some(PropertySchema {
+            character: vec![],
+            state: vec!["damage".to_string(), "startup".to_string()],
+        }),
+        tags: None,
+    };
+    let merged = MergedRules::merge(Some(&rules), None);
+
+    // Export should fail with helpful error
+    let result = codegen::export_fspk(&char_data, Some(&merged));
+    assert!(result.is_err(), "Export should fail when property not in schema");
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("unknownProp") || err.contains("unknown"),
+        "Error should mention the unknown property: {}",
+        err
     );
 }

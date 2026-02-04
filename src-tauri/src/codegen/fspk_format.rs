@@ -114,6 +114,17 @@ pub const SECTION_PUSH_WINDOWS: u32 = 22;
 /// Nested properties are flattened using dot notation (e.g., "movement.distance").
 pub const SECTION_STATE_PROPS: u32 = 23;
 
+/// Schema section defining property and tag names.
+/// Layout:
+/// - Header: char_prop_count(u16) + state_prop_count(u16) + tag_count(u16) + padding(u16)
+/// - Character property names: [StringRef; char_prop_count]
+/// - State property names: [StringRef; state_prop_count]
+/// - Tag names: [StringRef; tag_count]
+///
+/// When this section is present, property records use schema IDs instead of string refs,
+/// reducing property record size from 12 to 8 bytes.
+pub const SECTION_SCHEMA: u32 = 24;
+
 /// Character property record size: name_off(4) + name_len(2) + type(1) + reserved(1) + value(4) = 12 bytes
 pub const CHARACTER_PROP12_SIZE: usize = 12;
 
@@ -130,6 +141,21 @@ pub const PROP_TYPE_STR: u8 = 2;
 pub const PROP_TYPE_ARRAY: u8 = 3;
 /// Property type: object/map (reserved for future use, currently flattened at export)
 pub const PROP_TYPE_OBJECT: u8 = 4;
+
+// =============================================================================
+// Schema-Based Property Records (8 bytes, used when SECTION_SCHEMA present)
+// =============================================================================
+
+/// Schema-based property record size: schema_id(2) + value_type(1) + reserved(1) + value(4) = 8 bytes
+/// Used when SECTION_SCHEMA is present, eliminating name string refs from each record.
+pub const SCHEMA_PROP8_SIZE: usize = 8;
+
+/// Schema header size: char_prop_count(2) + state_prop_count(2) + tag_count(2) + padding(2) = 8 bytes
+pub const SCHEMA_HEADER_SIZE: usize = 8;
+
+/// Schema tag record size (when using schema): just a u16 schema ID = 2 bytes
+/// Tag IDs reference the tag names in SECTION_SCHEMA.
+pub const SCHEMA_TAG_SIZE: usize = 2;
 
 // =============================================================================
 // Sentinel Values

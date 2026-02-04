@@ -3,6 +3,7 @@
 //! This module exports character data to the FSPK binary format.
 //! The format is engine-agnostic and optimized for no_std/WASM runtimes.
 
+mod builders;
 mod export;
 mod moves;
 mod packing;

@@ -6,37 +6,12 @@
   import { RenderCore } from "$lib/rendercore/RenderCore";
   import { TauriAssetProvider } from "$lib/rendercore/assets/TauriAssetProvider";
   import { buildActorSpec } from "$lib/rendercore/buildActorSpec";
-  import { PREVIEW_ORIGIN_Y_FRAC } from "$lib/rendercore/config";
   import type { ActorSpec } from "$lib/rendercore/types";
+  import BoxEditor from "./preview/BoxEditor.svelte";
+  import { type Layer, snapRect } from "./preview/useBoxDrag";
 
-  type Layer = "hitboxes" | "hurtboxes" | "pushboxes";
   type Tool = "select" | "draw";
   type Selection = { layer: Layer; index: number };
-  type CornerHandle = "nw" | "ne" | "sw" | "se";
-
-  type PointerAction =
-    | {
-        kind: "move";
-        pointerId: number;
-        layer: Layer;
-        index: number;
-        startPt: { x: number; y: number };
-        startRect: Rect;
-      }
-    | {
-        kind: "resize";
-        pointerId: number;
-        layer: Layer;
-        index: number;
-        handle: CornerHandle;
-        startRect: Rect;
-      }
-    | {
-        kind: "draw";
-        pointerId: number;
-        layer: Layer;
-        startPt: { x: number; y: number };
-      };
 
   type Props = {
     characterId: string | null;
@@ -65,7 +40,6 @@
   let speed = $state<(typeof speedOptions)[number]>(1);
 
   let viewportEl = $state<HTMLDivElement | null>(null);
-  let overlayCanvasEl = $state<HTMLCanvasElement | null>(null);
 
   let core = $state<RenderCore | null>(null);
   let coreKey = $state<string | null>(null);
@@ -76,13 +50,12 @@
   let editLayer = $state<Layer>("hitboxes");
   let editTool = $state<Tool>("select");
   let selection = $state<Selection | null>(null);
-  let action = $state<PointerAction | null>(null);
-  let draftRect = $state<Rect | null>(null);
-  let liveOverride = $state<{ layer: Layer; index: number; rect: Rect } | null>(null);
+
+  let boxEditorRef = $state<BoxEditor | null>(null);
 
   let resizeObs: ResizeObserver | null = null;
   let resizeRaf = 0;
-  let lastDpr = 1;
+  let lastDpr = $state(1);
 
   const effectiveTotal = $derived.by(() => {
     if (!move) return 1;
@@ -194,9 +167,6 @@
     frameIndex = 0;
     playing = false;
     selection = null;
-    action = null;
-    draftRect = null;
-    liveOverride = null;
     void moveKey;
   });
 
@@ -369,32 +339,6 @@
     return Math.max(0, Math.min(max, v));
   }
 
-  function normalizeRect(r: Rect): Rect {
-    let { x, y, w, h } = r;
-    if (!Number.isFinite(x)) x = 0;
-    if (!Number.isFinite(y)) y = 0;
-    if (!Number.isFinite(w)) w = 0;
-    if (!Number.isFinite(h)) h = 0;
-    if (w < 0) {
-      x += w;
-      w = -w;
-    }
-    if (h < 0) {
-      y += h;
-      h = -h;
-    }
-    return { x, y, w, h };
-  }
-
-  function snapRect(r: Rect): Rect {
-    const nr = normalizeRect(r);
-    const x = Math.round(nr.x);
-    const y = Math.round(nr.y);
-    const w = Math.max(1, Math.round(nr.w));
-    const h = Math.max(1, Math.round(nr.h));
-    return { x, y, w, h };
-  }
-
   function getLayerArray(m: State, layer: Layer): FrameHitbox[] {
     const raw = (m as any)[layer];
     return Array.isArray(raw) ? raw : [];
@@ -467,46 +411,8 @@
     selection = { layer, index: nextIndex };
   }
 
-  function getLocalPt(e: PointerEvent): { x: number; y: number } | null {
-    if (!overlayCanvasEl) return null;
-    ensureOverlaySize();
-    const rect = overlayCanvasEl.getBoundingClientRect();
-    const px = lastDpr;
-    const deviceX = (e.clientX - rect.left) * px;
-    const deviceY = (e.clientY - rect.top) * px;
-
-    const originX = Math.floor(overlayCanvasEl.width * 0.5);
-    const originY = Math.floor(overlayCanvasEl.height * PREVIEW_ORIGIN_Y_FRAC);
-
-    return {
-      x: (deviceX - originX) / px,
-      y: (deviceY - originY) / px,
-    };
-  }
-
-  function hitTestHandle(local: { x: number; y: number }, rect: Rect): CornerHandle | null {
-    const r = normalizeRect(rect);
-    const handleRadius = 6;
-    const corners: { h: CornerHandle; x: number; y: number }[] = [
-      { h: "nw", x: r.x, y: r.y },
-      { h: "ne", x: r.x + r.w, y: r.y },
-      { h: "sw", x: r.x, y: r.y + r.h },
-      { h: "se", x: r.x + r.w, y: r.y + r.h },
-    ];
-    for (const c of corners) {
-      const dx = local.x - c.x;
-      const dy = local.y - c.y;
-      if (Math.abs(dx) <= handleRadius && Math.abs(dy) <= handleRadius) return c.h;
-    }
-    return null;
-  }
-
-  function hitTestBody(local: { x: number; y: number }, rect: Rect): boolean {
-    const r = normalizeRect(rect);
-    return r.x <= local.x && local.x <= r.x + r.w && r.y <= local.y && local.y <= r.y + r.h;
-  }
-
   function ensureOverlaySize(): void {
+    const overlayCanvasEl = boxEditorRef?.getCanvas();
     if (!overlayCanvasEl || !viewportEl) return;
     const rect = viewportEl.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -522,6 +428,7 @@
   }
 
   function drawOverlay(): void {
+    const overlayCanvasEl = boxEditorRef?.getCanvas();
     if (!overlayCanvasEl) return;
     const ctx = overlayCanvasEl.getContext("2d");
     if (!ctx) return;
@@ -532,121 +439,7 @@
     const h = overlayCanvasEl.height;
     ctx.clearRect(0, 0, w, h);
 
-    if (!move || message) return;
-
-    const originX = Math.floor(w * 0.5);
-    const originY = Math.floor(h * PREVIEW_ORIGIN_Y_FRAC);
-    const px = lastDpr;
-
-    const drawRects = (
-      rects: { x: number; y: number; w: number; h: number; selected?: boolean; inactive?: boolean }[],
-      stroke: string,
-      fill: string
-    ) => {
-      if (!rects.length) return;
-      ctx.lineWidth = Math.max(1, Math.round(1.5 * px));
-
-      for (const r of rects) {
-        const nr = normalizeRect({ x: r.x, y: r.y, w: r.w, h: r.h });
-        const x = originX + nr.x * px;
-        const y = originY + nr.y * px;
-        const rw = nr.w * px;
-        const rh = nr.h * px;
-        if (!Number.isFinite(x + y + rw + rh)) continue;
-        if (rw <= 0 || rh <= 0) continue;
-
-        ctx.globalAlpha = r.inactive ? 0.3 : 1;
-        ctx.strokeStyle = stroke;
-        ctx.fillStyle = fill;
-        ctx.fillRect(x, y, rw, rh);
-        ctx.strokeRect(x + 0.5, y + 0.5, rw, rh);
-        ctx.globalAlpha = 1;
-
-        if (r.selected) {
-          ctx.save();
-          ctx.setLineDash([Math.max(2, Math.round(4 * px)), Math.max(2, Math.round(3 * px))]);
-          ctx.lineWidth = Math.max(1, Math.round(2.25 * px));
-          ctx.strokeStyle = "rgba(250, 204, 21, 0.95)";
-          ctx.strokeRect(x + 0.5, y + 0.5, rw, rh);
-          ctx.restore();
-        }
-      }
-    };
-
-    const selectedLayer = selection?.layer ?? null;
-    const selectedIndex = selection?.index ?? -1;
-
-    const hitboxes = getLayerArray(move, "hitboxes").map((hb, index) => ({
-      ...((liveOverride && liveOverride.layer === "hitboxes" && liveOverride.index === index
-        ? liveOverride.rect
-        : hb.box) as Rect),
-      selected: selectedLayer === "hitboxes" && selectedIndex === index,
-      inactive: !isActiveFrame(hb.frames, frameIndex),
-    }));
-
-    const hurtboxes = getLayerArray(move, "hurtboxes").map((hb, index) => ({
-      ...((liveOverride && liveOverride.layer === "hurtboxes" && liveOverride.index === index
-        ? liveOverride.rect
-        : hb.box) as Rect),
-      selected: selectedLayer === "hurtboxes" && selectedIndex === index,
-      inactive: !isActiveFrame(hb.frames, frameIndex),
-    }));
-
-    const pushboxes = getLayerArray(move, "pushboxes").map((hb, index) => ({
-      ...((liveOverride && liveOverride.layer === "pushboxes" && liveOverride.index === index
-        ? liveOverride.rect
-        : hb.box) as Rect),
-      selected: selectedLayer === "pushboxes" && selectedIndex === index,
-      inactive: !isActiveFrame(hb.frames, frameIndex),
-    }));
-
-    // Draw pushboxes first (bottom), then hurtboxes, then hitboxes (top).
-    drawRects(pushboxes, "rgba(234,179,8,0.95)", "rgba(234,179,8,0.18)");
-    drawRects(hurtboxes, "rgba(34,197,94,0.95)", "rgba(34,197,94,0.18)");
-    drawRects(hitboxes, "rgba(239,68,68,0.95)", "rgba(239,68,68,0.18)");
-
-    if (action?.kind === "draw" && draftRect) {
-      const nr = normalizeRect(draftRect);
-      const x = originX + nr.x * px;
-      const y = originY + nr.y * px;
-      const rw = nr.w * px;
-      const rh = nr.h * px;
-      if (rw > 0 && rh > 0) {
-        ctx.save();
-        ctx.lineWidth = Math.max(1, Math.round(2 * px));
-        ctx.setLineDash([Math.max(2, Math.round(6 * px)), Math.max(2, Math.round(4 * px))]);
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.95)";
-        ctx.fillStyle = "rgba(148, 163, 184, 0.12)";
-        ctx.fillRect(x, y, rw, rh);
-        ctx.strokeRect(x + 0.5, y + 0.5, rw, rh);
-        ctx.restore();
-      }
-    }
-
-    if (selection && editTool === "select" && selection.layer === editLayer) {
-      const arr = getLayerArray(move, selection.layer);
-      const hb = arr[selection.index];
-      if (hb) {
-        const r = normalizeRect(hb.box);
-        const corners = [
-          { x: r.x, y: r.y },
-          { x: r.x + r.w, y: r.y },
-          { x: r.x, y: r.y + r.h },
-          { x: r.x + r.w, y: r.y + r.h },
-        ];
-
-        const s = Math.max(6, Math.round(6 * px));
-        ctx.fillStyle = "rgba(250, 204, 21, 0.95)";
-        ctx.strokeStyle = "rgba(17, 24, 39, 0.9)";
-        ctx.lineWidth = Math.max(1, Math.round(1 * px));
-        for (const c of corners) {
-          const cx = originX + c.x * px;
-          const cy = originY + c.y * px;
-          ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
-          ctx.strokeRect(cx - s / 2 + 0.5, cy - s / 2 + 0.5, s, s);
-        }
-      }
-    }
+    boxEditorRef?.drawOverlay(ctx);
   }
 
   $effect(() => {
@@ -656,9 +449,6 @@
     void editLayer;
     void editTool;
     void selection;
-    void action;
-    void draftRect;
-    void liveOverride;
     ensureSelectionValid();
     drawOverlay();
   });
@@ -680,9 +470,6 @@
 
       if (e.key === "Escape") {
         selection = null;
-        action = null;
-        draftRect = null;
-        liveOverride = null;
         return;
       }
 
@@ -708,181 +495,6 @@
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
-
-  function handlePointerDown(e: PointerEvent): void {
-    if (!move || message) return;
-    if (!overlayCanvasEl) return;
-    if (e.button !== 0) return;
-
-    const local = getLocalPt(e);
-    if (!local) return;
-
-    overlayCanvasEl.setPointerCapture(e.pointerId);
-
-    if (editTool === "draw") {
-      selection = null;
-      liveOverride = null;
-      action = { kind: "draw", pointerId: e.pointerId, layer: editLayer, startPt: local };
-      draftRect = { x: local.x, y: local.y, w: 0, h: 0 };
-      return;
-    }
-
-    // Select tool: prefer active rects, but allow selecting inactive ones.
-    const all = getLayerArray(move, editLayer).map((hb, index) => ({ hb, index }));
-    const active = all.filter(({ hb }) => isActiveFrame(hb.frames, frameIndex));
-    const inactive = all.filter(({ hb }) => !isActiveFrame(hb.frames, frameIndex));
-
-    const tryPick = (list: typeof all) => {
-      for (let i = list.length - 1; i >= 0; i--) {
-        const { hb, index } = list[i];
-        const rect = normalizeRect(hb.box);
-        const handle = hitTestHandle(local, rect);
-        if (handle) {
-          selection = { layer: editLayer, index };
-          liveOverride = { layer: editLayer, index, rect };
-          action = {
-            kind: "resize",
-            pointerId: e.pointerId,
-            layer: editLayer,
-            index,
-            handle,
-            startRect: rect,
-          };
-          return true;
-        }
-        if (hitTestBody(local, rect)) {
-          selection = { layer: editLayer, index };
-          liveOverride = { layer: editLayer, index, rect };
-          action = {
-            kind: "move",
-            pointerId: e.pointerId,
-            layer: editLayer,
-            index,
-            startPt: local,
-            startRect: rect,
-          };
-          return true;
-        }
-      }
-      return false;
-    };
-
-    if (tryPick(active)) return;
-    if (tryPick(inactive)) return;
-
-    selection = null;
-    action = null;
-  }
-
-  function handlePointerMove(e: PointerEvent): void {
-    if (!move || message) return;
-    if (!action) return;
-    if (e.pointerId !== action.pointerId) return;
-
-    const local = getLocalPt(e);
-    if (!local) return;
-
-    if (action.kind === "draw") {
-      draftRect = {
-        x: action.startPt.x,
-        y: action.startPt.y,
-        w: local.x - action.startPt.x,
-        h: local.y - action.startPt.y,
-      };
-      return;
-    }
-
-    if (action.kind === "move") {
-      const dx = local.x - action.startPt.x;
-      const dy = local.y - action.startPt.y;
-      liveOverride = {
-        layer: action.layer,
-        index: action.index,
-        rect: {
-          x: action.startRect.x + dx,
-          y: action.startRect.y + dy,
-          w: action.startRect.w,
-          h: action.startRect.h,
-        },
-      };
-      return;
-    }
-
-    // resize
-    const r = action.startRect;
-    const x1 = r.x;
-    const y1 = r.y;
-    const x2 = r.x + r.w;
-    const y2 = r.y + r.h;
-
-    const fixed =
-      action.handle === "nw"
-        ? { x: x2, y: y2 }
-        : action.handle === "ne"
-        ? { x: x1, y: y2 }
-        : action.handle === "sw"
-        ? { x: x2, y: y1 }
-        : { x: x1, y: y1 };
-
-    liveOverride = {
-      layer: action.layer,
-      index: action.index,
-      rect: {
-        x: Math.min(local.x, fixed.x),
-        y: Math.min(local.y, fixed.y),
-        w: Math.abs(local.x - fixed.x),
-        h: Math.abs(local.y - fixed.y),
-      },
-    };
-  }
-
-  function handlePointerUp(e: PointerEvent): void {
-    if (!action) return;
-    if (e.pointerId !== action.pointerId) return;
-
-    if (overlayCanvasEl?.hasPointerCapture(e.pointerId)) {
-      overlayCanvasEl.releasePointerCapture(e.pointerId);
-    }
-
-    if (action.kind === "draw") {
-      const r = draftRect;
-      draftRect = null;
-      const layer = action.layer;
-      action = null;
-      liveOverride = null;
-      if (!r) return;
-      const nr = normalizeRect(r);
-      if (nr.w <= 0 || nr.h <= 0) return;
-      addRect(layer, nr);
-      return;
-    }
-
-    if (action.kind === "move" || action.kind === "resize") {
-      const rect =
-        liveOverride && liveOverride.layer === action.layer && liveOverride.index === action.index
-          ? liveOverride.rect
-          : action.startRect;
-      updateRect(action.layer, action.index, rect);
-      liveOverride = null;
-      action = null;
-      return;
-    }
-
-    liveOverride = null;
-    action = null;
-  }
-
-  function handlePointerCancel(e: PointerEvent): void {
-    if (!action) return;
-    if (e.pointerId !== action.pointerId) return;
-
-    if (overlayCanvasEl?.hasPointerCapture(e.pointerId)) {
-      overlayCanvasEl.releasePointerCapture(e.pointerId);
-    }
-    action = null;
-    draftRect = null;
-    liveOverride = null;
-  }
 
   $effect(() => {
     if (!viewportEl) return;
@@ -951,8 +563,6 @@
         onchange={(e) => {
           editLayer = (e.currentTarget as HTMLSelectElement).value as Layer;
           selection = null;
-          action = null;
-          draftRect = null;
         }}
       >
         <option value="hitboxes">Hitboxes</option>
@@ -1018,15 +628,23 @@
       {#if coreActorError}
         <div class="core-error">{coreActorError}</div>
       {/if}
-      <canvas
-        bind:this={overlayCanvasEl}
-        class="hitbox-overlay"
-        class:tool-draw={editTool === "draw"}
-        onpointerdown={handlePointerDown}
-        onpointermove={handlePointerMove}
-        onpointerup={handlePointerUp}
-        onpointercancel={handlePointerCancel}
-      ></canvas>
+      <BoxEditor
+        bind:this={boxEditorRef}
+        {move}
+        {editLayer}
+        {editTool}
+        {frameIndex}
+        dpr={lastDpr}
+        canvasWidth={boxEditorRef?.getCanvas()?.width ?? 0}
+        canvasHeight={boxEditorRef?.getCanvas()?.height ?? 0}
+        {message}
+        bind:selection
+        onSelectionChange={(sel) => {
+          selection = sel;
+        }}
+        onRectUpdate={updateRect}
+        onRectAdd={addRect}
+      />
     {/if}
   </div>
 
@@ -1183,21 +801,6 @@
     position: relative;
   }
 
-  .hitbox-overlay {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    pointer-events: auto;
-    touch-action: none;
-    cursor: default;
-    z-index: 2;
-  }
-
-  .hitbox-overlay.tool-draw {
-    cursor: crosshair;
-  }
 
   .rect-editor {
     display: flex;

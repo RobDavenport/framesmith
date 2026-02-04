@@ -72,7 +72,6 @@ pub fn pack_event_args(
 /// Pack event emits into the event_emits buffer.
 ///
 /// Returns (emits_off, emits_len) for the packed emits.
-#[allow(dead_code)] // Future use: can replace inline event packing in export.rs
 pub fn pack_event_emits(
     events: &[EventEmit],
     event_emits_data: &mut Vec<u8>,
@@ -91,4 +90,21 @@ pub fn pack_event_emits(
     }
 
     Ok((emits_off, emits_len))
+}
+
+/// Pack resource definitions into the RESOURCE_DEFS section.
+///
+/// Returns the packed binary data.
+pub fn pack_resource_defs(
+    resources: &[crate::schema::CharacterResource],
+    strings: &mut StringTable,
+) -> Result<Vec<u8>, String> {
+    let mut data = Vec::new();
+    for res in resources {
+        let name = strings.intern(&res.name)?;
+        write_strref(&mut data, name);
+        write_u16_le(&mut data, res.start);
+        write_u16_le(&mut data, res.max);
+    }
+    Ok(data)
 }

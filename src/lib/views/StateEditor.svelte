@@ -6,6 +6,8 @@
   } from "$lib/stores/character.svelte";
   import { getAssets, getAssetsError, isAssetsLoading } from "$lib/stores/assets.svelte";
   import MoveAnimationPreview from "$lib/components/MoveAnimationPreview.svelte";
+  import PreconditionEditor from "$lib/views/editor/PreconditionEditor.svelte";
+  import CostEditor from "$lib/views/editor/CostEditor.svelte";
   import type { State, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
 
   // Common move types - custom types can be entered directly
@@ -27,8 +29,6 @@
   let editingMove = $state<State | null>(null);
 
   // Collapsible section states
-  let showPreconditions = $state(false);
-  let showCosts = $state(false);
   let showPushboxes = $state(false);
 
   // Watch for selected move changes and create a local copy
@@ -390,59 +390,18 @@
         </section>
 
         <!-- Preconditions Section -->
-        <section class="form-section">
-          <button type="button" class="section-title collapsible" onclick={() => showPreconditions = !showPreconditions}>
-            Preconditions {editingMove.preconditions?.length ? `(${editingMove.preconditions.length})` : ''}
-            <span class="collapse-icon">{showPreconditions ? '▼' : '▶'}</span>
-          </button>
-          {#if showPreconditions}
-            <div class="array-editor">
-              {#if editingMove.preconditions}
-                {#each editingMove.preconditions as precondition, i}
-                  <div class="array-item">
-                    <span class="item-label">{precondition.type}</span>
-                    <button class="remove-btn" onclick={() => removePrecondition(i)}>×</button>
-                  </div>
-                {/each}
-              {/if}
-              <select class="add-select" onchange={(e) => addPrecondition(e.currentTarget.value)}>
-                <option value="">+ Add precondition...</option>
-                <option value="meter">Meter requirement</option>
-                <option value="charge">Charge requirement</option>
-                <option value="state">State requirement</option>
-                <option value="grounded">Grounded only</option>
-                <option value="airborne">Airborne only</option>
-                <option value="health">Health requirement</option>
-              </select>
-            </div>
-          {/if}
-        </section>
+        <PreconditionEditor
+          preconditions={editingMove.preconditions}
+          onAdd={addPrecondition}
+          onRemove={removePrecondition}
+        />
 
         <!-- Costs Section -->
-        <section class="form-section">
-          <button type="button" class="section-title collapsible" onclick={() => showCosts = !showCosts}>
-            Costs {editingMove.costs?.length ? `(${editingMove.costs.length})` : ''}
-            <span class="collapse-icon">{showCosts ? '▼' : '▶'}</span>
-          </button>
-          {#if showCosts}
-            <div class="array-editor">
-              {#if editingMove.costs}
-                {#each editingMove.costs as cost, i}
-                  <div class="array-item">
-                    <span class="item-label">{cost.type}: {cost.amount}</span>
-                    <button class="remove-btn" onclick={() => removeCost(i)}>×</button>
-                  </div>
-                {/each}
-              {/if}
-              <select class="add-select" onchange={(e) => addCost(e.currentTarget.value)}>
-                <option value="">+ Add cost...</option>
-                <option value="meter">Meter cost</option>
-                <option value="health">Health cost</option>
-                <option value="resource">Resource cost</option>
-              </select>
-            </div>
-          {/if}
-        </section>
+        <CostEditor
+          costs={editingMove.costs}
+          onAdd={addCost}
+          onRemove={removeCost}
+        />
 
         <!-- Movement Section (for movement type moves) -->
         {#if editingMove.type === 'movement' || editingMove.movement}
@@ -835,39 +794,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-
-  .array-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    background: var(--bg-secondary);
-    border-radius: 4px;
-    font-size: 13px;
-  }
-
-  .item-label {
-    font-family: monospace;
-  }
-
-  .remove-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 16px;
-    padding: 0 4px;
-  }
-
-  .remove-btn:hover {
-    color: var(--accent);
-  }
-
-  .add-select {
-    padding: 8px;
-    font-size: 13px;
-    color: var(--text-secondary);
   }
 
   .preview-panel {

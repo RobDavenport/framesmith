@@ -185,6 +185,7 @@ if let Some(states) = pack.states() {
 | CHARACTER_PROPS | 21 | Array of CharacterProp12 structs (dynamic key-value properties) |
 | PUSH_WINDOWS | 22 | Array of PushWindow12 structs (body collision boxes) |
 | STATE_PROPS | 23 | Per-state properties (index + CharacterProp12 records) |
+| SCHEMA | 24 | Property and tag schema definitions |
 
 ### Data Structures
 
@@ -484,6 +485,70 @@ Body collision box frame ranges. Uses the same format as HurtWindow12.
 
 Push windows define the body collision volume used for character-to-character pushing. When two characters' push boxes overlap, they are separated horizontally to prevent overlap.
 
+### SECTION_SCHEMA (24)
+
+The schema section enables strict schema mode, where property and tag names are defined once and referenced by index. When present, property records shrink from 12 bytes to 8 bytes, reducing file size.
+
+**Purpose:**
+- Defines the set of valid property and tag names for the character
+- Enables schema validation at export time (typos caught early)
+- Reduces property record size from 12 to 8 bytes (33% smaller per property)
+
+**Net space savings calculation:**
+- Without schema: Each property = 12 bytes (4-byte name offset + 2-byte name len + 1-byte type + 1-byte reserved + 4-byte value)
+- With schema: Each property = 8 bytes (2-byte schema ID + 1-byte type + 1-byte reserved + 4-byte value)
+- Schema overhead: 8-byte header + (N properties * 8 bytes for StringRefs) + (M tags * 8 bytes for StringRefs)
+- Break-even point: When total property count exceeds schema overhead / 4 bytes saved per property
+
+**Section Layout:**
+
+1. **Header (8 bytes):**
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | char_prop_count | Number of character property names |
+| 2 | 2 | state_prop_count | Number of state property names |
+| 4 | 2 | tag_count | Number of tag names |
+| 6 | 2 | _pad | Reserved (0) |
+
+2. **Character property names:** `[StrRef; char_prop_count]` - 8 bytes each, pointing to STRING_TABLE
+3. **State property names:** `[StrRef; state_prop_count]` - 8 bytes each, pointing to STRING_TABLE
+4. **Tag names:** `[StrRef; tag_count]` - 8 bytes each, pointing to STRING_TABLE
+
+**Example `framesmith.rules.json` with schema:**
+
+```json
+{
+  "version": 1,
+  "properties": {
+    "character": ["health", "walkSpeed", "dashSpeed", "jumpHeight"],
+    "state": ["startup", "active", "recovery", "damage", "hitstun"]
+  },
+  "tags": ["normal", "special", "super", "startup", "active", "recovery"]
+}
+```
+
+#### SchemaProp8 (8 bytes)
+
+When the SCHEMA section is present, CHARACTER_PROPS and STATE_PROPS use this compact 8-byte format instead of CharacterProp12:
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | schema_id | Index into schema's property list |
+| 2 | 1 | value_type | 0=Q24.8, 1=bool, 2=string ref |
+| 3 | 1 | _reserved | Reserved (0) |
+| 4 | 4 | value | Type-dependent payload |
+
+The `schema_id` indexes into either the character property names or state property names array in the SCHEMA section, depending on which section (CHARACTER_PROPS or STATE_PROPS) contains the record.
+
+**Value type encoding** (same as CharacterProp12):
+
+| Type | ID | Value encoding |
+|------|----|----------------|
+| number | 0 | Q24.8 signed fixed-point (i32) |
+| bool | 1 | 0=false, nonzero=true |
+| string | 2 | Packed StrRef: off(u16) + len(u16) |
+
 ## Error Handling
 
 The `framesmith-fspack` crate returns specific errors for parse failures:
@@ -531,6 +596,17 @@ Planned for future versions:
 - **TBD**: Optional per-section compression
 
 ## Changelog
+
+### v1.5 (2026-02-04)
+
+- Added SECTION_SCHEMA (24) for property and tag schema definitions:
+  - Defines valid property names for character and state properties
+  - Defines valid tag names for state tagging
+  - Enables strict schema validation at export time
+- Property records now 8 bytes when schema present (was 12):
+  - New SchemaProp8 format uses 2-byte schema ID instead of 6-byte string reference
+  - 33% size reduction per property record
+- **Breaking format change:** Schema-enabled exports use SchemaProp8 format; readers must check for SCHEMA section presence to determine property record format
 
 ### v1.4 (2026-02-04)
 

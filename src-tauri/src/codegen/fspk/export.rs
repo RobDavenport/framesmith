@@ -4,34 +4,46 @@ use std::collections::HashMap;
 
 use crate::codegen::fspk_format::{
     write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE, MAGIC,
-    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS,
+    SCHEMA_HEADER_SIZE, SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS,
     SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS,
     SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES,
     SECTION_MOVE_RESOURCE_COSTS, SECTION_MOVE_RESOURCE_DELTAS,
     SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_PUSH_WINDOWS, SECTION_RESOURCE_DEFS,
-    SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_PROPS,
+    SECTION_SCHEMA, SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_PROPS,
     SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, STATE_EXTRAS72_SIZE,
     STRREF_SIZE,
 };
 use crate::commands::CharacterData;
+use crate::rules::MergedRules;
 
+use super::builders::{align_up, SectionData, SectionHeader, StringTable};
 use super::moves::{build_asset_keys, pack_moves};
-use super::properties::{pack_character_props, pack_state_props};
+use super::properties::{
+    find_similar, pack_character_props, pack_character_props_with_schema, pack_state_props,
+    pack_state_props_with_schema,
+};
 use super::sections::{
-    pack_event_args, OPT_U16_NONE, RESOURCE_DELTA_TRIGGER_ON_BLOCK,
+    pack_event_emits, pack_resource_defs, OPT_U16_NONE, RESOURCE_DELTA_TRIGGER_ON_BLOCK,
     RESOURCE_DELTA_TRIGGER_ON_HIT, RESOURCE_DELTA_TRIGGER_ON_USE,
 };
-use super::types::{CancelLookup, StringTable};
+use super::types::CancelLookup;
 use super::utils::{
-    align_up, checked_u16, checked_u32, write_i32_le, write_range, write_section_header,
-    write_strref,
+    checked_u16, checked_u32, write_i32_le, write_range, write_section_header, write_strref,
 };
 
 /// Export character data to FSPK binary format.
 ///
+/// When `rules` is provided with a property/tag schema, the export will:
+/// - Use 8-byte property records with schema IDs instead of 12-byte records with string refs
+/// - Validate all property names and tags against the schema, returning errors for unknown names
+/// - Write a SECTION_SCHEMA containing property and tag name definitions
+///
 /// Returns the packed binary data as a Vec<u8>.
 #[allow(clippy::vec_init_then_push)] // Intentional: base sections first, optional sections conditionally added
-pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
+pub fn export_fspk(
+    char_data: &CharacterData,
+    rules: Option<&MergedRules>,
+) -> Result<Vec<u8>, String> {
     // Canonicalize move ordering so move indices are deterministic.
     // (Do this here as a backstop even if callers already sorted.)
     let mut char_data = char_data.clone();
@@ -73,15 +85,11 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let packed = pack_moves(&char_data.moves, Some(&anim_to_index), Some(&cancel_lookup))?;
 
     // Step 3: Pack optional sections (resources, events, notifies)
-    let mut resource_defs_data: Vec<u8> = Vec::new();
-    if !char_data.character.resources.is_empty() {
-        for res in &char_data.character.resources {
-            let name = strings.intern(&res.name)?;
-            write_strref(&mut resource_defs_data, name);
-            write_u16_le(&mut resource_defs_data, res.start);
-            write_u16_le(&mut resource_defs_data, res.max);
-        }
-    }
+    let resource_defs_data = if !char_data.character.resources.is_empty() {
+        pack_resource_defs(&char_data.character.resources, &mut strings)?
+    } else {
+        Vec::new()
+    };
 
     let mut event_emits_data: Vec<u8> = Vec::new();
     let mut event_args_data: Vec<u8> = Vec::new();
@@ -113,50 +121,21 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             .map(|x| x.events.as_slice())
             .unwrap_or(&[]);
 
-        let on_use_emits_off = checked_u32(event_emits_data.len(), "on_use_emits_off")?;
-        let on_use_emits_len = checked_u16(on_use_events.len(), "on_use_emits_len")?;
-        for emit in on_use_events {
-            let (args_off, args_len) = pack_event_args(&emit.args, &mut event_args_data, &mut strings)?;
+        let (on_use_emits_off, on_use_emits_len) =
+            pack_event_emits(on_use_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
 
-            let id = strings.intern(&emit.id)?;
-            write_strref(&mut event_emits_data, id);
-            write_range(&mut event_emits_data, args_off, args_len);
-        }
+        let (on_hit_emits_off, on_hit_emits_len) =
+            pack_event_emits(on_hit_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
 
-        let on_hit_emits_off = checked_u32(event_emits_data.len(), "on_hit_emits_off")?;
-        let on_hit_emits_len = checked_u16(on_hit_events.len(), "on_hit_emits_len")?;
-        for emit in on_hit_events {
-            let (args_off, args_len) = pack_event_args(&emit.args, &mut event_args_data, &mut strings)?;
-
-            let id = strings.intern(&emit.id)?;
-            write_strref(&mut event_emits_data, id);
-            write_range(&mut event_emits_data, args_off, args_len);
-        }
-
-        let on_block_emits_off = checked_u32(event_emits_data.len(), "on_block_emits_off")?;
-        let on_block_emits_len = checked_u16(on_block_events.len(), "on_block_emits_len")?;
-        for emit in on_block_events {
-            let (args_off, args_len) = pack_event_args(&emit.args, &mut event_args_data, &mut strings)?;
-
-            let id = strings.intern(&emit.id)?;
-            write_strref(&mut event_emits_data, id);
-            write_range(&mut event_emits_data, args_off, args_len);
-        }
+        let (on_block_emits_off, on_block_emits_len) =
+            pack_event_emits(on_block_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
 
         // Move notifies
         let notifies_off = checked_u32(move_notifies_data.len(), "notifies_off")?;
         let notifies_len = checked_u16(mv.notifies.len(), "notifies_len")?;
         for notify in &mv.notifies {
-            let notify_emits_off = checked_u32(event_emits_data.len(), "notify_emits_off")?;
-            let notify_emits_len = checked_u16(notify.events.len(), "notify_emits_len")?;
-
-            for emit in &notify.events {
-                let (args_off, args_len) = pack_event_args(&emit.args, &mut event_args_data, &mut strings)?;
-
-                let id = strings.intern(&emit.id)?;
-                write_strref(&mut event_emits_data, id);
-                write_range(&mut event_emits_data, args_off, args_len);
-            }
+            let (notify_emits_off, notify_emits_len) =
+                pack_event_emits(&notify.events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
 
             // MoveNotify12: frame(u16) + pad(u16) + emits_off(u32) + emits_len(u16) + pad(u16)
             write_u16_le(&mut move_notifies_data, notify.frame);
@@ -389,22 +368,160 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         }
     }
 
-    // Pack character properties (fixed 12-byte records)
-    let character_props_data = pack_character_props(&char_data.character, &mut strings)?;
+    // Build schema lookups if rules with property/tag schema are provided
+    let has_schema = rules
+        .map(|r| r.has_property_schema() || r.has_tag_schema())
+        .unwrap_or(false);
+
+    // Schema section data (only populated when has_schema is true)
+    let mut schema_section_data: Vec<u8> = Vec::new();
+
+    // Character property schema lookup: name -> schema_id
+    let mut char_prop_schema: HashMap<String, u16> = HashMap::new();
+    let mut char_prop_names: Vec<String> = Vec::new();
+
+    // State property schema lookup: name -> schema_id
+    let mut state_prop_schema: HashMap<String, u16> = HashMap::new();
+    let mut state_prop_names: Vec<String> = Vec::new();
+
+    // Tag schema lookup: name -> schema_id
+    let mut tag_schema: HashMap<String, u16> = HashMap::new();
+    let mut tag_names: Vec<String> = Vec::new();
+
+    if has_schema {
+        // Build character property schema
+        if let Some(prop_schema) = rules.and_then(|r| r.properties.as_ref()) {
+            for (i, name) in prop_schema.character.iter().enumerate() {
+                let id = checked_u16(i, "character property schema ID")?;
+                char_prop_schema.insert(name.clone(), id);
+                char_prop_names.push(name.clone());
+            }
+            for (i, name) in prop_schema.state.iter().enumerate() {
+                let id = checked_u16(i, "state property schema ID")?;
+                state_prop_schema.insert(name.clone(), id);
+                state_prop_names.push(name.clone());
+            }
+        }
+
+        // Build tag schema
+        if let Some(tags) = rules.and_then(|r| r.tags.as_ref()) {
+            for (i, name) in tags.iter().enumerate() {
+                let id = checked_u16(i, "tag schema ID")?;
+                tag_schema.insert(name.clone(), id);
+                tag_names.push(name.clone());
+            }
+        }
+
+        // Build schema section data
+        // Header: char_prop_count(u16) + state_prop_count(u16) + tag_count(u16) + padding(u16)
+        let char_prop_count = checked_u16(char_prop_names.len(), "char_prop_count")?;
+        let state_prop_count = checked_u16(state_prop_names.len(), "state_prop_count")?;
+        let tag_count = checked_u16(tag_names.len(), "tag_count")?;
+
+        schema_section_data.reserve(
+            SCHEMA_HEADER_SIZE
+                + (char_prop_names.len() + state_prop_names.len() + tag_names.len()) * STRREF_SIZE,
+        );
+
+        write_u16_le(&mut schema_section_data, char_prop_count);
+        write_u16_le(&mut schema_section_data, state_prop_count);
+        write_u16_le(&mut schema_section_data, tag_count);
+        write_u16_le(&mut schema_section_data, 0); // padding
+
+        // Character property names as StringRefs
+        for name in &char_prop_names {
+            let strref = strings.intern(name)?;
+            write_strref(&mut schema_section_data, strref);
+        }
+
+        // State property names as StringRefs
+        for name in &state_prop_names {
+            let strref = strings.intern(name)?;
+            write_strref(&mut schema_section_data, strref);
+        }
+
+        // Tag names as StringRefs
+        for name in &tag_names {
+            let strref = strings.intern(name)?;
+            write_strref(&mut schema_section_data, strref);
+        }
+    }
+
+    // Validate tags against schema if present
+    if has_schema && !tag_schema.is_empty() {
+        let tag_name_refs: Vec<&str> = tag_names.iter().map(|s| s.as_str()).collect();
+        for mv in &char_data.moves {
+            // Validate move_type as tag
+            if let Some(ref move_type) = mv.move_type {
+                if !tag_schema.contains_key(move_type) {
+                    let suggestions = find_similar(move_type, &tag_name_refs);
+                    let suggestion_text = if suggestions.is_empty() {
+                        String::new()
+                    } else {
+                        format!(". Did you mean: {}?", suggestions.join(", "))
+                    };
+                    return Err(format!(
+                        "Move type '{}' for state '{}' is not defined in the tag schema{}",
+                        move_type, mv.input, suggestion_text
+                    ));
+                }
+            }
+
+            // Validate explicit tags
+            for tag in &mv.tags {
+                if !tag_schema.contains_key(tag.as_str()) {
+                    let suggestions = find_similar(tag.as_str(), &tag_name_refs);
+                    let suggestion_text = if suggestions.is_empty() {
+                        String::new()
+                    } else {
+                        format!(". Did you mean: {}?", suggestions.join(", "))
+                    };
+                    return Err(format!(
+                        "Tag '{}' for state '{}' is not defined in the tag schema{}",
+                        tag.as_str(), mv.input, suggestion_text
+                    ));
+                }
+            }
+        }
+    }
+
+    // Pack character properties - use schema if available, otherwise 12-byte records
+    let character_props_data = if has_schema && !char_prop_schema.is_empty() {
+        let char_prop_name_refs: Vec<&str> = char_prop_names.iter().map(|s| s.as_str()).collect();
+        pack_character_props_with_schema(
+            &char_data.character,
+            &char_prop_schema,
+            &char_prop_name_refs,
+            &mut strings,
+        )?
+    } else {
+        pack_character_props(&char_data.character, &mut strings)?
+    };
 
     // Pack per-state properties into STATE_PROPS section.
-    // Format: Fixed 12-byte property records (same as CHARACTER_PROPS).
+    // Format: Fixed 8-byte records (schema) or 12-byte records (no schema).
     // We build a parallel index: state_props_index[state_idx] = (offset, byte_len)
     // If a state has no properties, its entry is (0, 0).
     let mut state_props_data: Vec<u8> = Vec::new();
     let mut state_props_index: Vec<(u32, u16)> = Vec::with_capacity(char_data.moves.len());
+
+    let state_prop_name_refs: Vec<&str> = state_prop_names.iter().map(|s| s.as_str()).collect();
 
     for mv in &char_data.moves {
         if mv.properties.is_empty() {
             state_props_index.push((0, 0));
         } else {
             let offset = checked_u32(state_props_data.len(), "state_props offset")?;
-            let (props_blob, _count) = pack_state_props(&mv.properties, &mut strings)?;
+            let (props_blob, _count) = if has_schema && !state_prop_schema.is_empty() {
+                pack_state_props_with_schema(
+                    &mv.properties,
+                    &state_prop_schema,
+                    &state_prop_name_refs,
+                    &mut strings,
+                )?
+            } else {
+                pack_state_props(&mv.properties, &mut strings)?
+            };
             let byte_len = checked_u16(props_blob.len(), "state_props byte length")?;
             state_props_data.extend(props_blob);
             state_props_index.push((offset, byte_len));
@@ -412,12 +529,6 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     }
 
     let string_table_data = strings.into_bytes();
-
-    struct SectionData {
-        kind: u32,
-        align: u32,
-        bytes: Vec<u8>,
-    }
 
     let mut sections: Vec<SectionData> = Vec::new();
 
@@ -554,14 +665,16 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         });
     }
     if !state_props_data.is_empty() {
-        // STATE_PROPS section contains fixed 12-byte property records for each state.
+        // STATE_PROPS section contains property records for each state.
+        // When schema is present: 8-byte records with schema IDs.
+        // Otherwise: 12-byte records with string refs.
         // The state_props_index tracks (offset, byte_len) for each state in parallel to STATES.
         // States without properties have (0, 0) entries.
         // Nested properties are flattened at export time using dot notation.
         //
         // Format:
         // - STATE_PROPS_INDEX: Array of (offset: u32, byte_len: u16, pad: u16) = 8 bytes per state
-        // - STATE_PROPS_DATA: Concatenated 12-byte property records
+        // - STATE_PROPS_DATA: Concatenated property records
         //
         // We pack both into a single section, with index first:
         let mut state_props_section: Vec<u8> =
@@ -600,6 +713,15 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         });
     }
 
+    // Add schema section if present (must come after string table is finalized)
+    if !schema_section_data.is_empty() {
+        sections.push(SectionData {
+            kind: SECTION_SCHEMA,
+            align: 4,
+            bytes: schema_section_data,
+        });
+    }
+
     if sections.len() > 24 {
         return Err(format!(
             "Too many sections ({}), MAX_SECTIONS is 24",
@@ -611,14 +733,6 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
     let section_count = checked_u32(sections.len(), "section_count")?;
     let header_and_sections_size = HEADER_SIZE + (sections.len() * SECTION_HEADER_SIZE);
     let mut current_offset: usize = header_and_sections_size;
-
-    #[derive(Clone, Copy)]
-    struct SectionHeader {
-        kind: u32,
-        off: u32,
-        len: u32,
-        align: u32,
-    }
 
     let mut section_headers: Vec<SectionHeader> = Vec::with_capacity(sections.len());
     for s in &sections {
@@ -818,7 +932,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let result = export_fspk(&char_data);
+        let result = export_fspk(&char_data, None);
         assert!(result.is_ok(), "export_fspk should succeed");
 
         let bytes = result.unwrap();
@@ -853,7 +967,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let result = export_fspk(&char_data);
+        let result = export_fspk(&char_data, None);
         assert!(
             result.is_ok(),
             "export_fspk should succeed with no moves"
@@ -887,8 +1001,8 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let bytes1 = export_fspk(&char_data1).unwrap();
-        let bytes2 = export_fspk(&char_data2).unwrap();
+        let bytes1 = export_fspk(&char_data1, None).unwrap();
+        let bytes2 = export_fspk(&char_data2, None).unwrap();
         assert_eq!(
             bytes1, bytes2,
             "Export should be deterministic regardless of move order"
@@ -903,7 +1017,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let bytes = export_fspk(&char_data).unwrap();
+        let bytes = export_fspk(&char_data, None).unwrap();
 
         let section_count = read_u32_le(&bytes, 12) as usize;
         let header_end = HEADER_SIZE + (section_count * SECTION_HEADER_SIZE);
@@ -956,7 +1070,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let bytes = export_fspk(&char_data).unwrap();
+        let bytes = export_fspk(&char_data, None).unwrap();
         let section_count = read_u32_le(&bytes, 12) as usize;
         let header_end = HEADER_SIZE + section_count * SECTION_HEADER_SIZE;
 
@@ -1003,7 +1117,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let result = export_fspk(&char_data);
+        let result = export_fspk(&char_data, None);
         assert!(result.is_err(), "expected overflow to return Err");
     }
 
@@ -1035,7 +1149,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let result = export_fspk(&char_data);
+        let result = export_fspk(&char_data, None);
         assert!(result.is_err(), "expected overflow to return Err");
     }
 
@@ -1052,7 +1166,7 @@ mod tests {
             cancel_table: make_empty_cancel_table(),
         };
 
-        let bytes = export_fspk(&char_data).unwrap();
+        let bytes = export_fspk(&char_data, None).unwrap();
 
         // Verify magic
         assert_eq!(&bytes[0..4], b"FSPK");
@@ -1088,7 +1202,7 @@ mod tests {
         };
 
         // Export to bytes
-        let bytes = export_fspk(&char_data).expect("export should succeed");
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
 
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
@@ -1140,7 +1254,7 @@ mod tests {
         };
 
         // Export to bytes
-        let bytes = export_fspk(&char_data).expect("export should succeed");
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
 
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
@@ -1201,7 +1315,7 @@ mod tests {
         };
 
         // Export to bytes
-        let bytes = export_fspk(&char_data).expect("export should succeed");
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
 
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
@@ -1237,7 +1351,7 @@ mod tests {
         };
 
         // Export to bytes
-        let bytes = export_fspk(&char_data).expect("export should succeed");
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
 
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
@@ -1277,7 +1391,7 @@ mod tests {
         };
 
         // Export to bytes
-        let bytes = export_fspk(&char_data).expect("export should succeed");
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
 
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
@@ -1304,4 +1418,196 @@ mod tests {
 
     // NOTE: Chain cancel tests removed - chains are deprecated.
     // Cancel rules are now handled through tag_rules with bitfield conditions.
+
+    // =========================================================================
+    // Schema-Based Export Tests
+    // =========================================================================
+
+    #[test]
+    fn test_export_with_schema_adds_schema_section() {
+        use crate::rules::{MergedRules, PropertySchema};
+
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![make_test_move("5L", "stand_light")],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        let rules = MergedRules {
+            registry: Default::default(),
+            properties: Some(PropertySchema {
+                character: vec![
+                    "archetype".to_string(),
+                    "health".to_string(),
+                    "walk_speed".to_string(),
+                    "back_walk_speed".to_string(),
+                    "jump_height".to_string(),
+                    "jump_duration".to_string(),
+                    "dash_distance".to_string(),
+                    "dash_duration".to_string(),
+                ],
+                state: vec![],
+            }),
+            tags: None,
+        };
+
+        let bytes = export_fspk(&char_data, Some(&rules)).expect("export should succeed");
+
+        // Parse with framesmith_fspack reader
+        let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
+
+        // Should have schema section present (section ID 24)
+        let schema_section = pack.get_section(SECTION_SCHEMA);
+        assert!(schema_section.is_some(), "SECTION_SCHEMA should be present");
+    }
+
+    #[test]
+    fn test_export_with_schema_validates_unknown_property() {
+        use crate::rules::{MergedRules, PropertySchema};
+
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![make_test_move("5L", "stand_light")],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        // Schema missing some character properties
+        let rules = MergedRules {
+            registry: Default::default(),
+            properties: Some(PropertySchema {
+                character: vec!["health".to_string()], // Missing other properties
+                state: vec![],
+            }),
+            tags: None,
+        };
+
+        let result = export_fspk(&char_data, Some(&rules));
+        assert!(result.is_err(), "export should fail with missing properties");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not defined in the schema"),
+            "error should mention schema: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_export_with_schema_validates_unknown_tag() {
+        use crate::rules::{MergedRules, PropertySchema};
+        use crate::schema::Tag;
+
+        let mut mv = make_test_move("5L", "stand_light");
+        mv.tags = vec![Tag::new("unknown_tag").unwrap()];
+
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![mv],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        // Schema with tags but missing the one used
+        let rules = MergedRules {
+            registry: Default::default(),
+            properties: Some(PropertySchema {
+                character: vec![
+                    "archetype".to_string(),
+                    "health".to_string(),
+                    "walk_speed".to_string(),
+                    "back_walk_speed".to_string(),
+                    "jump_height".to_string(),
+                    "jump_duration".to_string(),
+                    "dash_distance".to_string(),
+                    "dash_duration".to_string(),
+                ],
+                state: vec![],
+            }),
+            tags: Some(vec!["normal".to_string(), "special".to_string()]),
+        };
+
+        let result = export_fspk(&char_data, Some(&rules));
+        assert!(result.is_err(), "export should fail with unknown tag");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("unknown_tag") && err.contains("not defined in the tag schema"),
+            "error should mention unknown tag: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_export_with_schema_validates_move_type_as_tag() {
+        use crate::rules::{MergedRules, PropertySchema};
+
+        let mut mv = make_test_move("5L", "stand_light");
+        mv.move_type = Some("unknown_type".to_string());
+
+        let char_data = CharacterData {
+            character: make_test_character("test"),
+            moves: vec![mv],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        // Schema with tags but missing the move type
+        let rules = MergedRules {
+            registry: Default::default(),
+            properties: Some(PropertySchema {
+                character: vec![
+                    "archetype".to_string(),
+                    "health".to_string(),
+                    "walk_speed".to_string(),
+                    "back_walk_speed".to_string(),
+                    "jump_height".to_string(),
+                    "jump_duration".to_string(),
+                    "dash_distance".to_string(),
+                    "dash_duration".to_string(),
+                ],
+                state: vec![],
+            }),
+            tags: Some(vec!["normal".to_string(), "special".to_string()]),
+        };
+
+        let result = export_fspk(&char_data, Some(&rules));
+        assert!(result.is_err(), "export should fail with unknown move type");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("unknown_type") && err.contains("not defined in the tag schema"),
+            "error should mention unknown move type: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_export_without_schema_uses_12_byte_records() {
+        use crate::schema::PropertyValue;
+
+        let mut char = make_test_character("test");
+        // Use a subset of properties for cleaner test
+        char.properties.clear();
+        char.properties
+            .insert("health".to_string(), PropertyValue::Number(1000.0));
+        char.properties
+            .insert("walkSpeed".to_string(), PropertyValue::Number(3.5));
+
+        let char_data = CharacterData {
+            character: char,
+            moves: vec![make_test_move("5L", "stand_light")],
+            cancel_table: make_empty_cancel_table(),
+        };
+
+        // Export without schema
+        let bytes = export_fspk(&char_data, None).expect("export should succeed");
+
+        // Parse and verify CHARACTER_PROPS section exists and has correct size
+        let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
+        let char_props = pack
+            .get_section(SECTION_CHARACTER_PROPS)
+            .expect("should have CHARACTER_PROPS section");
+
+        // 2 properties * 12 bytes = 24 bytes
+        assert_eq!(
+            char_props.len(),
+            24,
+            "CHARACTER_PROPS should use 12-byte records"
+        );
+    }
 }
