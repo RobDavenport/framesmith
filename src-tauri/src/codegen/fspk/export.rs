@@ -9,13 +9,14 @@ use crate::codegen::fspk_format::{
     SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES,
     SECTION_MOVE_RESOURCE_COSTS, SECTION_MOVE_RESOURCE_DELTAS,
     SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_PUSH_WINDOWS, SECTION_RESOURCE_DEFS,
-    SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_TAGS,
-    SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, STATE_EXTRAS72_SIZE, STRREF_SIZE,
+    SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_PROPS,
+    SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, STATE_EXTRAS72_SIZE,
+    STRREF_SIZE,
 };
 use crate::commands::CharacterData;
 
 use super::moves::{build_asset_keys, pack_moves};
-use super::properties::pack_character_props;
+use super::properties::{pack_character_props, pack_state_props};
 use super::sections::{
     pack_event_args, OPT_U16_NONE, RESOURCE_DELTA_TRIGGER_ON_BLOCK,
     RESOURCE_DELTA_TRIGGER_ON_HIT, RESOURCE_DELTA_TRIGGER_ON_USE,
@@ -388,8 +389,27 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
         }
     }
 
-    // Pack character properties (dynamic key-value pairs like health, walk_speed, etc.)
+    // Pack character properties (fixed 12-byte records)
     let character_props_data = pack_character_props(&char_data.character, &mut strings)?;
+
+    // Pack per-state properties into STATE_PROPS section.
+    // Format: Fixed 12-byte property records (same as CHARACTER_PROPS).
+    // We build a parallel index: state_props_index[state_idx] = (offset, byte_len)
+    // If a state has no properties, its entry is (0, 0).
+    let mut state_props_data: Vec<u8> = Vec::new();
+    let mut state_props_index: Vec<(u32, u16)> = Vec::with_capacity(char_data.moves.len());
+
+    for mv in &char_data.moves {
+        if mv.properties.is_empty() {
+            state_props_index.push((0, 0));
+        } else {
+            let offset = checked_u32(state_props_data.len(), "state_props offset")?;
+            let (props_blob, _count) = pack_state_props(&mv.properties, &mut strings)?;
+            let byte_len = checked_u16(props_blob.len(), "state_props byte length")?;
+            state_props_data.extend(props_blob);
+            state_props_index.push((offset, byte_len));
+        }
+    }
 
     let string_table_data = strings.into_bytes();
 
@@ -531,6 +551,52 @@ pub fn export_fspk(char_data: &CharacterData) -> Result<Vec<u8>, String> {
             kind: SECTION_CHARACTER_PROPS,
             align: 4,
             bytes: character_props_data,
+        });
+    }
+    if !state_props_data.is_empty() {
+        // STATE_PROPS section contains fixed 12-byte property records for each state.
+        // The state_props_index tracks (offset, byte_len) for each state in parallel to STATES.
+        // States without properties have (0, 0) entries.
+        // Nested properties are flattened at export time using dot notation.
+        //
+        // Format:
+        // - STATE_PROPS_INDEX: Array of (offset: u32, byte_len: u16, pad: u16) = 8 bytes per state
+        // - STATE_PROPS_DATA: Concatenated 12-byte property records
+        //
+        // We pack both into a single section, with index first:
+        let mut state_props_section: Vec<u8> =
+            Vec::with_capacity(state_props_index.len() * 8 + state_props_data.len());
+
+        // Write index entries (8 bytes each: offset u32 + len u16 + padding u16)
+        for (off, len) in &state_props_index {
+            write_u32_le(&mut state_props_section, *off);
+            write_u16_le(&mut state_props_section, *len);
+            write_u16_le(&mut state_props_section, 0); // padding
+        }
+
+        // Adjust offsets to account for index size
+        let index_size = state_props_index.len() * 8;
+        for chunk in state_props_section.chunks_mut(8) {
+            if chunk.len() >= 6 {
+                let old_off = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                let len_val = u16::from_le_bytes([chunk[4], chunk[5]]);
+                // Only adjust non-empty entries
+                if len_val > 0 {
+                    let new_off = old_off
+                        .checked_add(index_size as u32)
+                        .ok_or_else(|| "state_props offset overflow".to_string())?;
+                    chunk[0..4].copy_from_slice(&new_off.to_le_bytes());
+                }
+            }
+        }
+
+        // Append the actual props data
+        state_props_section.extend(state_props_data);
+
+        sections.push(SectionData {
+            kind: SECTION_STATE_PROPS,
+            align: 4,
+            bytes: state_props_section,
         });
     }
 
@@ -677,6 +743,7 @@ mod tests {
             notifies: vec![],
             advanced_hurtboxes: None,
             pushboxes: vec![],
+            properties: std::collections::BTreeMap::new(),
             base: None,
             id: None,
         }
@@ -736,6 +803,7 @@ mod tests {
             notifies: vec![],
             advanced_hurtboxes: None,
             pushboxes: vec![],
+            properties: std::collections::BTreeMap::new(),
             base: None,
             id: None,
         }

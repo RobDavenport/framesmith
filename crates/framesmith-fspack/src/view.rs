@@ -96,6 +96,11 @@ pub const SECTION_CHARACTER_PROPS: u32 = 21;
 /// Array of PushWindow12 structs (body collision)
 pub const SECTION_PUSH_WINDOWS: u32 = 22;
 
+/// Per-state properties (fixed 12-byte records, same format as CHARACTER_PROPS)
+/// Format: index array (8 bytes per state: offset u32 + count u16 + pad u16) followed by props data
+/// Each property record is 12 bytes: name_off(4) + name_len(2) + type(1) + pad(1) + value(4)
+pub const SECTION_STATE_PROPS: u32 = 23;
+
 // =============================================================================
 // Structure Sizes
 // =============================================================================
@@ -154,6 +159,9 @@ pub const CHARACTER_PROP_SIZE: usize = 12;
 
 /// PushWindow record size (12 bytes) - same layout as HurtWindow
 pub const PUSH_WINDOW_SIZE: usize = 12;
+
+/// StatePropsIndex entry size: offset(4) + len(2) + pad(2) = 8 bytes
+pub const STATE_PROPS_INDEX_ENTRY_SIZE: usize = 8;
 
 // =============================================================================
 // Shape Type Constants
@@ -342,6 +350,13 @@ impl<'a> PackView<'a> {
             return None;
         }
         core::str::from_utf8(&table[start..end]).ok()
+    }
+
+    /// Get the raw string pool bytes for direct access.
+    ///
+    /// Returns the STRING_TABLE section bytes, or an empty slice if not present.
+    pub fn string_pool(&self) -> &'a [u8] {
+        self.get_section(SECTION_STRING_TABLE).unwrap_or(&[])
     }
 
     /// Get mesh keys section as a typed view.
@@ -551,6 +566,46 @@ impl<'a> PackView<'a> {
     pub fn character_props(&self) -> Option<CharacterPropsView<'a>> {
         let data = self.get_section(SECTION_CHARACTER_PROPS)?;
         Some(CharacterPropsView { data })
+    }
+
+    /// Get raw property record bytes for a state.
+    ///
+    /// Returns `None` if:
+    /// - No STATE_PROPS section exists
+    /// - The state index is out of bounds
+    /// - The state has no properties (len == 0)
+    ///
+    /// The returned bytes contain fixed 12-byte property records.
+    /// Each record: name_off(u32) + name_len(u16) + type(u8) + pad(u8) + value(4 bytes).
+    /// Use the string pool to look up property names from (name_off, name_len).
+    pub fn state_props_raw(&self, state_idx: usize) -> Option<&'a [u8]> {
+        let section = self.get_section(SECTION_STATE_PROPS)?;
+
+        // The section starts with an index: one entry per state
+        // Each entry is 8 bytes: offset(4) + len(2) + pad(2)
+        let index_entry_off = state_idx.checked_mul(STATE_PROPS_INDEX_ENTRY_SIZE)?;
+
+        // Read the index entry
+        let off = read_u32_le(section, index_entry_off)? as usize;
+        let len = read_u16_le(section, index_entry_off + 4)? as usize;
+
+        // Empty properties (len == 0) means no data
+        if len == 0 {
+            return None;
+        }
+
+        // Bounds check
+        let end = off.checked_add(len)?;
+        if end > section.len() {
+            return None;
+        }
+
+        Some(&section[off..end])
+    }
+
+    /// Check if a state has properties.
+    pub fn has_state_props(&self, state_idx: usize) -> bool {
+        self.state_props_raw(state_idx).is_some()
     }
 }
 

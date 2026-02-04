@@ -109,6 +109,11 @@ pub const SECTION_CHARACTER_PROPS: u32 = 21;
 /// Array of PushWindow12 structs (body collision boxes, same format as HurtWindow12)
 pub const SECTION_PUSH_WINDOWS: u32 = 22;
 
+/// Per-state properties (fixed 12-byte records, same format as CHARACTER_PROPS)
+/// Layout: index array (8 bytes per state: offset u32 + byte_len u16 + pad u16) followed by property records.
+/// Nested properties are flattened using dot notation (e.g., "movement.distance").
+pub const SECTION_STATE_PROPS: u32 = 23;
+
 /// Character property record size: name_off(4) + name_len(2) + type(1) + reserved(1) + value(4) = 12 bytes
 pub const CHARACTER_PROP12_SIZE: usize = 12;
 
@@ -121,6 +126,10 @@ pub const PROP_TYPE_Q24_8: u8 = 0;
 pub const PROP_TYPE_BOOL: u8 = 1;
 /// Property type: string reference (u16 offset + u16 len in value field)
 pub const PROP_TYPE_STR: u8 = 2;
+/// Property type: array (reserved for future use, currently flattened at export)
+pub const PROP_TYPE_ARRAY: u8 = 3;
+/// Property type: object/map (reserved for future use, currently flattened at export)
+pub const PROP_TYPE_OBJECT: u8 = 4;
 
 // =============================================================================
 // Sentinel Values
@@ -331,6 +340,7 @@ mod tests {
             SECTION_CANCEL_DENIES,
             SECTION_CHARACTER_PROPS,
             SECTION_PUSH_WINDOWS,
+            SECTION_STATE_PROPS,
         ];
         let mut sorted = kinds;
         sorted.sort();

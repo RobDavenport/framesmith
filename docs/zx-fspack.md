@@ -184,6 +184,7 @@ if let Some(states) = pack.states() {
 | CANCEL_DENIES | 20 | Array of CancelDeny4 structs |
 | CHARACTER_PROPS | 21 | Array of CharacterProp12 structs (dynamic key-value properties) |
 | PUSH_WINDOWS | 22 | Array of PushWindow12 structs (body collision boxes) |
+| STATE_PROPS | 23 | Per-state properties (index + CharacterProp12 records) |
 
 ### Data Structures
 
@@ -447,6 +448,27 @@ Dynamic key-value character property. Supports numeric (Q24.8 fixed-point), bool
 
 Q24.8 provides a range of approximately +/-8 million with 1/256 precision, suitable for values like health (0-99999), speeds (0.0-100.0), and frame counts.
 
+#### STATE_PROPS Section Layout
+
+Per-state properties using the same CharacterProp12 format. Nested properties (Object, Array) are flattened at export time using dot notation:
+
+- `{"movement": {"distance": 80}}` becomes `{"movement.distance": 80}`
+- `{"effects": ["spark", 2]}` becomes `{"effects.0": "spark", "effects.1": 2}`
+
+**Section Format:**
+
+1. **Index** (8 bytes per state, parallel to STATES):
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | offset | Byte offset into property data (after index) |
+| 4 | 2 | byte_len | Length of property data in bytes |
+| 6 | 2 | _pad | Reserved (0) |
+
+2. **Property Data**: Concatenated CharacterProp12 records for all states.
+
+States without properties have `(0, 0)` in their index entry. The `byte_len` field contains the total byte size (number of properties × 12).
+
 #### PushWindow12 (12 bytes)
 
 Body collision box frame ranges. Uses the same format as HurtWindow12.
@@ -509,6 +531,13 @@ Planned for future versions:
 - **TBD**: Optional per-section compression
 
 ## Changelog
+
+### v1.4 (2026-02-04)
+
+- Added per-state dynamic properties:
+  - Section 23: `STATE_PROPS` - per-state key-value properties using same format as CHARACTER_PROPS
+  - Properties support nesting in JSON (Object, Array) which is flattened at export using dot notation
+  - Enables engine-agnostic state configuration without fixed schema changes
 
 ### v1.3 (2026-02-02)
 

@@ -21,7 +21,7 @@ enum Adapter {
 impl Adapter {
     fn parse(s: &str) -> Result<Self, String> {
         match s {
-            "zx-fspack" => Ok(Self::ZxFspack),
+            "fspk" => Ok(Self::ZxFspack),
             "json-blob" => Ok(Self::JsonBlob),
             _ => Err(format!("Unknown adapter: {}", s)),
         }
@@ -29,7 +29,7 @@ impl Adapter {
 
     fn as_str(self) -> &'static str {
         match self {
-            Self::ZxFspack => "zx-fspack",
+            Self::ZxFspack => "fspk",
             Self::JsonBlob => "json-blob",
         }
     }
@@ -56,7 +56,7 @@ struct ExportArgs {
 }
 
 fn usage() -> &'static str {
-    "Framesmith CLI\n\nUSAGE:\n  framesmith export [options]\n\nOPTIONS:\n  --project <dir>         Project root (expects <dir>/characters)\n  --characters-dir <dir>  Characters directory (overrides --project)\n  --character <id>        Character ID (folder name under characters dir)\n  --all                   Export all characters\n  --out <file>            Output file (single-character export)\n  --out-dir <dir>         Output directory (export all)\n  --adapter <name>        Adapter: zx-fspack (default), json-blob\n  --pretty                Pretty JSON output (json-blob only)\n  --keep-going            Continue exporting others after an error (export all only)\n  -h, --help              Print help\n\nENV:\n  FRAMESMITH_CHARACTERS_DIR  Default characters directory if not provided\n"
+    "Framesmith CLI\n\nUSAGE:\n  framesmith export [options]\n\nOPTIONS:\n  --project <dir>         Project root (expects <dir>/characters)\n  --characters-dir <dir>  Characters directory (overrides --project)\n  --character <id>        Character ID (folder name under characters dir)\n  --all                   Export all characters\n  --out <file>            Output file (single-character export)\n  --out-dir <dir>         Output directory (export all)\n  --adapter <name>        Adapter: fspk (default), json-blob\n  --pretty                Pretty JSON output (json-blob only)\n  --keep-going            Continue exporting others after an error (export all only)\n  -h, --help              Print help\n\nENV:\n  FRAMESMITH_CHARACTERS_DIR  Default characters directory if not provided\n"
 }
 
 fn main() {

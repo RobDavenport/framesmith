@@ -75,7 +75,7 @@ pub struct UpdateStateParam {
 pub struct ExportCharacterParam {
     #[schemars(description = "The character ID (folder name under characters dir)")]
     pub character_id: String,
-    #[schemars(description = "Export adapter: 'zx-fspack' (default) or 'json-blob'")]
+    #[schemars(description = "Export adapter: 'fspk' (default) or 'json-blob'")]
     pub adapter: Option<String>,
     #[schemars(description = "Output file path, relative to the project root or absolute under the project root")]
     pub output_path: String,
@@ -85,7 +85,7 @@ pub struct ExportCharacterParam {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExportAllCharactersParam {
-    #[schemars(description = "Export adapter: 'zx-fspack' (default) or 'json-blob'")]
+    #[schemars(description = "Export adapter: 'fspk' (default) or 'json-blob'")]
     pub adapter: Option<String>,
     #[schemars(description = "Output directory, relative to the project root or absolute under the project root")]
     pub out_dir: String,
@@ -142,16 +142,16 @@ impl FramesmithMcp {
         )]))
     }
 
-    #[tool(description = "Export a character to a file (runs validation + rules). Supports zx-fspack (.fspk) and json-blob (.json).")]
+    #[tool(description = "Export a character to a file (runs validation + rules). Supports fspk (.fspk) and json-blob (.json).")]
     async fn export_character(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportCharacterParam>,
     ) -> Result<CallToolResult, McpError> {
         use framesmith_lib::commands::export_character;
 
-        let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
+        let adapter = params.adapter.unwrap_or_else(|| "fspk".to_string());
         let pretty = params.pretty.unwrap_or(false);
-        if adapter == "zx-fspack" && pretty {
+        if adapter == "fspk" && pretty {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from("pretty=true is only supported for json-blob"),
@@ -212,10 +212,10 @@ impl FramesmithMcp {
     ) -> Result<CallToolResult, McpError> {
         use framesmith_lib::commands::export_character;
 
-        let adapter = params.adapter.unwrap_or_else(|| "zx-fspack".to_string());
+        let adapter = params.adapter.unwrap_or_else(|| "fspk".to_string());
         let pretty = params.pretty.unwrap_or(false);
         let keep_going = params.keep_going.unwrap_or(false);
-        if adapter == "zx-fspack" && pretty {
+        if adapter == "fspk" && pretty {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from("pretty=true is only supported for json-blob"),
@@ -961,7 +961,7 @@ fn resolve_output_path_under_project(project_root: &Path, user_path: &str) -> Re
 
 fn adapter_default_ext(adapter: &str) -> &'static str {
     match adapter {
-        "zx-fspack" => ".fspk",
+        "fspk" => ".fspk",
         "json-blob" => ".json",
         _ => ".bin",
     }

@@ -2010,7 +2010,7 @@ mod tests {
 
         let mut mv = make_valid_move();
         mv.recovery = 1;
-        mv.notifies = vec![crate::schema::MoveNotify {
+        mv.notifies = vec![crate::schema::StateNotify {
             frame: 99,
             events: vec![],
         }];

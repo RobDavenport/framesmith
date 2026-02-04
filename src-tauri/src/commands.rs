@@ -962,6 +962,7 @@ pub fn create_move(
         notifies: vec![],
         advanced_hurtboxes: None,
         pushboxes: vec![],
+        properties: std::collections::BTreeMap::new(),
         base: None,
         id: None,
     };

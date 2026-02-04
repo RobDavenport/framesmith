@@ -92,22 +92,21 @@ pub fn pack_hit_window(
 
 /// Pack a FrameHitbox into a HurtWindow12 structure.
 ///
-/// HurtWindow12 layout (12 bytes):
-/// - frame_start (u8): first active frame
-/// - frame_end (u8): last active frame
-/// - shape_off (u32): offset into SHAPES section
-/// - shape_count (u16): number of shapes (always 1 for v1)
-/// - flags (u16): hurtbox flags (invuln, armor, etc.)
-/// - reserved (2 bytes): padding
+/// HurtWindow12 layout (12 bytes) - matches HurtWindowView expected format:
+/// - 0-1: frame_start, frame_end (u8, u8)
+/// - 2-3: flags (u16) - hurtbox flags (invuln, armor, etc.)
+/// - 4-7: shapes_off (u32) - byte offset into SHAPES section
+/// - 8-9: shapes_len (u16) - number of shapes (always 1 for v1)
+/// - 10-11: padding
 pub fn pack_hurt_window(hb: &FrameHitbox, shapes_off: u32) -> [u8; HURT_WINDOW12_SIZE] {
     let mut buf = [0u8; HURT_WINDOW12_SIZE];
 
     buf[0] = hb.frames.0; // frame_start
     buf[1] = hb.frames.1; // frame_end
-    buf[2..6].copy_from_slice(&shapes_off.to_le_bytes()); // shape_off
-    buf[6..8].copy_from_slice(&1u16.to_le_bytes()); // shape_count = 1
-    buf[8..10].copy_from_slice(&0u16.to_le_bytes()); // flags = 0 for v1
-                                                     // bytes 10-11 are reserved/padding (already zeroed)
+    buf[2..4].copy_from_slice(&0u16.to_le_bytes()); // flags = 0 for v1
+    buf[4..8].copy_from_slice(&shapes_off.to_le_bytes()); // shapes_off
+    buf[8..10].copy_from_slice(&1u16.to_le_bytes()); // shapes_len = 1
+    // bytes 10-11 are padding (already zeroed)
 
     buf
 }
@@ -275,8 +274,17 @@ mod tests {
         assert_eq!(hw[0], 5); // frame_start
         assert_eq!(hw[1], 8); // frame_end
 
-        let shape_off = u32::from_le_bytes([hw[2], hw[3], hw[4], hw[5]]);
+        // flags at bytes 2-3
+        let flags = u16::from_le_bytes([hw[2], hw[3]]);
+        assert_eq!(flags, 0);
+
+        // shapes_off at bytes 4-7
+        let shape_off = u32::from_le_bytes([hw[4], hw[5], hw[6], hw[7]]);
         assert_eq!(shape_off, 200);
+
+        // shapes_len at bytes 8-9
+        let shapes_len = u16::from_le_bytes([hw[8], hw[9]]);
+        assert_eq!(shapes_len, 1);
     }
 
     #[test]
@@ -298,4 +306,29 @@ mod tests {
         let y = i16::from_le_bytes([shape[4], shape[5]]);
         assert_eq!(y, -1600); // -100 -> Q12.4 = -1600
     }
+
+    #[test]
+    fn pack_hurt_window_matches_view_format() {
+        use framesmith_fspack::bytes::{read_u8, read_u16_le, read_u32_le};
+
+        let hb = FrameHitbox {
+            frames: (3, 7),
+            r#box: Rect { x: 0, y: 0, w: 10, h: 20 },
+        };
+        let shapes_off: u32 = 0x1234_5678;
+
+        let buf = pack_hurt_window(&hb, shapes_off);
+
+        // Verify fields match HurtWindowView's expected layout:
+        // - bytes 0-1: frame_start, frame_end
+        // - bytes 2-3: flags (u16)
+        // - bytes 4-7: shapes_off (u32)
+        // - bytes 8-9: shapes_len (u16)
+        assert_eq!(read_u8(&buf, 0), Some(3), "frame_start");
+        assert_eq!(read_u8(&buf, 1), Some(7), "frame_end");
+        assert_eq!(read_u16_le(&buf, 2), Some(0), "flags should be 0");
+        assert_eq!(read_u32_le(&buf, 4), Some(0x1234_5678), "shapes_off");
+        assert_eq!(read_u16_le(&buf, 8), Some(1), "shapes_len should be 1");
+    }
+
 }

@@ -490,6 +490,7 @@ mod tests {
             on_block: None,
             notifies: vec![],
             pushboxes: vec![],
+            properties: std::collections::BTreeMap::new(),
             base: None,
             id: None,
         }

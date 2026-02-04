@@ -111,6 +111,7 @@ fn fspk_move_record_fields_match_reader_layout() {
             notifies: vec![],
             advanced_hurtboxes: None,
             pushboxes: vec![],
+            properties: std::collections::BTreeMap::new(),
             base: None,
             id: None,
         }],
@@ -151,6 +152,141 @@ fn fspk_move_record_fields_match_reader_layout() {
     assert_eq!(mv.hit_windows_len(), 1);
     assert_eq!(mv.hurt_windows_off(), 0);
     assert_eq!(mv.hurt_windows_len(), 1);
+
+    // === Full chain test: move → hurt_windows → shapes ===
+    // This verifies the binary layout matches between encoder and view.
+    let hurt_windows = pack.hurt_windows().expect("HURT_WINDOWS section");
+    let hw = hurt_windows
+        .get_at(mv.hurt_windows_off(), 0)
+        .expect("hurt window 0");
+    assert_eq!(hw.start_frame(), 0, "hurt window start frame");
+    assert_eq!(hw.end_frame(), 17, "hurt window end frame");
+    assert_eq!(hw.shapes_len(), 1, "hurt window shapes_len");
+
+    // Verify shapes_off points to valid shape data
+    let shapes = pack.shapes().expect("SHAPES section");
+    let shape = shapes
+        .get_at(hw.shapes_off(), 0)
+        .expect("shape from hurt window");
+    // Original rect: x=-10, y=-60, w=30, h=60
+    // Q12.4: x=-160, y=-960, w=480, h=960
+    assert_eq!(shape.kind(), framesmith_fspack::SHAPE_KIND_AABB);
+    assert_eq!(shape.a_raw(), -160, "shape x (Q12.4)");
+    assert_eq!(shape.b_raw(), -960, "shape y (Q12.4)");
+    assert_eq!(shape.c_raw(), 480, "shape w (Q12.4)");
+    assert_eq!(shape.d_raw(), 960, "shape h (Q12.4)");
+
+    // === Full chain test: move → hit_windows → shapes ===
+    let hit_windows = pack.hit_windows().expect("HIT_WINDOWS section");
+    let hitw = hit_windows
+        .get_at(mv.hit_windows_off(), 0)
+        .expect("hit window 0");
+    assert_eq!(hitw.start_frame(), 7, "hit window start frame");
+    assert_eq!(hitw.end_frame(), 9, "hit window end frame");
+    assert_eq!(hitw.shapes_len(), 1, "hit window shapes_len");
+
+    let hit_shape = shapes
+        .get_at(hitw.shapes_off(), 0)
+        .expect("shape from hit window");
+    // Original rect: x=0, y=-40, w=30, h=16
+    // Q12.4: x=0, y=-640, w=480, h=256
+    assert_eq!(hit_shape.kind(), framesmith_fspack::SHAPE_KIND_AABB);
+    assert_eq!(hit_shape.a_raw(), 0, "hit shape x (Q12.4)");
+    assert_eq!(hit_shape.b_raw(), -640, "hit shape y (Q12.4)");
+    assert_eq!(hit_shape.c_raw(), 480, "hit shape w (Q12.4)");
+    assert_eq!(hit_shape.d_raw(), 256, "hit shape h (Q12.4)");
+}
+
+/// Verify the full chain: move → push_windows → shapes.
+/// This catches encoder/view format mismatches in pushbox collision data.
+#[test]
+fn fspk_pushbox_chain_roundtrip() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State,
+    };
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            tags: vec![],
+            startup: 5,
+            active: 3,
+            recovery: 7,
+            damage: 0,
+            hitstun: 0,
+            blockstun: 0,
+            hitstop: 0,
+            guard: GuardType::Mid,
+            hitboxes: vec![],
+            hurtboxes: vec![],
+            pushboxes: vec![FrameHitbox {
+                frames: (0, 14),
+                r#box: Rect {
+                    x: -20,
+                    y: -80,
+                    w: 40,
+                    h: 80,
+                },
+            }],
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            animation: "test".to_string(),
+            move_type: None,
+            trigger: None,
+            parent: None,
+            total: None,
+            hits: None,
+            preconditions: None,
+            costs: None,
+            movement: None,
+            super_freeze: None,
+            on_use: None,
+            on_hit: None,
+            on_block: None,
+            notifies: vec![],
+            advanced_hurtboxes: None,
+            properties: std::collections::BTreeMap::new(),
+            base: None,
+            id: None,
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    let moves = pack.states().expect("moves section");
+    let mv = moves.get(0).expect("move 0");
+
+    // Verify move points to push windows
+    assert_eq!(mv.push_windows_len(), 1, "push_windows_len");
+
+    // Full chain: move → push_windows → shapes
+    let push_windows = pack.push_windows().expect("PUSH_WINDOWS section");
+    let pw = push_windows
+        .get_at(mv.push_windows_off(), 0)
+        .expect("push window 0");
+
+    assert_eq!(pw.start_frame(), 0, "push window start frame");
+    assert_eq!(pw.end_frame(), 14, "push window end frame");
+    assert_eq!(pw.shapes_len(), 1, "push window shapes_len");
+
+    // Verify shapes_off is valid and points to correct shape
+    let shapes = pack.shapes().expect("SHAPES section");
+    let shape = shapes
+        .get_at(pw.shapes_off(), 0)
+        .expect("shape from push window - this would fail if format mismatched");
+
+    // Original rect: x=-20, y=-80, w=40, h=80
+    // Q12.4: x=-320, y=-1280, w=640, h=1280
+    assert_eq!(shape.kind(), framesmith_fspack::SHAPE_KIND_AABB);
+    assert_eq!(shape.a_raw(), -320, "pushbox x (Q12.4)");
+    assert_eq!(shape.b_raw(), -1280, "pushbox y (Q12.4)");
+    assert_eq!(shape.c_raw(), 640, "pushbox w (Q12.4)");
+    assert_eq!(shape.d_raw(), 1280, "pushbox h (Q12.4)");
 }
 
 #[test]
@@ -158,7 +294,7 @@ fn fspk_exports_resources_and_events_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
         CancelTable, CharacterResource, Cost, EventArgValue, EventEmit, GuardType, MeterGain,
-        MoveNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State, TriggerType,
+        StateNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State, TriggerType,
     };
     use std::collections::BTreeMap;
 
@@ -196,7 +332,7 @@ fn fspk_exports_resources_and_events_sections() {
         name: "Notify event".to_string(),
         guard: GuardType::Mid,
         animation: "stand_medium".to_string(),
-        notifies: vec![MoveNotify {
+        notifies: vec![StateNotify {
             frame: 7,
             events: vec![EventEmit {
                 id: "vfx.swing_trail".to_string(),
@@ -682,4 +818,289 @@ fn test_cancel_condition_bitfield_roundtrip() {
     let json = serde_json::to_string(&table).unwrap();
     let parsed: CancelTable = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.tag_rules[0].on.0, cancel_flags::HIT | cancel_flags::BLOCK);
+}
+
+// =============================================================================
+// State Properties Roundtrip Tests
+// =============================================================================
+
+/// Decoded property value from FSPK binary format.
+#[derive(Debug, PartialEq)]
+enum DecodedPropValue {
+    Number(f64),   // Q24.8 converted back to f64
+    Bool(bool),
+    String(String),
+}
+
+/// Decode property records from raw bytes and string pool.
+/// Returns a map of property names to decoded values.
+fn decode_property_records(
+    props_raw: &[u8],
+    string_pool: &[u8],
+) -> std::collections::BTreeMap<String, DecodedPropValue> {
+    use std::collections::BTreeMap;
+
+    const PROP_RECORD_SIZE: usize = 12;
+    const PROP_TYPE_Q24_8: u8 = 0;
+    const PROP_TYPE_BOOL: u8 = 1;
+    const PROP_TYPE_STR: u8 = 2;
+
+    let mut result = BTreeMap::new();
+
+    for chunk in props_raw.chunks_exact(PROP_RECORD_SIZE) {
+        // Parse record fields
+        let name_off = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
+        let name_len = u16::from_le_bytes([chunk[4], chunk[5]]) as usize;
+        let value_type = chunk[6];
+        // chunk[7] is reserved
+
+        // Get property name from string pool
+        let name = std::str::from_utf8(&string_pool[name_off..name_off + name_len])
+            .expect("valid utf8 name")
+            .to_string();
+
+        // Decode value based on type
+        let value = match value_type {
+            PROP_TYPE_Q24_8 => {
+                let q24_8 = i32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+                DecodedPropValue::Number(q24_8 as f64 / 256.0)
+            }
+            PROP_TYPE_BOOL => {
+                let val = u32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+                DecodedPropValue::Bool(val != 0)
+            }
+            PROP_TYPE_STR => {
+                let str_off = u16::from_le_bytes([chunk[8], chunk[9]]) as usize;
+                let str_len = u16::from_le_bytes([chunk[10], chunk[11]]) as usize;
+                let s = std::str::from_utf8(&string_pool[str_off..str_off + str_len])
+                    .expect("valid utf8 string value")
+                    .to_string();
+                DecodedPropValue::String(s)
+            }
+            _ => panic!("unknown property type: {}", value_type),
+        };
+
+        result.insert(name, value);
+    }
+
+    result
+}
+
+#[test]
+fn state_properties_scalar_survive_roundtrip() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    let mut props = BTreeMap::new();
+    props.insert("custom_startup".to_string(), PropertyValue::Number(5.0));
+    props.insert("is_ex".to_string(), PropertyValue::Bool(true));
+    props.insert("effect".to_string(), PropertyValue::String("spark".to_string()));
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            properties: props.clone(),
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Verify STATE_PROPS section exists
+    assert!(
+        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS).is_some(),
+        "STATE_PROPS section should exist"
+    );
+
+    // Get raw props for state 0 and string pool
+    let props_raw = pack.state_props_raw(0).expect("state 0 should have props");
+    assert!(!props_raw.is_empty());
+
+    let string_pool = pack.string_pool();
+    let decoded = decode_property_records(props_raw, string_pool);
+
+    assert_eq!(decoded.len(), 3);
+    assert_eq!(decoded.get("custom_startup"), Some(&DecodedPropValue::Number(5.0)));
+    assert_eq!(decoded.get("is_ex"), Some(&DecodedPropValue::Bool(true)));
+    assert_eq!(
+        decoded.get("effect"),
+        Some(&DecodedPropValue::String("spark".to_string()))
+    );
+}
+
+#[test]
+fn state_properties_nested_flattened_on_export() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    // Create nested Object - will be flattened to "movement.distance", "movement.direction"
+    let mut movement = BTreeMap::new();
+    movement.insert("distance".to_string(), PropertyValue::Number(80.0));
+    movement.insert("direction".to_string(), PropertyValue::String("forward".to_string()));
+
+    // Create nested Array - will be flattened to "effects.0", "effects.1", "effects.2"
+    let effects = vec![
+        PropertyValue::String("spark".to_string()),
+        PropertyValue::Number(2.0),
+        PropertyValue::Bool(true),
+    ];
+
+    let mut props = BTreeMap::new();
+    props.insert("movement".to_string(), PropertyValue::Object(movement.clone()));
+    props.insert("effects".to_string(), PropertyValue::Array(effects.clone()));
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "236P".to_string(),
+            name: "Special".to_string(),
+            guard: GuardType::Mid,
+            animation: "special".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            properties: props,
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    let props_raw = pack.state_props_raw(0).expect("state 0 should have props");
+    let string_pool = pack.string_pool();
+    let decoded = decode_property_records(props_raw, string_pool);
+
+    // Nested Object is flattened with dot notation
+    assert_eq!(decoded.get("movement.distance"), Some(&DecodedPropValue::Number(80.0)));
+    assert_eq!(
+        decoded.get("movement.direction"),
+        Some(&DecodedPropValue::String("forward".to_string()))
+    );
+
+    // Nested Array is flattened with index notation
+    assert_eq!(decoded.get("effects.0"), Some(&DecodedPropValue::String("spark".to_string())));
+    assert_eq!(decoded.get("effects.1"), Some(&DecodedPropValue::Number(2.0)));
+    assert_eq!(decoded.get("effects.2"), Some(&DecodedPropValue::Bool(true)));
+
+    // Total: 2 from movement + 3 from effects = 5 flattened properties
+    assert_eq!(decoded.len(), 5);
+}
+
+#[test]
+fn state_without_properties_has_no_props_raw() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, Pushback, State,
+    };
+
+    // State with empty properties
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test".to_string(),
+            guard: GuardType::Mid,
+            animation: "test".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            // properties defaults to empty BTreeMap
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // STATE_PROPS section should not exist when no state has properties
+    assert!(
+        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS).is_none(),
+        "STATE_PROPS section should not exist when no states have properties"
+    );
+
+    // state_props_raw should return None
+    assert!(pack.state_props_raw(0).is_none());
+    assert!(!pack.has_state_props(0));
+}
+
+#[test]
+fn mixed_states_with_and_without_properties() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    let mut props = BTreeMap::new();
+    props.insert("damage_bonus".to_string(), PropertyValue::Number(10.0));
+
+    // Move 0: no properties (input sorts to "236P")
+    // Move 1: has properties (input sorts to "5L")
+    let mv_no_props = State {
+        input: "236P".to_string(),
+        name: "Special".to_string(),
+        guard: GuardType::Mid,
+        animation: "special".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        // Empty properties
+        ..Default::default()
+    };
+
+    let mv_with_props = State {
+        input: "5L".to_string(),
+        name: "Light".to_string(),
+        guard: GuardType::Mid,
+        animation: "light".to_string(),
+        pushback: Pushback { hit: 0, block: 0 },
+        meter_gain: MeterGain { hit: 0, whiff: 0 },
+        properties: props.clone(),
+        ..Default::default()
+    };
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![mv_no_props, mv_with_props],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    // Moves are sorted by input: "236P" (idx 0), "5L" (idx 1)
+    let idx_236p = pack.find_state_by_input("236P").expect("find 236P").0;
+    let idx_5l = pack.find_state_by_input("5L").expect("find 5L").0;
+
+    // 236P should have no props
+    assert!(
+        pack.state_props_raw(idx_236p).is_none(),
+        "236P should have no properties"
+    );
+    assert!(!pack.has_state_props(idx_236p));
+
+    // 5L should have props
+    let props_raw = pack.state_props_raw(idx_5l).expect("5L should have props");
+    let string_pool = pack.string_pool();
+    let decoded = decode_property_records(props_raw, string_pool);
+
+    assert_eq!(decoded.len(), 1);
+    assert_eq!(
+        decoded.get("damage_bonus"),
+        Some(&DecodedPropValue::Number(10.0))
+    );
 }

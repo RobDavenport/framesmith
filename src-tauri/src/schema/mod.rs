@@ -94,12 +94,59 @@ fn optional_frame_range_schema(gen: &mut schemars::SchemaGenerator) -> schemars:
 }
 
 /// A character property value (dynamic key-value).
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+///
+/// Supports nested structures via Array and Object variants for
+/// complex properties like movement, on_hit effects, etc.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum PropertyValue {
     Number(f64),
     Bool(bool),
     String(String),
+    Array(Vec<PropertyValue>),
+    Object(BTreeMap<String, PropertyValue>),
+}
+
+impl From<f64> for PropertyValue {
+    fn from(v: f64) -> Self {
+        PropertyValue::Number(v)
+    }
+}
+
+impl From<i32> for PropertyValue {
+    fn from(v: i32) -> Self {
+        PropertyValue::Number(v as f64)
+    }
+}
+
+impl From<bool> for PropertyValue {
+    fn from(v: bool) -> Self {
+        PropertyValue::Bool(v)
+    }
+}
+
+impl From<String> for PropertyValue {
+    fn from(v: String) -> Self {
+        PropertyValue::String(v)
+    }
+}
+
+impl From<&str> for PropertyValue {
+    fn from(v: &str) -> Self {
+        PropertyValue::String(v.to_string())
+    }
+}
+
+impl From<Vec<PropertyValue>> for PropertyValue {
+    fn from(v: Vec<PropertyValue>) -> Self {
+        PropertyValue::Array(v)
+    }
+}
+
+impl From<BTreeMap<String, PropertyValue>> for PropertyValue {
+    fn from(v: BTreeMap<String, PropertyValue>) -> Self {
+        PropertyValue::Object(v)
+    }
 }
 
 /// Complete character definition
@@ -247,11 +294,15 @@ pub struct State {
     pub on_hit: Option<OnHit>,
     pub on_block: Option<OnBlock>,
     #[serde(default)]
-    pub notifies: Vec<MoveNotify>,
+    pub notifies: Vec<StateNotify>,
     pub advanced_hurtboxes: Option<Vec<FrameHurtbox>>,
     /// Push boxes for body collision (same format as hurtboxes)
     #[serde(default)]
     pub pushboxes: Vec<FrameHitbox>,
+    /// Flexible properties map for engine-specific data.
+    /// Engines define what keys they need (e.g., "meter_cost", "super_armor_hits").
+    #[serde(default)]
+    pub properties: BTreeMap<String, PropertyValue>,
     /// Base state this variant inherits from (authoring only, not exported).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
@@ -294,6 +345,7 @@ impl Default for State {
             notifies: Vec::new(),
             advanced_hurtboxes: None,
             pushboxes: Vec::new(),
+            properties: BTreeMap::new(),
             base: None,
             id: None,
         }
@@ -327,7 +379,7 @@ pub struct ResourceDelta {
 
 /// Timeline-triggered notification events.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct MoveNotify {
+pub struct StateNotify {
     pub frame: u16,
     #[serde(default)]
     pub events: Vec<EventEmit>,
