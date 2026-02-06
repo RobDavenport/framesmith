@@ -18,6 +18,8 @@
 | Runtime API reference | [`runtime-api.md`](runtime-api.md) |
 | CLI | [`cli.md`](cli.md) |
 | Global states | [`global-states.md`](global-states.md) |
+| Character authoring | [`character-authoring-guide.md`](character-authoring-guide.md) |
+| Movement reference | [`movement-reference.md`](movement-reference.md) |
 
 ## Start Here
 
@@ -39,6 +41,8 @@
 | [`runtime-guide.md`](runtime-guide.md) | Runtime integration guide for game developers |
 | [`runtime-api.md`](runtime-api.md) | Complete runtime API reference |
 | [`design.md`](design.md) | Design notes and roadmap |
+| [`character-authoring-guide.md`](character-authoring-guide.md) | Guide to authoring characters |
+| [`movement-reference.md`](movement-reference.md) | Movement system reference |
 
 ## Plans
 

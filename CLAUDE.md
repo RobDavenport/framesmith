@@ -1,93 +1,76 @@
-# Claude Guidelines for Framesmith
+# Framesmith (Claude Code Guidelines)
 
-**Status:** Active
-**Last reviewed:** 2026-02-01
-
-## Project Context
-
-Framesmith is an engine-agnostic fighting game character authoring tool. It edits characters as JSON on disk (git-friendly, one state per file) and exports to runtime-friendly formats.
+Engine-agnostic fighting game character authoring tool. Tauri (Rust) + SvelteKit (TypeScript).
 
 ## Tech Stack
 
 - **Desktop framework:** Tauri (Rust backend + web frontend)
-- **Frontend:** Svelte + TypeScript
+- **Frontend:** SvelteKit + Svelte 5 (runes) + TypeScript
 - **3D rendering:** Threlte / Three.js (sprite + GLTF preview, training mode)
 - **Data format:** JSON (directory-based, one file per state)
 
-## Project + Character Data Layout
+## Key References
 
-A Framesmith project is a folder containing `framesmith.rules.json` and a `characters/` directory.
+| Topic | Location |
+|-------|----------|
+| Data formats (SSOT) | `docs/data-formats.md` |
+| Rules spec (SSOT) | `docs/rules-spec.md` |
+| FSPK binary format | `docs/zx-fspack.md` |
+| Runtime integration | `docs/runtime-guide.md` |
+| MCP server | `docs/mcp-server.md` |
+| Canonical Rust types | `src-tauri/src/schema/mod.rs` |
+| Repo map + agent reference | `AGENTS.md` |
 
-Each character is stored as a directory inside `characters/`:
+## Architectural Invariants
 
+- **FSPK = fixed-size records, zero-copy.** Never use variable-length encoding (MessagePack, JSON) in FSPK sections.
+- **State files = one per file.** `states/<input>.json`. Never combine multiple states.
+- **FSPK writer and reader must stay in sync.** `codegen/fspk/` (writer) and `crates/framesmith-fspack/` (reader) must agree on format.
+- **Validation is shared.** UI save, CLI export, and MCP server all use `rules/validate.rs`. Do not create parallel validation paths.
+- **PropertyValue nested types are flattened at export.** `Object`/`Array` values become dot-path keys (e.g., `movement.distance`) in FSPK. They do not survive as nested structures.
+
+## Change-Impact Map
+
+| If you change... | Also update/check... |
+|---|---|
+| `schema/mod.rs` (State, Character structs) | `codegen/fspk/`, `codegen/json_blob.rs`, `mcp/handlers.rs`, `docs/data-formats.md` |
+| `rules/mod.rs` (RulesFile struct) | `docs/rules-spec.md`, `mcp/validation.rs` |
+| `codegen/fspk_format.rs` (format constants) | `crates/framesmith-fspack/src/view/` (reader must match writer) |
+| Cancel table schema | `schema/mod.rs`, `docs/data-formats.md`, `src/lib/views/CancelGraph.svelte` |
+| Tauri commands (`commands/`) | Frontend stores (`src/lib/stores/`) that call them |
+| PropertyValue variants | FSPK property packing (`codegen/fspk/properties.rs`) |
+
+## Common Pitfalls
+
+- **Tags:** lowercase alphanumeric + underscores only. `Tag::new()` validates; uppercase/spaces fail.
+- **State `input` = filename.** Filesystem-hostile characters cause platform-specific failures.
+- **`base` field is authoring-only.** Variant inheritance is stripped during export.
+- **Nested PropertyValue:** `Object`/`Array` values are flattened to dot-paths at FSPK export. Don't expect nested structures in the binary.
+- **Stores use Svelte 5 runes:** Files are `.svelte.ts`, not `.ts`. Use `$state()` / `$derived()`.
+
+## Verification (run before every commit)
+
+```bash
+# Rust (from framesmith/src-tauri/)
+cargo clippy --all-targets        # Expect: 0 warnings
+cargo test                        # Expect: all pass
+
+# TypeScript (from framesmith/)
+npm run check                     # svelte-check + tsc. Expect: 0 errors
+npm run test:run                  # vitest. Expect: all pass
 ```
-<project>/
-  framesmith.rules.json
-  characters/
-    test_char/
-      character.json         # Properties (health, speed, etc.)
-      cancel_table.json      # Cancel relationships (explicit and tag-based rules)
-      states/
-        5L.json              # One file per state
-        236P.json
-      rules.json             # Optional character-level rules overrides
-```
 
-Notes:
-
-- Some projects may also contain `assets.json` / `hurtboxes.json` in a character folder; the current backend ignores these files.
-- Canonical field definitions live in `src-tauri/src/schema/mod.rs`.
-
-## Export Adapters
-
-| Adapter | Output | Use case |
-|---------|--------|----------|
-| `json-blob` | Single JSON file | Runtime loading / debugging |
-| `zx-fspack` | `.fspk` binary pack | Nethercore ZX (`no_std`/WASM-friendly) |
-
-ZX FSPK details: `docs/zx-fspack.md`.
-
-## Key Design Decisions
-
-1. **Engine-agnostic:** Data format is JSON, exporters handle engine-specific output
-2. **Directory-based:** One file per state for easy git diffs and merge conflicts
-3. **Central cancel table:** Cancel relationships in one file (supports explicit pairs and tag-based rules)
-4. **Tag-based cancel rules:** States can be tagged (e.g., "normal", "special") and cancel rules can match by tag
-5. **Rules-driven validation:** Defaults + constraints configured via rules files
-6. **Registry-aware:** Resources/events validated against a registry (no silent typos)
-
-## Editor Views
-
-1. **Character Overview** - Character list, properties
-2. **Frame Data Table** - Spreadsheet view with configurable type-based filtering
-3. **State Editor** - Form-based editing with sprite and GLTF animation preview
-4. **Cancel Graph** - Visualization of cancel relationships (supports both explicit cancel tables and tag-based rules)
-5. **Globals Manager** - Browse and edit project-wide global states
-6. **Training Mode** - WASM-based runtime testing with hitbox overlay and frame stepping
-
-## MCP Server
-
-Framesmith includes an MCP server binary (`src-tauri/src/bin/mcp.rs`). Configuration and tool list: `docs/mcp-server.md`.
-
-## Code Quality Standards
+## Code Standards
 
 ### Rust
-
-- Run `cargo clippy --all-targets` before committing - no warnings allowed
-- Run `cargo test` before committing
-- Use `saturating_add`/`checked_add` for arithmetic that could overflow
-- Avoid `#[allow(dead_code)]` - remove unused code instead
-- Comments should explain WHY, not WHAT
+- No clippy warnings. No `#[allow(dead_code)]`.
+- `saturating_add`/`checked_add` for overflow-prone arithmetic.
+- Comments explain WHY, not WHAT.
 
 ### TypeScript/Svelte
-
-- Run `npm run check` before committing - no errors allowed
-- Run `npm run test:run` before committing
-- Add ARIA roles to interactive elements
-- No `@ts-expect-error` without explanation
+- ARIA roles on interactive elements.
+- No `@ts-expect-error` without explanation.
 
 ### General
-
-- Prefer explicit over implicit
-- No magic numbers - use named constants
-- Test utilities go in `tests/common/` (Rust) or shared test helpers (TS)
+- Prefer explicit over implicit. No magic numbers.
+- Test utilities: `tests/common/` (Rust), `src/lib/training/*.test.ts` / `src/lib/rendercore/*.test.ts` (TS).
