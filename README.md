@@ -1,19 +1,20 @@
 # Framesmith
 
-Engine-agnostic fighting game character authoring tool. Define portable fighting game characters (frame data, hitboxes, moves, resources, events, cancel routes) as JSON on disk and export to engine/runtime-specific formats.
+Framesmith is an engine-agnostic fighting game character authoring tool.
+It manages portable character data on disk (JSON) and exports runtime-specific formats.
 
-## Features
+## Core capabilities
 
-- **Frame Data Table** - Spreadsheet view of all moves with sorting and filtering
-- **Move Editor** - Form-based editing with sprite/GLTF animation preview
-- **Cancel Graph** - Visual node graph showing move cancel relationships
-- **Export Adapters** - `json-blob` (single JSON) and `zx-fspack` (compact binary pack)
-- **Rules System** - Project/character rules for defaults + validation, plus a registry for resources/events
-- **MCP Server** - LLM integration and programmatic editing/validation via MCP tools
+- Frame-data table with filtering and sorting
+- State editor with sprite and GLTF preview
+- Cancel graph view for route visualization
+- Rules system for defaults and validation
+- Export adapters (`json-blob`, `zx-fspack`)
+- MCP server for scripted and LLM-assisted workflows
 
-## What Is A “Project”?
+## Framesmith project format
 
-A Framesmith project is a folder with this structure:
+A Framesmith project is a directory with this shape:
 
 ```text
 my-game/
@@ -25,64 +26,79 @@ my-game/
       states/
         5L.json
         236P.json
-      rules.json          (optional character overrides)
+      rules.json          # Optional per-character overrides
 ```
 
-This repo root is also a valid project (it contains `framesmith.rules.json` and `characters/`).
+This repository root is also a valid project because it includes `framesmith.rules.json` and `characters/`.
 
-## Quick Start
+## Quick start
 
 ```bash
-npm install              # Install dependencies
-npm run tauri dev        # Development mode
-npm run tauri build      # Production build
+npm install
+npm run tauri dev
 ```
 
-Rust tests:
+## Common commands
 
 ```bash
-cd src-tauri && cargo test
+# Frontend + app shell
+npm run dev
+npm run tauri dev
+npm run tauri build
+
+# TypeScript checks/tests
+npm run check
+npm run test:run
+
+# Runtime WASM package
+npm run wasm:build
+npm run wasm:build:dev
+
+# Rust backend checks/tests
+cd src-tauri
+cargo test
+cargo clippy --all-targets
 ```
 
-## MCP Server
-
-The MCP server is documented in `docs/mcp-server.md`.
+## MCP server
 
 ```bash
 cd src-tauri
-cargo run --bin mcp
+cargo run --bin mcp -- --characters-dir ../characters
 ```
 
-## CLI
+See `docs/mcp-server.md` for tools, resources, and integration details.
 
-For automation (like exporting `.fspk` packs), use the `framesmith` CLI.
+## CLI export
 
 ```bash
 cd src-tauri
 cargo run --bin framesmith -- export --project .. --all --out-dir ../exports
 ```
 
-See `docs/cli.md`.
+See `docs/cli.md` for full CLI reference.
 
-## Documentation
+## Documentation map
 
-- Start here: [`docs/README.md`](docs/README.md)
-- Data formats: [`docs/data-formats.md`](docs/data-formats.md)
-- Rules (SSOT): [`docs/rules-spec.md`](docs/rules-spec.md)
-- MCP server: [`docs/mcp-server.md`](docs/mcp-server.md)
-- ZX FSPK format: [`docs/zx-fspack.md`](docs/zx-fspack.md)
-- Design notes: [`docs/design.md`](docs/design.md)
-- Contributor/agent notes: [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)
+- `docs/README.md`: documentation index and routing guide
+- `docs/data-formats.md`: on-disk JSON schema and layout
+- `docs/rules-spec.md`: rules semantics and validation behavior
+- `docs/zx-fspack.md`: binary pack format reference
+- `docs/runtime-guide.md`: runtime integration guide
+- `docs/runtime-api.md`: runtime API details
+- `docs/mcp-server.md`: MCP server setup and tool list
+- `docs/global-states.md`: global state authoring and behavior
+- `docs/character-authoring-guide.md`: practical authoring workflow
+- `AGENTS.md`: contributor and code-map reference
+- `CLAUDE.md`: repo constraints and invariants
 
-## Tech Stack
+## Repo map
 
-| Component | Technology |
-|-----------|------------|
-| Desktop framework | Tauri (Rust backend + web frontend) |
-| Frontend | Svelte + TypeScript |
-| 3D rendering | Threlte / Three.js (sprite + GLTF preview) |
-| Data format | JSON (directory-based, one file per move) |
-
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+```text
+framesmith/
+  src/              # SvelteKit UI
+  src-tauri/        # Rust app backend, MCP server, CLI
+  crates/           # Runtime and FSPK library crates
+  characters/       # Local project data samples
+  docs/             # Design and reference docs
+```

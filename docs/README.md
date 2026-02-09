@@ -1,49 +1,51 @@
 # Framesmith Documentation
 
-**Status:** Active
-**Last reviewed:** 2026-02-01
+Status: active
+Last reviewed: 2026-02-09
 
-## Single Source of Truth
+## Source of truth map
 
 | Topic | Location |
 |-------|----------|
-| Agent workflow rules | [`../AGENTS.md`](../AGENTS.md) |
-| Claude Code guidelines | [`../CLAUDE.md`](../CLAUDE.md) |
-| Documentation index | `README.md` (this file) |
+| Repo constraints and invariants | [`../CLAUDE.md`](../CLAUDE.md) |
+| Contributor and code-map reference | [`../AGENTS.md`](../AGENTS.md) |
+| Project overview and quick start | [`../README.md`](../README.md) |
 | Data formats (on-disk JSON) | [`data-formats.md`](data-formats.md) |
-| Rules spec (SSOT) | [`rules-spec.md`](rules-spec.md) |
+| Rules semantics (SSOT) | [`rules-spec.md`](rules-spec.md) |
 | MCP server | [`mcp-server.md`](mcp-server.md) |
 | ZX FSPK format | [`zx-fspack.md`](zx-fspack.md) |
 | Runtime integration | [`runtime-guide.md`](runtime-guide.md) |
-| Runtime API reference | [`runtime-api.md`](runtime-api.md) |
-| CLI | [`cli.md`](cli.md) |
+| Runtime API | [`runtime-api.md`](runtime-api.md) |
+| CLI usage | [`cli.md`](cli.md) |
 | Global states | [`global-states.md`](global-states.md) |
-| Character authoring | [`character-authoring-guide.md`](character-authoring-guide.md) |
+| Character authoring flow | [`character-authoring-guide.md`](character-authoring-guide.md) |
 | Movement reference | [`movement-reference.md`](movement-reference.md) |
 
-## Start Here
+## Reading order
 
-- **New to the project?** Start with [`../README.md`](../README.md) for overview and quick start
-- **Need the file formats?** Read [`data-formats.md`](data-formats.md)
-- **Need rules semantics?** Read [`rules-spec.md`](rules-spec.md)
-- **Using LLM tooling?** Read [`mcp-server.md`](mcp-server.md)
-- **Understanding the design?** Read [`design.md`](design.md)
-- **Integrating the runtime?** Read [`runtime-guide.md`](runtime-guide.md)
+- New to Framesmith: start with [`../README.md`](../README.md)
+- Editing schema or files on disk: read [`data-formats.md`](data-formats.md)
+- Changing validation/rules behavior: read [`rules-spec.md`](rules-spec.md)
+- Integrating external tools/LLMs: read [`mcp-server.md`](mcp-server.md)
+- Implementing export/runtime work: read [`zx-fspack.md`](zx-fspack.md) and [`runtime-guide.md`](runtime-guide.md)
 
-## Design Documentation
+## Document set
 
-| Document | Description |
-|----------|-------------|
-| [`data-formats.md`](data-formats.md) | Project layout and JSON file formats |
-| [`rules-spec.md`](rules-spec.md) | Rules file semantics, matching, and built-in validation |
-| [`mcp-server.md`](mcp-server.md) | MCP server setup, tools, and resources |
-| [`zx-fspack.md`](zx-fspack.md) | ZX FSPK binary format specification |
-| [`runtime-guide.md`](runtime-guide.md) | Runtime integration guide for game developers |
-| [`runtime-api.md`](runtime-api.md) | Complete runtime API reference |
-| [`design.md`](design.md) | Design notes and roadmap |
-| [`character-authoring-guide.md`](character-authoring-guide.md) | Guide to authoring characters |
-| [`movement-reference.md`](movement-reference.md) | Movement system reference |
+| Document | Purpose |
+|----------|---------|
+| [`data-formats.md`](data-formats.md) | Canonical file layout and JSON data model |
+| [`rules-spec.md`](rules-spec.md) | Rule matching, defaults, and validation behavior |
+| [`mcp-server.md`](mcp-server.md) | MCP server setup and available operations |
+| [`zx-fspack.md`](zx-fspack.md) | Binary pack format details |
+| [`runtime-guide.md`](runtime-guide.md) | Runtime integration path |
+| [`runtime-api.md`](runtime-api.md) | Runtime API reference |
+| [`cli.md`](cli.md) | CLI commands and examples |
+| [`global-states.md`](global-states.md) | Global state model and usage |
+| [`character-authoring-guide.md`](character-authoring-guide.md) | Authoring workflow guidance |
+| [`movement-reference.md`](movement-reference.md) | Movement and notation reference |
+| [`design.md`](design.md) | Design rationale and roadmap notes |
 
 ## Plans
 
-Implementation plan documents are intentionally short-lived in this repo. When a plan is implemented, it is removed and the permanent docs (this folder) are updated instead.
+Implementation plans under `docs/plans/` are intentionally temporary.
+When work is complete, update permanent docs in this folder and then remove the plan file.
