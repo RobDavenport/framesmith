@@ -1,0 +1,7 @@
+{
+  "name": "framesmith",
+  "version": "1.0.0",
+  "description": "Fighting game character authoring - states, hitboxes, cancel tables, FSPK export",
+  "author": { "name": "Nethercore Systems" },
+  "keywords": ["fighting-game", "character", "framedata", "hitbox", "fspk", "authoring"]
+}
