@@ -54,7 +54,7 @@ You diagnose and fix issues with Framesmith character data, validation errors, a
 3. **Run validation**
    ```bash
    cd framesmith/src-tauri
-   cargo run --bin framesmith -- export --project .. --character <id> --out /dev/null
+   cargo run --bin framesmith -- export --project .. --character <id> --out ../exports/<id>.fspk
    ```
 
 4. **Identify root cause**
