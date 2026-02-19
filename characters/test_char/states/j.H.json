@@ -1,0 +1,26 @@
+{
+  "input": "j.H",
+  "name": "Jumping Heavy",
+  "type": "normal",
+  "tags": ["aerial", "j_h"],
+  "startup": 12,
+  "active": 4,
+  "recovery": 8,
+  "damage": 80,
+  "hitstun": 22,
+  "blockstun": 16,
+  "hitstop": 9,
+  "guard": "high",
+  "hitboxes": [
+    { "frames": [12, 15], "box": { "x": 0, "y": -30, "w": 35, "h": 30 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 23], "box": { "x": -12, "y": -55, "w": 34, "h": 55 } }
+  ],
+  "pushback": { "hit": 5, "block": 6 },
+  "meter_gain": { "hit": 8, "whiff": 3 },
+  "animation": "jump_heavy",
+  "preconditions": [
+    { "type": "airborne" }
+  ]
+}

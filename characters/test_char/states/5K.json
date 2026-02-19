@@ -1,0 +1,24 @@
+{
+  "input": "5K",
+  "name": "Standing Kick",
+  "type": "normal",
+  "tags": ["5k"],
+  "startup": 8,
+  "active": 3,
+  "recovery": 12,
+  "damage": 40,
+  "hitstun": 16,
+  "blockstun": 10,
+  "hitstop": 7,
+  "guard": "high",
+  "hitboxes": [
+    { "frames": [8, 10], "box": { "x": 5, "y": -50, "w": 35, "h": 15 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 7], "box": { "x": -10, "y": -60, "w": 30, "h": 60 } },
+    { "frames": [8, 22], "box": { "x": 0, "y": -55, "w": 40, "h": 55 } }
+  ],
+  "pushback": { "hit": 3, "block": 3 },
+  "meter_gain": { "hit": 5, "whiff": 2 },
+  "animation": "stand_kick"
+}

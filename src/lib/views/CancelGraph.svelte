@@ -330,6 +330,7 @@
   {:else}
     <div class="graph-wrapper">
       <svg viewBox="0 0 {width} {height}" class="graph-svg">
+        <title>Cancel graph showing move relationships</title>
         <!-- Definitions for arrow markers -->
         <defs>
           {#each Object.entries(edgeColors) as [type, color]}
@@ -375,8 +376,17 @@
               class:hovered={hoveredMove === node.input}
               onmouseenter={() => (hoveredMove = node.input)}
               onmouseleave={() => (hoveredMove = null)}
+              onfocus={() => (hoveredMove = node.input)}
+              onblur={() => (hoveredMove = null)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  hoveredMove = hoveredMove === node.input ? null : node.input;
+                }
+              }}
               role="button"
               tabindex="0"
+              aria-label={`${node.input} - ${node.name}`}
             >
               <!-- Node circle -->
               <circle
@@ -522,6 +532,16 @@
   .nodes .node {
     cursor: pointer;
     transition: opacity 0.2s ease;
+  }
+
+  .nodes .node:focus-visible .node-circle {
+    stroke: var(--accent);
+    stroke-width: 3;
+    outline: none;
+  }
+
+  .nodes .node:focus {
+    outline: none;
   }
 
   .nodes .node.dimmed {

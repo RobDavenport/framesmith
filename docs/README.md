@@ -18,6 +18,8 @@ Last reviewed: 2026-02-09
 | Runtime API | [`runtime-api.md`](runtime-api.md) |
 | CLI usage | [`cli.md`](cli.md) |
 | Global states | [`global-states.md`](global-states.md) |
+| Architecture overview | [`architecture.md`](architecture.md) |
+| Troubleshooting | [`troubleshooting.md`](troubleshooting.md) |
 | Character authoring flow | [`character-authoring-guide.md`](character-authoring-guide.md) |
 | Movement reference | [`movement-reference.md`](movement-reference.md) |
 
@@ -28,6 +30,8 @@ Last reviewed: 2026-02-09
 - Changing validation/rules behavior: read [`rules-spec.md`](rules-spec.md)
 - Integrating external tools/LLMs: read [`mcp-server.md`](mcp-server.md)
 - Implementing export/runtime work: read [`zx-fspack.md`](zx-fspack.md) and [`runtime-guide.md`](runtime-guide.md)
+- Understanding the system architecture: read [`architecture.md`](architecture.md)
+- Debugging issues: read [`troubleshooting.md`](troubleshooting.md)
 
 ## Document set
 
@@ -43,6 +47,8 @@ Last reviewed: 2026-02-09
 | [`global-states.md`](global-states.md) | Global state model and usage |
 | [`character-authoring-guide.md`](character-authoring-guide.md) | Authoring workflow guidance |
 | [`movement-reference.md`](movement-reference.md) | Movement and notation reference |
+| [`architecture.md`](architecture.md) | System architecture and data pipeline overview |
+| [`troubleshooting.md`](troubleshooting.md) | Common issues and solutions |
 | [`design.md`](design.md) | Design rationale and roadmap notes |
 
 ## Plans

@@ -58,7 +58,20 @@
           class="state-item"
           class:selected={selectedId === state.id}
           onclick={() => handleSelect(state.id)}
-          onkeydown={(e) => e.key === 'Enter' && handleSelect(state.id)}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleSelect(state.id);
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              const next = e.currentTarget.nextElementSibling as HTMLElement;
+              next?.focus();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              const prev = e.currentTarget.previousElementSibling as HTMLElement;
+              prev?.focus();
+            }
+          }}
           role="option"
           aria-selected={selectedId === state.id}
           tabindex="0"
@@ -76,6 +89,7 @@
             class="delete-btn"
             onclick={(e) => handleDeleteClick(state.id, e)}
             title="Delete global state"
+            aria-label={`Delete ${state.id}`}
           >
             ×
           </button>

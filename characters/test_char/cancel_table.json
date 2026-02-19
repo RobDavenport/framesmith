@@ -15,7 +15,13 @@
     { "from": "j_l", "to": "j_l", "on": ["hit", "block"] },
 
     { "from": "236k", "to": "236k_k", "on": ["hit", "block"] },
-    { "from": "236k_k", "to": "236k_k_k", "on": ["hit", "block"] }
+    { "from": "236k_k", "to": "236k_k_k", "on": ["hit", "block"] },
+
+    { "from": "normal", "to": "throw", "on": "always" },
+    { "from": "j_l", "to": "j_m", "on": ["hit", "block"] },
+    { "from": "j_m", "to": "j_h", "on": ["hit", "block"] },
+    { "from": "5k", "to": "5h", "on": ["hit", "block"] },
+    { "from": "2k", "to": "2k", "on": ["hit", "block"] }
   ],
   "deny": {}
 }

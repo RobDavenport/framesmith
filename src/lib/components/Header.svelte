@@ -70,13 +70,14 @@
           class="nav-btn"
           class:active={currentView === view.id}
           onclick={() => onViewChange(view.id)}
+          aria-current={currentView === view.id ? "page" : undefined}
         >
           {view.label}
         </button>
       {/each}
     </nav>
   {/if}
-  <button class="help-btn" onclick={() => (helpOpen = true)} title="Rules Documentation">
+  <button class="help-btn" onclick={() => (helpOpen = true)} title="Rules Documentation" aria-label="Rules Documentation">
     ?
   </button>
 </header>

@@ -53,7 +53,7 @@
       <div class="section-header">
         <h2 class="section-title">Characters</h2>
         <div class="add-menu-container">
-          <button class="add-btn" onclick={toggleMenu}>+</button>
+          <button class="add-btn" onclick={toggleMenu} aria-label="Add character">+</button>
           {#if showMenu}
             <div class="add-menu">
               <button class="menu-item" onclick={handleNewCharacter}>

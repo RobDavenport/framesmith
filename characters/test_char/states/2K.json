@@ -1,0 +1,24 @@
+{
+  "input": "2K",
+  "name": "Crouching Kick",
+  "type": "normal",
+  "tags": ["2k", "sweep"],
+  "startup": 7,
+  "active": 4,
+  "recovery": 14,
+  "damage": 35,
+  "hitstun": 15,
+  "blockstun": 8,
+  "hitstop": 6,
+  "guard": "low",
+  "hitboxes": [
+    { "frames": [7, 10], "box": { "x": 5, "y": -10, "w": 40, "h": 10 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 6], "box": { "x": -10, "y": -40, "w": 30, "h": 40 } },
+    { "frames": [7, 24], "box": { "x": -5, "y": -35, "w": 45, "h": 35 } }
+  ],
+  "pushback": { "hit": 2, "block": 3 },
+  "meter_gain": { "hit": 5, "whiff": 2 },
+  "animation": "crouch_kick"
+}

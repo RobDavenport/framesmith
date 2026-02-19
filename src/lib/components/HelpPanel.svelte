@@ -36,26 +36,27 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-backdrop" role="button" tabindex="-1" onclick={handleBackdropClick}>
+  <div class="modal-backdrop" role="presentation" onclick={handleBackdropClick}>
     <div class="help-panel">
       <div class="help-header">
         <h2>Rules Documentation</h2>
-        <button class="close-btn" onclick={onClose}>&times;</button>
+        <button class="close-btn" onclick={onClose} aria-label="Close">&times;</button>
       </div>
 
       <div class="help-body">
-        <nav class="help-nav">
+        <div class="help-nav" role="tablist">
           {#each sections as section}
             <button
               class="nav-item"
               class:active={activeSection === section.id}
               onclick={() => (activeSection = section.id)}
+              role="tab"
+              aria-selected={activeSection === section.id}
             >
               {section.label}
             </button>
           {/each}
-        </nav>
+        </div>
 
         <div class="help-content">
           {#if activeSection === "overview"}

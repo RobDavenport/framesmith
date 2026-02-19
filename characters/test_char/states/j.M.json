@@ -1,0 +1,26 @@
+{
+  "input": "j.M",
+  "name": "Jumping Medium",
+  "type": "normal",
+  "tags": ["aerial", "j_m"],
+  "startup": 8,
+  "active": 5,
+  "recovery": 4,
+  "damage": 50,
+  "hitstun": 18,
+  "blockstun": 13,
+  "hitstop": 7,
+  "guard": "high",
+  "hitboxes": [
+    { "frames": [8, 12], "box": { "x": 5, "y": -25, "w": 30, "h": 25 } }
+  ],
+  "hurtboxes": [
+    { "frames": [0, 16], "box": { "x": -10, "y": -55, "w": 30, "h": 55 } }
+  ],
+  "pushback": { "hit": 4, "block": 4 },
+  "meter_gain": { "hit": 6, "whiff": 3 },
+  "animation": "jump_medium",
+  "preconditions": [
+    { "type": "airborne" }
+  ]
+}

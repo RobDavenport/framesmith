@@ -103,15 +103,22 @@
       handleClose();
     }
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && open) {
+      handleClose();
+    }
+  }
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 {#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-backdrop" role="button" tabindex="-1" onclick={handleBackdropClick}>
+  <div class="modal-backdrop" role="presentation" onclick={handleBackdropClick}>
     <div class="modal">
       <div class="modal-header">
         <h2>{mode === "new" ? "New Character" : "Clone Character"}</h2>
-        <button class="close-btn" onclick={handleClose}>&times;</button>
+        <button class="close-btn" onclick={handleClose} aria-label="Close">&times;</button>
       </div>
 
       <form onsubmit={handleSubmit}>

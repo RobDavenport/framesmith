@@ -2,6 +2,7 @@
   import { getCurrentCharacter, getRulesRegistry, selectMove } from "$lib/stores/character.svelte";
   import CreateMoveModal from "$lib/components/CreateMoveModal.svelte";
   import type { State } from "$lib/types";
+  import { getTotal, getAdvantageHit, getAdvantageBlock, formatAdvantage, sortMoves, filterMoves, buildFilterOptions, type SortableColumn } from "./frameDataUtils";
 
   interface Props {
     onEditMove: (input: string) => void;
@@ -14,111 +15,13 @@
   const moves = $derived(characterData?.moves ?? []);
   const registry = $derived(getRulesRegistry());
 
-  // Only include sortable columns (string or number types)
-  type SortableColumn = "input" | "name" | "startup" | "active" | "recovery" | "damage" | "hitstun" | "blockstun" | "hitstop" | "guard" | "animation" | "total" | "advantage_hit" | "advantage_block";
-
   let sortColumn = $state<SortableColumn>("input");
   let sortDirection = $state<"asc" | "desc">("asc");
   let filterType = $state<string>("all");
 
-  // Default filter groups if none defined in registry
-  const defaultNormalTypes = ["normal", "command_normal"];
-  const defaultSpecialTypes = ["special", "super", "ex", "rekka"];
-
-  // Get filter groups from registry or use defaults
-  const normalTypes = $derived(
-    registry?.move_types?.filter_groups?.["normals"] ?? defaultNormalTypes
-  );
-  const specialTypes = $derived(
-    registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
-  );
-
-  // Build filter options from registry if available
-  const filterOptions = $derived.by(() => {
-    const options = [{ value: "all", label: "All Moves" }];
-
-    if (registry?.move_types?.filter_groups) {
-      // Use custom filter groups from registry
-      for (const groupName of Object.keys(registry.move_types.filter_groups)) {
-        options.push({
-          value: groupName,
-          label: groupName.charAt(0).toUpperCase() + groupName.slice(1),
-        });
-      }
-    } else {
-      // Default filter options
-      options.push(
-        { value: "normals", label: "Normals" },
-        { value: "specials", label: "Specials" }
-      );
-    }
-
-    return options;
-  });
-
-  // Check if state matches a filter group
-  function matchesFilterGroup(move: State, groupName: string): boolean {
-    const groups = registry?.move_types?.filter_groups;
-    const types = groups?.[groupName] ?? (groupName === "normals" ? defaultNormalTypes : groupName === "specials" ? defaultSpecialTypes : []);
-
-    if (move.type) {
-      return types.includes(move.type);
-    }
-    // Fallback: use input pattern if type not set
-    if (groupName === "normals") {
-      return !/\d{3,}/.test(move.input);
-    }
-    if (groupName === "specials") {
-      return /\d{3,}/.test(move.input);
-    }
-    return false;
-  }
-
-  function getTotal(move: State): number {
-    return move.startup + move.active + move.recovery;
-  }
-
-  function getAdvantageHit(move: State): number {
-    return move.hitstun - move.recovery;
-  }
-
-  function getAdvantageBlock(move: State): number {
-    return move.blockstun - move.recovery;
-  }
-
-  const filteredMoves = $derived.by(() => {
-    if (filterType === "all") {
-      return moves;
-    }
-    return moves.filter((m) => matchesFilterGroup(m, filterType));
-  });
-
-  const sortedMoves = $derived.by(() => {
-    return [...filteredMoves].sort((a, b) => {
-      let aVal: number | string;
-      let bVal: number | string;
-
-      if (sortColumn === "total") {
-        aVal = getTotal(a);
-        bVal = getTotal(b);
-      } else if (sortColumn === "advantage_hit") {
-        aVal = getAdvantageHit(a);
-        bVal = getAdvantageHit(b);
-      } else if (sortColumn === "advantage_block") {
-        aVal = getAdvantageBlock(a);
-        bVal = getAdvantageBlock(b);
-      } else {
-        // All other sortable columns are direct Move properties
-        aVal = a[sortColumn] as string | number;
-        bVal = b[sortColumn] as string | number;
-      }
-
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-      return sortDirection === "asc" ? Number(aVal) - Number(bVal) : Number(bVal) - Number(aVal);
-    });
-  });
+  const filterOptions = $derived(buildFilterOptions(registry));
+  const filteredMoves = $derived(filterMoves(moves, filterType, registry));
+  const sortedMoves = $derived(sortMoves(filteredMoves, sortColumn, sortDirection));
 
   function toggleSort(column: typeof sortColumn) {
     if (sortColumn === column) {
@@ -132,10 +35,6 @@
   function handleRowClick(move: State) {
     selectMove(move.input);
     onEditMove(move.input);
-  }
-
-  function formatAdvantage(value: number): string {
-    return value >= 0 ? `+${value}` : String(value);
   }
 
   function handleMoveCreated(input: string) {

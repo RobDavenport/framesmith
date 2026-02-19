@@ -1,0 +1,29 @@
+{
+  "input": "walk_b",
+  "name": "Backward Walk",
+  "type": "system",
+  "startup": 1,
+  "active": 1,
+  "recovery": 0,
+  "total": 2,
+  "damage": 0,
+  "hitstun": 0,
+  "blockstun": 0,
+  "hitstop": 0,
+  "guard": "mid",
+  "tags": ["movement"],
+  "hitboxes": [],
+  "hurtboxes": [
+    { "frames": [0, 1], "box": { "x": -15, "y": -70, "w": 30, "h": 70 } }
+  ],
+  "pushboxes": [
+    { "frames": [0, 1], "box": { "x": -12, "y": -70, "w": 24, "h": 70 } }
+  ],
+  "pushback": { "hit": 0, "block": 0 },
+  "meter_gain": { "hit": 0, "whiff": 0 },
+  "animation": "walk_backward",
+  "movement": {
+    "distance": 3,
+    "direction": "backward"
+  }
+}
