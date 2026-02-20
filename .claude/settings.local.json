@@ -24,7 +24,9 @@
       "Bash(git stash:*)",
       "Bash(git restore:*)",
       "Bash(test:*)",
-      "Bash(npx svelte-check:*)"
+      "Bash(npx svelte-check:*)",
+      "Bash(sort:*)",
+      "Bash(npx vitest:*)"
     ]
   },
   "disabledMcpjsonServers": [
