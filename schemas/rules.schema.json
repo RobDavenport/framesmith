@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RulesFile",
-  "description": "Root structure for a Framesmith rules file.\nRules files define default values (apply) and validation constraints (validate) for moves.",
+  "description": "Root structure for a Framesmith rules file.\nRules files define:\n- a registry of known resources/events (`registry`)\n- default values (`apply`)\n- validation constraints (`validate`)\n- property schemas for strict validation (`properties`)\n- tag schemas for strict validation (`tags`)",
   "type": "object",
   "properties": {
     "apply": {
@@ -11,6 +11,18 @@
       "items": {
         "$ref": "#/$defs/ApplyRule"
       }
+    },
+    "properties": {
+      "description": "Property schema definitions. When present, enables strict validation\nrequiring all properties to be declared in the schema.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PropertySchema"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "registry": {
       "description": "Optional registry of resources and events used by this project/character.",
@@ -22,6 +34,17 @@
           "type": "null"
         }
       ]
+    },
+    "tags": {
+      "description": "Tag schema definitions. When present, enables strict validation\nrequiring all tags to be declared in the schema.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "default": null,
+      "items": {
+        "type": "string"
+      }
     },
     "validate": {
       "description": "Rules that enforce constraints on matching moves.",
@@ -241,10 +264,68 @@
         }
       }
     },
+    "MoveTypesConfig": {
+      "description": "Configuration for move types and their filter groupings.",
+      "type": "object",
+      "properties": {
+        "filter_groups": {
+          "description": "Filter groups mapping group names to lists of types.\nE.g., {\"normals\": [\"normal\", \"command_normal\"], \"specials\": [\"special\", \"super\", \"ex\"]}",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "types": {
+          "description": "List of valid move type strings (e.g., \"normal\", \"special\", \"super\", \"ex\").",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PropertySchema": {
+      "description": "Property schema definitions for character and state properties.\nProperty names in this schema become IDs (indices) in the exported FSPK,\neliminating duplicate string storage across states.",
+      "type": "object",
+      "properties": {
+        "character": {
+          "description": "Character-level property names (e.g., \"health\", \"walkSpeed\", \"dashSpeed\").\nIndex in this array becomes the schema ID for that property.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "description": "State-level property names (e.g., \"startup\", \"active\", \"damage\").\nIndex in this array becomes the schema ID for that property.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "RulesRegistry": {
       "description": "Registry of resource IDs and event definitions.",
       "type": "object",
       "properties": {
+        "chain_order": {
+          "description": "Chain order for deriving chain cancel edges from tags (e.g., [\"L\", \"M\", \"H\"]).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "default": null,
+          "items": {
+            "type": "string"
+          }
+        },
         "events": {
           "description": "Known event definitions keyed by event ID.",
           "type": "object",
@@ -252,6 +333,18 @@
             "$ref": "#/$defs/EventDefinition"
           },
           "default": {}
+        },
+        "move_types": {
+          "description": "Move type configuration for filtering and categorization.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MoveTypesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "resources": {
           "description": "Known resource IDs (e.g. \"heat\", \"ammo\").",

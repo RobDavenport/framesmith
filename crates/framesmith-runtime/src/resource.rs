@@ -55,7 +55,11 @@ pub fn apply_resource_costs(
                             if current < cost.amount() {
                                 all_paid = false;
                             }
-                            set_resource(state, res_idx as u8, current.saturating_sub(cost.amount()));
+                            set_resource(
+                                state,
+                                res_idx as u8,
+                                current.saturating_sub(cost.amount()),
+                            );
                             break;
                         }
                     }
@@ -115,7 +119,8 @@ pub fn check_resource_preconditions(
             // Find resource index by name
             for res_idx in 0..resource_defs.len().min(MAX_RESOURCES) {
                 if let Some(def) = resource_defs.get(res_idx) {
-                    if def.name_off() == precond.name_off() && def.name_len() == precond.name_len() {
+                    if def.name_off() == precond.name_off() && def.name_len() == precond.name_len()
+                    {
                         let current = resource(state, res_idx as u8);
                         if !check_precondition_value(current, precond.min(), precond.max()) {
                             return false;
@@ -198,7 +203,7 @@ mod tests {
     fn resource_primitives_support_deduction() {
         let mut state = CharacterState::default();
         set_resource(&mut state, 0, 100); // meter
-        set_resource(&mut state, 1, 50);  // heat
+        set_resource(&mut state, 1, 50); // heat
 
         // Simulate deducting 30 from resource 0, 10 from resource 1
         let costs = [(0u8, 30u16), (1u8, 10u16)];

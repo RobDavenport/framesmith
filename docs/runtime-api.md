@@ -1,7 +1,7 @@
 # Framesmith Runtime API Reference
 
 **Status:** Active
-**Last reviewed:** 2026-02-01
+**Last reviewed:** 2026-05-22
 
 Complete API documentation for `framesmith-runtime`.
 
@@ -153,6 +153,28 @@ impl CheckHitsResult {
 ```
 
 **Capacity:** 8 hits maximum (`MAX_HIT_RESULTS`)
+
+---
+
+### PushboxResult
+
+Deterministic horizontal separation for overlapping pushboxes.
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PushboxResult {
+    /// Separation to apply to player 1.
+    pub p1_dx: i32,
+
+    /// Separation to apply to player 2.
+    pub p2_dx: i32,
+}
+```
+
+**Notes:**
+- Negative `dx` means move left; positive `dx` means move right.
+- The engine applies these deltas after its own floor, wall, corner, and stage
+  boundary policy.
 
 ---
 
@@ -333,11 +355,10 @@ pub fn can_cancel_to(
 **Evaluation order:**
 1. If `target >= move_count`: Check action cancel flags
 2. Check explicit denies (always blocks if present)
-3. Check explicit chain cancels from state extras
-4. Check tag-based cancel rules
+3. Check tag-based cancel rules
 
 **Notes:**
-- Resource preconditions are checked for both explicit chains and tag rules
+- Resource preconditions are checked for tag-rule targets
 - Frame range conditions are checked for tag rules
 - Hit/block conditions are checked for tag rules
 
@@ -364,7 +385,8 @@ pub fn available_cancels(
 **Notes:**
 - Requires the `alloc` feature
 - Filters by resource preconditions
-- Returns explicit chain cancel targets only (not tag-based matches)
+- Enumerates regular move/state targets accepted by `can_cancel_to`
+- Does not enumerate game-defined action cancel IDs above `move_count`
 
 ---
 
@@ -424,6 +446,39 @@ pub fn check_hits(
 2. Iterates defender's hurt windows active this frame
 3. Checks shape overlaps between hitboxes and hurtboxes
 4. Returns one hit per hit window maximum
+
+---
+
+### check_pushbox
+
+Check active pushboxes for two characters and calculate horizontal separation.
+
+```rust
+#[must_use]
+pub fn check_pushbox(
+    p1_state: &CharacterState,
+    p1_pack: &PackView,
+    p1_pos: (i32, i32),
+    p2_state: &CharacterState,
+    p2_pack: &PackView,
+    p2_pos: (i32, i32),
+) -> Option<PushboxResult>
+```
+
+**Arguments:**
+- `p1_state` - Player 1's current state
+- `p1_pack` - Player 1's character pack
+- `p1_pos` - Player 1 position `(x, y)` in pixels
+- `p2_state` - Player 2's current state
+- `p2_pack` - Player 2's character pack
+- `p2_pos` - Player 2 position `(x, y)` in pixels
+
+**Returns:** `Some(PushboxResult)` when exported active pushboxes overlap,
+otherwise `None`.
+
+**Notes:**
+- The function computes separation only; it does not mutate world positions.
+- Stage bounds, corner behavior, and push priority are engine-owned.
 
 ---
 

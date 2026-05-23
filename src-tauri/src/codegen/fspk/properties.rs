@@ -21,9 +21,7 @@ use super::utils::checked_u16;
 ///
 /// - `{"movement": {"distance": 80}}` becomes `{"movement.distance": 80}`
 /// - `{"effects": [1, 2]}` becomes `{"effects.0": 1, "effects.1": 2}`
-fn flatten_properties(
-    props: &BTreeMap<String, PropertyValue>,
-) -> BTreeMap<String, PropertyValue> {
+fn flatten_properties(props: &BTreeMap<String, PropertyValue>) -> BTreeMap<String, PropertyValue> {
     let mut flat = BTreeMap::new();
     flatten_into("", props, &mut flat);
     flat
@@ -361,14 +359,20 @@ mod tests {
     fn flatten_nested_object() {
         let mut movement = BTreeMap::new();
         movement.insert("distance".to_string(), PropertyValue::Number(80.0));
-        movement.insert("direction".to_string(), PropertyValue::String("forward".to_string()));
+        movement.insert(
+            "direction".to_string(),
+            PropertyValue::String("forward".to_string()),
+        );
 
         let mut props = BTreeMap::new();
         props.insert("movement".to_string(), PropertyValue::Object(movement));
 
         let flat = flatten_properties(&props);
         assert_eq!(flat.len(), 2);
-        assert_eq!(flat.get("movement.distance"), Some(&PropertyValue::Number(80.0)));
+        assert_eq!(
+            flat.get("movement.distance"),
+            Some(&PropertyValue::Number(80.0))
+        );
         assert_eq!(
             flat.get("movement.direction"),
             Some(&PropertyValue::String("forward".to_string()))
@@ -408,7 +412,10 @@ mod tests {
 
         let flat = flatten_properties(&props);
         assert_eq!(flat.len(), 1);
-        assert_eq!(flat.get("outer.inner.value"), Some(&PropertyValue::Number(42.0)));
+        assert_eq!(
+            flat.get("outer.inner.value"),
+            Some(&PropertyValue::Number(42.0))
+        );
     }
 
     #[test]
@@ -417,7 +424,10 @@ mod tests {
 
         let mut props = BTreeMap::new();
         props.insert("health".to_string(), PropertyValue::Number(10000.0));
-        props.insert("archetype".to_string(), PropertyValue::String("rushdown".to_string()));
+        props.insert(
+            "archetype".to_string(),
+            PropertyValue::String("rushdown".to_string()),
+        );
 
         let char = Character {
             id: "test".to_string(),
@@ -509,7 +519,9 @@ mod tests {
         let schema_names = vec!["health", "walkSpeed"];
 
         let mut strings = StringTable::new();
-        let data = pack_character_props_with_schema(&char, &schema_lookup, &schema_names, &mut strings).unwrap();
+        let data =
+            pack_character_props_with_schema(&char, &schema_lookup, &schema_names, &mut strings)
+                .unwrap();
 
         // 2 properties * 8 bytes = 16 bytes
         assert_eq!(data.len(), 16);
@@ -534,7 +546,8 @@ mod tests {
         let schema_names = vec!["health"];
 
         let mut strings = StringTable::new();
-        let result = pack_character_props_with_schema(&char, &schema_lookup, &schema_names, &mut strings);
+        let result =
+            pack_character_props_with_schema(&char, &schema_lookup, &schema_names, &mut strings);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -556,7 +569,9 @@ mod tests {
         let schema_names = vec!["startup", "damage"];
 
         let mut strings = StringTable::new();
-        let (data, count) = pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings).unwrap();
+        let (data, count) =
+            pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings)
+                .unwrap();
 
         // 2 properties * 8 bytes = 16 bytes
         assert_eq!(count, 2);
@@ -581,7 +596,9 @@ mod tests {
         let schema_names = vec!["startup", "movement.distance"];
 
         let mut strings = StringTable::new();
-        let (data, count) = pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings).unwrap();
+        let (data, count) =
+            pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings)
+                .unwrap();
 
         // 2 flattened properties * 8 bytes = 16 bytes
         assert_eq!(count, 2);
@@ -600,7 +617,8 @@ mod tests {
         let schema_names = vec!["startup"];
 
         let mut strings = StringTable::new();
-        let result = pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings);
+        let result =
+            pack_state_props_with_schema(&props, &schema_lookup, &schema_names, &mut strings);
 
         assert!(result.is_err());
         let err = result.unwrap_err();

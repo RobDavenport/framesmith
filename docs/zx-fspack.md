@@ -1,7 +1,7 @@
 # ZX FSPK Export Format
 
 **Status:** Active
-**Last reviewed:** 2026-01-30
+**Last reviewed:** 2026-05-22
 
 ## Overview
 
@@ -16,16 +16,16 @@ FSPK (Framesmith Pack) is a compact binary format for storing fighting game char
 
 ### Components
 
-- **Framesmith export adapter** (`zx-fspack`): Converts character JSON to FSPK binary
+- **Framesmith export adapter** (`fspk`): Converts character JSON to FSPK binary
 - **`framesmith-fspack` crate**: `no_std` Rust library for reading FSPK files at runtime
 
 ## Exporting from Framesmith
 
-Use the `zx-fspack` adapter when exporting a character.
+Use the `fspk` adapter when exporting a character.
 
-- In the app UI: Character Overview -> Export -> "ZX FSPK (Binary)"
-- In the CLI: `cd src-tauri && cargo run --bin framesmith -- export --project .. --character test_char --out ../exports/test_char.fspk`
-- Programmatically: call the `export_character` command with `adapter = "zx-fspack"`
+- In the app UI: Character Overview -> Export -> "FSPK (Binary)"
+- In the CLI: `cd src-tauri && cargo run --bin framesmith-cli -- export --project .. --character test_char --out ../exports/test_char.fspk`
+- Programmatically: call the `export_character` command with `adapter = "fspk"`
 
 ```rust
 // Tauri command signature (Rust side)
@@ -33,11 +33,14 @@ Use the `zx-fspack` adapter when exporting a character.
 export_character(
     "<project>/characters".to_string(),
     "test_char".to_string(),
-    "zx-fspack".to_string(),
+    "fspk".to_string(),
     "exports/test_char.fspk".to_string(),
     false,
 )?;
 ```
+
+`zx-fspack` is accepted as a legacy adapter alias for older integrations, but
+`fspk` is canonical.
 
 This produces a `.fspk` binary file containing:
 - Character state data (frame counts, damage, hitstun, etc.)

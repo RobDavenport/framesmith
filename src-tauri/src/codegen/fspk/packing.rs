@@ -45,9 +45,21 @@ pub fn guard_type_to_u8(guard: &GuardType) -> u8 {
     }
 }
 
-/// Pack a FrameHitbox into a HitWindow24 structure.
+/// Values that are packed alongside a hitbox into a HitWindow28 record.
+pub struct HitWindowPackParams {
+    pub shapes_off: u32,
+    pub damage: u16,
+    pub hitstun: u8,
+    pub blockstun: u8,
+    pub hitstop: u8,
+    pub guard: u8,
+    pub hit_pushback: i32,
+    pub block_pushback: i32,
+}
+
+/// Pack a FrameHitbox into a HitWindow28 structure.
 ///
-/// HitWindow24 layout (24 bytes) - must match view.rs HitWindowView:
+/// HitWindow28 layout (28 bytes) - must match view.rs HitWindowView:
 /// - 0: start_frame (u8)
 /// - 1: end_frame (u8)
 /// - 2: guard (u8)
@@ -62,30 +74,26 @@ pub fn guard_type_to_u8(guard: &GuardType) -> u8 {
 /// - 16-17: shapes_len (u16 LE)
 /// - 18-21: cancels_off (u32 LE)
 /// - 22-23: cancels_len (u16 LE)
-pub fn pack_hit_window(
-    hb: &FrameHitbox,
-    shapes_off: u32,
-    damage: u16,
-    hitstun: u8,
-    blockstun: u8,
-    hitstop: u8,
-    guard: u8,
-) -> [u8; HIT_WINDOW24_SIZE] {
+/// - 24-25: hit_pushback (i16 Q12.4 LE)
+/// - 26-27: block_pushback (i16 Q12.4 LE)
+pub fn pack_hit_window(hb: &FrameHitbox, params: HitWindowPackParams) -> [u8; HIT_WINDOW24_SIZE] {
     let mut buf = [0u8; HIT_WINDOW24_SIZE];
 
     buf[0] = hb.frames.0; // start_frame
     buf[1] = hb.frames.1; // end_frame
-    buf[2] = guard; // guard
+    buf[2] = params.guard; // guard
     buf[3] = 0; // reserved
-    buf[4..6].copy_from_slice(&damage.to_le_bytes()); // damage
+    buf[4..6].copy_from_slice(&params.damage.to_le_bytes()); // damage
     buf[6..8].copy_from_slice(&0u16.to_le_bytes()); // chip_damage (TODO: add to schema)
-    buf[8] = hitstun; // hitstun
-    buf[9] = blockstun; // blockstun
-    buf[10] = hitstop; // hitstop
+    buf[8] = params.hitstun; // hitstun
+    buf[9] = params.blockstun; // blockstun
+    buf[10] = params.hitstop; // hitstop
     buf[11] = 0; // reserved
-    buf[12..16].copy_from_slice(&shapes_off.to_le_bytes()); // shapes_off
+    buf[12..16].copy_from_slice(&params.shapes_off.to_le_bytes()); // shapes_off
     buf[16..18].copy_from_slice(&1u16.to_le_bytes()); // shapes_len = 1
-    // bytes 18-27 are cancels/pushback (already zeroed, not used in v1)
+                                                      // bytes 18-23 are cancel refs (zeroed; explicit chains moved to tag rules)
+    buf[24..26].copy_from_slice(&to_q12_4(params.hit_pushback as f32).to_le_bytes());
+    buf[26..28].copy_from_slice(&to_q12_4(params.block_pushback as f32).to_le_bytes());
 
     buf
 }
@@ -106,7 +114,7 @@ pub fn pack_hurt_window(hb: &FrameHitbox, shapes_off: u32) -> [u8; HURT_WINDOW12
     buf[2..4].copy_from_slice(&0u16.to_le_bytes()); // flags = 0 for v1
     buf[4..8].copy_from_slice(&shapes_off.to_le_bytes()); // shapes_off
     buf[8..10].copy_from_slice(&1u16.to_le_bytes()); // shapes_len = 1
-    // bytes 10-11 are padding (already zeroed)
+                                                     // bytes 10-11 are padding (already zeroed)
 
     buf
 }
@@ -218,7 +226,12 @@ mod tests {
     use crate::codegen::fspk_format::SHAPE_KIND_AABB;
 
     fn make_test_rect() -> Rect {
-        Rect { x: 10, y: 20, w: 50, h: 60 }
+        Rect {
+            x: 10,
+            y: 20,
+            w: 50,
+            h: 60,
+        }
     }
 
     fn make_test_hitbox() -> FrameHitbox {
@@ -257,12 +270,26 @@ mod tests {
     #[test]
     fn test_pack_hit_window() {
         let hb = make_test_hitbox();
-        let hw = pack_hit_window(&hb, 100, 500, 12, 8, 10, 1);
+        let hw = pack_hit_window(
+            &hb,
+            HitWindowPackParams {
+                shapes_off: 100,
+                damage: 500,
+                hitstun: 12,
+                blockstun: 8,
+                hitstop: 10,
+                guard: 1,
+                hit_pushback: 4,
+                block_pushback: 6,
+            },
+        );
 
         assert_eq!(hw.len(), HIT_WINDOW24_SIZE);
         assert_eq!(hw[0], 5); // frame_start
         assert_eq!(hw[1], 8); // frame_end
         assert_eq!(hw[2], 1); // guard (mid)
+        assert_eq!(i16::from_le_bytes([hw[24], hw[25]]), 64);
+        assert_eq!(i16::from_le_bytes([hw[26], hw[27]]), 96);
     }
 
     #[test]
@@ -297,7 +324,12 @@ mod tests {
 
     #[test]
     fn test_negative_coordinates() {
-        let rect = Rect { x: -50, y: -100, w: 30, h: 40 };
+        let rect = Rect {
+            x: -50,
+            y: -100,
+            w: 30,
+            h: 40,
+        };
         let shape = pack_shape(&rect);
 
         let x = i16::from_le_bytes([shape[2], shape[3]]);
@@ -309,11 +341,16 @@ mod tests {
 
     #[test]
     fn pack_hurt_window_matches_view_format() {
-        use framesmith_fspack::bytes::{read_u8, read_u16_le, read_u32_le};
+        use framesmith_fspack::bytes::{read_u16_le, read_u32_le, read_u8};
 
         let hb = FrameHitbox {
             frames: (3, 7),
-            r#box: Rect { x: 0, y: 0, w: 10, h: 20 },
+            r#box: Rect {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 20,
+            },
         };
         let shapes_off: u32 = 0x1234_5678;
 
@@ -330,5 +367,4 @@ mod tests {
         assert_eq!(read_u32_le(&buf, 4), Some(0x1234_5678), "shapes_off");
         assert_eq!(read_u16_le(&buf, 8), Some(1), "shapes_len should be 1");
     }
-
 }

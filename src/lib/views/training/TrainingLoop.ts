@@ -17,6 +17,7 @@ import {
   NO_INPUT,
   type CharacterState,
   type FrameResult,
+  type TrainingSnapshot,
 } from '$lib/training/TrainingSession';
 import {
   InputManager,
@@ -24,17 +25,26 @@ import {
   MoveResolver,
   DummyController,
   type InputSnapshot,
+  type InputBufferSnapshot,
 } from '$lib/training';
 import type { Character, State } from '$lib/types';
 import { getCharProp } from '$lib/utils';
 
 // Constants
 const INPUT_HISTORY_MAX = 30;
+const HISTORY_MAX = 300;
 const COMBO_RESET_FRAMES = 60; // Reset combo after 1 second of no hits
 
 // Stage boundaries
 const MIN_X = 50;
 const MAX_X = 750;
+const TRAINING_DEBUG_LOGS = import.meta.env.DEV && import.meta.env.MODE !== 'test';
+
+interface TrainingLoopHistoryEntry {
+  state: TrainingLoopState;
+  session: TrainingSnapshot;
+  inputBuffer: InputBufferSnapshot;
+}
 
 /**
  * Game state managed by the training loop
@@ -57,6 +67,7 @@ export interface TrainingLoopState {
   playerHealth: number;
   dummyHealth: number;
   maxHealth: number;
+  dummyMaxHealth: number;
 
   // Combo tracking
   comboHits: number;
@@ -82,8 +93,36 @@ export interface TrainingLoopConfig {
   moveResolver: MoveResolver;
   dummyController: DummyController;
   character: Character;
+  dummyCharacter?: Character;
   moves: State[];
   onError?: (error: string) => void;
+}
+
+function cloneInputSnapshot(snapshot: InputSnapshot): InputSnapshot {
+  return {
+    direction: snapshot.direction,
+    buttons: [...snapshot.buttons],
+  };
+}
+
+function cloneCharacterState(state: CharacterState | null): CharacterState | null {
+  if (!state) {
+    return null;
+  }
+
+  return {
+    ...state,
+    resources: [...state.resources],
+  };
+}
+
+function cloneLoopState(state: TrainingLoopState): TrainingLoopState {
+  return {
+    ...state,
+    playerState: cloneCharacterState(state.playerState),
+    dummyState: cloneCharacterState(state.dummyState),
+    inputHistory: state.inputHistory.map(cloneInputSnapshot),
+  };
 }
 
 /**
@@ -96,6 +135,7 @@ export class TrainingLoop {
   private moveResolver: MoveResolver;
   private dummyController: DummyController;
   private character: Character;
+  private dummyCharacter: Character;
   private moves: State[];
   private onError?: (error: string) => void;
 
@@ -103,6 +143,7 @@ export class TrainingLoop {
   private animationFrameId: number | null = null;
   private loopSeq = 0;
   private lastTime = 0;
+  private history: TrainingLoopHistoryEntry[] = [];
 
   // Reactive stores for state
   public state: Writable<TrainingLoopState>;
@@ -114,11 +155,13 @@ export class TrainingLoop {
     this.moveResolver = config.moveResolver;
     this.dummyController = config.dummyController;
     this.character = config.character;
+    this.dummyCharacter = config.dummyCharacter ?? config.character;
     this.moves = config.moves;
     this.onError = config.onError;
 
     // Initialize state with defaults
     const maxHealth = getCharProp(this.character, 'health', 1000);
+    const dummyMaxHealth = getCharProp(this.dummyCharacter, 'health', maxHealth);
     this.state = writable<TrainingLoopState>({
       frameCount: 0,
       playerState: this.session.playerState(),
@@ -128,8 +171,9 @@ export class TrainingLoop {
       dummyX: 450,
       dummyY: 0,
       playerHealth: maxHealth,
-      dummyHealth: maxHealth,
+      dummyHealth: dummyMaxHealth,
       maxHealth,
+      dummyMaxHealth,
       comboHits: 0,
       comboDamage: 0,
       comboResetTimer: 0,
@@ -233,6 +277,26 @@ export class TrainingLoop {
   }
 
   /**
+   * Step back one frame using the bounded rewind history.
+   */
+  stepBack(): void {
+    this.state.update(state => {
+      const previous = this.history.pop();
+      if (!previous) {
+        return { ...state, isPlaying: false };
+      }
+
+      this.session.restore(previous.session);
+      this.inputBuffer.restore(previous.inputBuffer);
+
+      return {
+        ...cloneLoopState(previous.state),
+        isPlaying: false,
+      };
+    });
+  }
+
+  /**
    * Set playback speed
    */
   setPlaybackSpeed(speed: PlaybackSpeed): void {
@@ -247,20 +311,50 @@ export class TrainingLoop {
    */
   resetHealth(): void {
     this.session.reset();
+    this.history = [];
+    this.inputBuffer.clear();
     this.state.update(state => ({
       ...state,
+      frameCount: 0,
+      playerState: this.session.playerState(),
+      dummyState: this.session.dummyState(),
+      playerX: 350,
+      playerY: 0,
+      dummyX: 450,
+      dummyY: 0,
       playerHealth: state.maxHealth,
-      dummyHealth: state.maxHealth,
+      dummyHealth: state.dummyMaxHealth,
       comboHits: 0,
       comboDamage: 0,
       comboResetTimer: 0,
+      inputHistory: [],
+      frameAccumulator: 0,
     }));
+  }
+
+  private captureHistory(state: TrainingLoopState): TrainingLoopHistoryEntry {
+    return {
+      state: cloneLoopState(state),
+      session: this.session.snapshot(),
+      inputBuffer: this.inputBuffer.snapshot(),
+    };
+  }
+
+  private pushHistory(entry: TrainingLoopHistoryEntry): void {
+    this.history.push(entry);
+    if (this.history.length > HISTORY_MAX) {
+      this.history.shift();
+    }
   }
 
   /**
    * Tick one frame of simulation
    */
   private tickOneFrame(state: TrainingLoopState): TrainingLoopState {
+    // Keep the runtime snapshot aligned with the visible positions.
+    this.session.setPositions(state.playerX, state.playerY, state.dummyX, state.dummyY);
+    const historyEntry = this.captureHistory(state);
+
     // Get input snapshot and add to buffer
     const snapshot = this.inputManager.getSnapshot();
     this.inputBuffer.push(snapshot);
@@ -283,9 +377,6 @@ export class TrainingLoop {
     // Get dummy state
     const wasmDummyState = this.dummyController.getWasmState();
 
-    // Sync positions to WASM for hit detection
-    this.session.setPositions(state.playerX, state.playerY, state.dummyX, state.dummyY);
-
     // Tick simulation with error handling for WASM errors
     let result: FrameResult;
     try {
@@ -301,7 +392,7 @@ export class TrainingLoop {
 
     // Log state transitions for debugging
     const prevState = state.playerState?.current_state;
-    if (prevState !== result.player.current_state) {
+    if (TRAINING_DEBUG_LOGS && prevState !== result.player.current_state) {
       const move = this.moves[result.player.current_state];
       console.log('[STATE]', {
         from: prevState,
@@ -322,20 +413,23 @@ export class TrainingLoop {
     const hits = result.hits;
 
     if (hits.length > 0) {
-      console.log('[HIT]', {
-        playerPos: { x: playerX, y: playerY },
-        dummyPos: { x: state.dummyX, y: state.dummyY },
-        playerState: result.player.current_state,
-        playerFrame: result.player.frame,
-        hits: hits.map(h => ({ damage: h.damage, move: h.attacker_move })),
-      });
+      if (TRAINING_DEBUG_LOGS) {
+        console.log('[HIT]', {
+          playerPos: { x: playerX, y: playerY },
+          dummyPos: { x: state.dummyX, y: state.dummyY },
+          playerState: result.player.current_state,
+          playerFrame: result.player.frame,
+          hits: hits.map(h => ({ damage: h.damage, move: h.attacker_move })),
+        });
+      }
 
       for (const hit of hits) {
         // Apply damage to dummy (player attacking)
-        dummyHealth = Math.max(0, dummyHealth - hit.damage);
+        const damage = hit.blocked ? hit.chip_damage : hit.damage;
+        dummyHealth = Math.max(0, dummyHealth - damage);
         // Track combo
         comboHits++;
-        comboDamage += hit.damage;
+        comboDamage += damage;
       }
       // Reset combo timer on hit
       comboResetTimer = COMBO_RESET_FRAMES;
@@ -358,7 +452,7 @@ export class TrainingLoop {
       dummyX += result.push_separation.dummy_dx;
     }
 
-    return {
+    const nextState = {
       ...state,
       frameCount: state.frameCount + 1,
       playerState: result.player,
@@ -373,6 +467,10 @@ export class TrainingLoop {
       comboResetTimer,
       inputHistory,
     };
+
+    this.pushHistory(historyEntry);
+
+    return nextState;
   }
 
   /**
@@ -424,5 +522,6 @@ export class TrainingLoop {
    */
   dispose(): void {
     this.stop();
+    this.history = [];
   }
 }

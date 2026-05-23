@@ -19,7 +19,10 @@ mod tests {
     /// Create a minimal test character.
     fn make_test_character(id: &str) -> Character {
         let mut properties = BTreeMap::new();
-        properties.insert("archetype".to_string(), PropertyValue::String("rushdown".to_string()));
+        properties.insert(
+            "archetype".to_string(),
+            PropertyValue::String("rushdown".to_string()),
+        );
         properties.insert("health".to_string(), PropertyValue::Number(1000.0));
         properties.insert("walk_speed".to_string(), PropertyValue::Number(4.0));
         properties.insert("back_walk_speed".to_string(), PropertyValue::Number(3.0));

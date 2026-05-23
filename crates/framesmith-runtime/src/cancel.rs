@@ -1,6 +1,9 @@
 use crate::state::CharacterState;
 use framesmith_fspack::PackView;
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 /// Action cancel IDs (offset from move_count).
 /// These map to CancelFlags on the current move.
 pub const ACTION_CHAIN: u16 = 0;
@@ -79,11 +82,11 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
             // bit 0 = hit, bit 1 = block, bit 2 = whiff
             let condition = rule.condition();
             let condition_met = if state.hit_confirmed {
-                condition & 0b001 != 0  // HIT bit
+                condition & 0b001 != 0 // HIT bit
             } else if state.block_confirmed {
-                condition & 0b010 != 0  // BLOCK bit
+                condition & 0b010 != 0 // BLOCK bit
             } else {
-                condition & 0b100 != 0  // WHIFF bit
+                condition & 0b100 != 0 // WHIFF bit
             };
             if !condition_met {
                 continue;
@@ -110,12 +113,54 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
     false
 }
 
+/// Return every move state that can currently be cancelled into.
+///
+/// This enumerates regular move/state targets only. Game-defined action cancels
+/// use IDs above the move count and remain delegated to the engine.
+#[cfg(feature = "alloc")]
+#[must_use]
+pub fn available_cancels(state: &CharacterState, pack: &PackView) -> Vec<u16> {
+    let Some(states) = pack.states() else {
+        return Vec::new();
+    };
+
+    let mut cancels = Vec::new();
+    for target in 0..states.len().min(u16::MAX as usize + 1) {
+        let target = target as u16;
+        if can_cancel_to(state, pack, target) {
+            cancels.push(target);
+        }
+    }
+    cancels
+}
+
+/// Write every currently valid move-state cancel target into a caller buffer.
+///
+/// Returns the number of targets written. If the buffer is too small, remaining
+/// valid targets are skipped. Game-defined action cancels are not enumerated.
+#[must_use]
+pub fn available_cancels_buf(state: &CharacterState, pack: &PackView, buf: &mut [u16]) -> usize {
+    let Some(states) = pack.states() else {
+        return 0;
+    };
+
+    let mut written = 0;
+    for target in 0..states.len().min(u16::MAX as usize + 1) {
+        let target = target as u16;
+        if can_cancel_to(state, pack, target) {
+            if let Some(slot) = buf.get_mut(written) {
+                *slot = target;
+                written += 1;
+            } else {
+                break;
+            }
+        }
+    }
+    written
+}
+
 /// Check if an action cancel is allowed based on current move's cancel flags.
-fn check_action_cancel(
-    state: &CharacterState,
-    pack: &PackView,
-    action_id: u16,
-) -> bool {
+fn check_action_cancel(state: &CharacterState, pack: &PackView, action_id: u16) -> bool {
     let moves = match pack.states() {
         Some(m) => m,
         None => return false,
@@ -181,5 +226,16 @@ mod tests {
             assert!(!can_cancel_to(&state, &pack, 0));
         }
         // Parsing empty data fails, which is expected
+    }
+
+    #[test]
+    fn available_cancels_buf_returns_zero_for_empty_pack() {
+        let state = CharacterState::default();
+        let empty_data: [u8; 0] = [];
+        if let Ok(pack) = PackView::parse(&empty_data) {
+            let mut buf = [0u16; 4];
+            assert_eq!(available_cancels_buf(&state, &pack, &mut buf), 0);
+        }
+        // Parsing empty data fails, which is expected.
     }
 }

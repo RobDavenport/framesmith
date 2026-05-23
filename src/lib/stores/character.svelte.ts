@@ -3,6 +3,7 @@ import type { CharacterData, CharacterSummary, State, MergedRegistry } from "$li
 import { loadAssets, resetAssetsState } from "./assets.svelte";
 import { getProjectPath } from "./project.svelte";
 import { TrainingSync, createMainWindowSync } from "$lib/training";
+import { getStateKey, isResolvedVariantState } from "$lib/utils";
 
 // Training sync instance (created lazily)
 let trainingSync: TrainingSync | null = null;
@@ -47,7 +48,7 @@ function notifyCharacterSave(): void {
 let characterList = $state<CharacterSummary[]>([]);
 let currentCharacter = $state<CharacterData | null>(null);
 let rulesRegistry = $state<MergedRegistry | null>(null);
-let selectedMoveInput = $state<string | null>(null);
+let selectedMoveKey = $state<string | null>(null);
 let loading = $state(false);
 let error = $state<string | null>(null);
 
@@ -82,12 +83,16 @@ export function getRulesRegistry() {
 }
 
 export function getSelectedMove(): State | null {
-  if (!currentCharacter || !selectedMoveInput) return null;
-  return currentCharacter.moves.find((m) => m.input === selectedMoveInput) ?? null;
+  if (!currentCharacter || !selectedMoveKey) return null;
+  return currentCharacter.moves.find((m) => getStateKey(m) === selectedMoveKey) ?? null;
 }
 
 export function getSelectedMoveInput() {
-  return selectedMoveInput;
+  return selectedMoveKey;
+}
+
+export function getSelectedMoveKey() {
+  return selectedMoveKey;
 }
 
 /**
@@ -95,12 +100,15 @@ export function getSelectedMoveInput() {
  * Use this when $derived(getterFn()) doesn't track properly.
  */
 export const characterStore = {
+  get selectedMoveKey() {
+    return selectedMoveKey;
+  },
   get selectedMoveInput() {
-    return selectedMoveInput;
+    return selectedMoveKey;
   },
   get selectedMove(): State | null {
-    if (!currentCharacter || !selectedMoveInput) return null;
-    return currentCharacter.moves.find((m) => m.input === selectedMoveInput) ?? null;
+    if (!currentCharacter || !selectedMoveKey) return null;
+    return currentCharacter.moves.find((m) => getStateKey(m) === selectedMoveKey) ?? null;
   },
   get currentCharacter() {
     return currentCharacter;
@@ -150,7 +158,7 @@ export async function selectCharacter(characterId: string): Promise<void> {
   const seq = ++selectSeq;
   loading = true;
   error = null;
-  selectedMoveInput = null;
+  selectedMoveKey = null;
   rulesRegistry = null;
   resetAssetsState();
   try {
@@ -186,15 +194,15 @@ export async function selectCharacter(characterId: string): Promise<void> {
   }
 }
 
-export function selectMove(input: string): void {
-  selectedMoveInput = input;
+export function selectMove(key: string): void {
+  selectedMoveKey = key;
 }
 
 export function clearSelection(): void {
   selectSeq++;
   currentCharacter = null;
   rulesRegistry = null;
-  selectedMoveInput = null;
+  selectedMoveKey = null;
   resetAssetsState();
 }
 
@@ -203,7 +211,7 @@ export function resetCharacterState(): void {
   characterList = [];
   currentCharacter = null;
   rulesRegistry = null;
-  selectedMoveInput = null;
+  selectedMoveKey = null;
   error = null;
   resetAssetsState();
 }
@@ -216,20 +224,27 @@ export async function saveMove(mv: State): Promise<void> {
   if (!currentCharacter) {
     throw new Error("No character selected");
   }
+  if (isResolvedVariantState(mv)) {
+    throw new Error(
+      "Resolved variant states are read-only in the State Editor. Edit the overlay JSON directly until overlay-aware editing is implemented."
+    );
+  }
 
+  const savedMove = $state.snapshot(mv) as State;
   loading = true;
   error = null;
   try {
     await invoke("save_move", {
       charactersDir,
       characterId: currentCharacter.character.id,
-      mv,
+      mv: savedMove,
     });
 
     // Update local state
-    const index = currentCharacter.moves.findIndex((m) => m.input === mv.input);
+    const savedMoveKey = getStateKey(savedMove);
+    const index = currentCharacter.moves.findIndex((m) => getStateKey(m) === savedMoveKey);
     if (index >= 0) {
-      currentCharacter.moves[index] = mv;
+      currentCharacter.moves[index] = savedMove;
     }
 
     // Notify training windows of save
@@ -320,7 +335,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
   // Clear selection if deleted character was selected
   if (currentCharacter?.character.id === characterId) {
     currentCharacter = null;
-    selectedMoveInput = null;
+    selectedMoveKey = null;
     resetAssetsState();
   }
 
@@ -348,7 +363,7 @@ export async function createMove(input: string, name: string): Promise<State> {
   currentCharacter.moves = [...currentCharacter.moves, mv];
 
   // Select the new move
-  selectedMoveInput = mv.input;
+  selectedMoveKey = getStateKey(mv);
 
   return mv;
 }

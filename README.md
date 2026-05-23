@@ -9,7 +9,7 @@ It manages portable character data on disk (JSON) and exports runtime-specific f
 - State editor with sprite and GLTF preview
 - Cancel graph view for route visualization
 - Rules system for defaults and validation
-- Export adapters (`json-blob`, `zx-fspack`)
+- Export adapters (`json-blob`, `fspk`)
 - MCP server for scripted and LLM-assisted workflows
 
 ## Framesmith project format
@@ -73,7 +73,7 @@ See `docs/mcp-server.md` for tools, resources, and integration details.
 
 ```bash
 cd src-tauri
-cargo run --bin framesmith -- export --project .. --all --out-dir ../exports
+cargo run --bin framesmith-cli -- export --project .. --all --out-dir ../exports
 ```
 
 See `docs/cli.md` for full CLI reference.

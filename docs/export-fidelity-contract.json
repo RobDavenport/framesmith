@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "status_values": ["preserved", "derived", "omitted", "engine-owned"],
+  "adapters": {
+    "json-blob": {
+      "character": {
+        "id": { "status": "preserved", "notes": "Serialized directly." },
+        "name": { "status": "preserved", "notes": "Serialized directly." },
+        "properties": { "status": "preserved", "notes": "Serialized directly, including nested values." },
+        "resources": { "status": "preserved", "notes": "Serialized directly." }
+      },
+      "state": {
+        "input": { "status": "preserved", "notes": "Serialized directly." },
+        "name": { "status": "preserved", "notes": "Serialized directly." },
+        "tags": { "status": "preserved", "notes": "Serialized directly." },
+        "startup": { "status": "preserved", "notes": "Serialized directly." },
+        "active": { "status": "preserved", "notes": "Serialized directly." },
+        "recovery": { "status": "preserved", "notes": "Serialized directly." },
+        "damage": { "status": "preserved", "notes": "Serialized directly." },
+        "hitstun": { "status": "preserved", "notes": "Serialized directly." },
+        "blockstun": { "status": "preserved", "notes": "Serialized directly." },
+        "hitstop": { "status": "preserved", "notes": "Serialized directly." },
+        "guard": { "status": "preserved", "notes": "Serialized directly." },
+        "hitboxes": { "status": "preserved", "notes": "Serialized directly." },
+        "hurtboxes": { "status": "preserved", "notes": "Serialized directly." },
+        "pushback": { "status": "preserved", "notes": "Serialized directly." },
+        "meter_gain": { "status": "preserved", "notes": "Serialized directly." },
+        "animation": { "status": "preserved", "notes": "Serialized directly." },
+        "type": { "status": "preserved", "notes": "Serialized as the state type field." },
+        "trigger": { "status": "preserved", "notes": "Serialized directly when present." },
+        "parent": { "status": "preserved", "notes": "Serialized directly when present." },
+        "total": { "status": "preserved", "notes": "Serialized directly when present." },
+        "hits": { "status": "preserved", "notes": "Serialized directly when present." },
+        "preconditions": { "status": "preserved", "notes": "Serialized directly when present." },
+        "costs": { "status": "preserved", "notes": "Serialized directly when present." },
+        "movement": { "status": "preserved", "notes": "Serialized directly when present." },
+        "super_freeze": { "status": "preserved", "notes": "Serialized directly when present." },
+        "on_use": { "status": "preserved", "notes": "Serialized directly when present." },
+        "on_hit": { "status": "preserved", "notes": "Serialized directly when present." },
+        "on_block": { "status": "preserved", "notes": "Serialized directly when present." },
+        "notifies": { "status": "preserved", "notes": "Serialized directly." },
+        "advanced_hurtboxes": { "status": "preserved", "notes": "Serialized directly when present." },
+        "pushboxes": { "status": "preserved", "notes": "Serialized directly." },
+        "properties": { "status": "preserved", "notes": "Serialized directly, including nested values." },
+        "base": { "status": "preserved", "notes": "Serialized when present. Loaded resolved variants normally omit this authoring-only field." },
+        "id": { "status": "preserved", "notes": "Serialized when present and required to distinguish resolved variants." }
+      },
+      "cancel_table": {
+        "tag_rules": { "status": "preserved", "notes": "Serialized directly." },
+        "deny": { "status": "preserved", "notes": "Serialized directly." }
+      }
+    },
+    "fspk": {
+      "character": {
+        "id": { "status": "derived", "notes": "Used to derive mesh asset keys, not stored as a top-level character id." },
+        "name": { "status": "omitted", "notes": "Display name is editor-facing and not present in FSPK v1." },
+        "properties": { "status": "preserved", "notes": "Stored in CHARACTER_PROPS; nested values are flattened to dotted property names." },
+        "resources": { "status": "preserved", "notes": "Stored in RESOURCE_DEFS." }
+      },
+      "state": {
+        "input": { "status": "preserved", "notes": "Stored in STATE_EXTRAS as input notation. FSPK v1 does not separately store resolved variant id." },
+        "name": { "status": "omitted", "notes": "Display name is editor-facing and not present in FSPK v1." },
+        "tags": { "status": "preserved", "notes": "Stored in STATE_TAG_RANGES and STATE_TAGS." },
+        "startup": { "status": "preserved", "notes": "Stored in StateRecord." },
+        "active": { "status": "preserved", "notes": "Stored in StateRecord." },
+        "recovery": { "status": "preserved", "notes": "Stored in StateRecord." },
+        "damage": { "status": "preserved", "notes": "Stored in StateRecord and copied into legacy hit windows." },
+        "hitstun": { "status": "preserved", "notes": "Stored in StateRecord and copied into legacy hit windows." },
+        "blockstun": { "status": "preserved", "notes": "Stored in StateRecord and copied into legacy hit windows." },
+        "hitstop": { "status": "preserved", "notes": "Stored in StateRecord and copied into legacy hit windows." },
+        "guard": { "status": "preserved", "notes": "Stored in StateRecord and legacy hit windows as an enum value." },
+        "hitboxes": { "status": "preserved", "notes": "Legacy rectangular hitboxes are stored as HIT_WINDOWS plus SHAPES." },
+        "hurtboxes": { "status": "preserved", "notes": "Legacy rectangular hurtboxes are stored as HURT_WINDOWS plus SHAPES." },
+        "pushback": { "status": "preserved", "notes": "Stored on legacy hit windows as fixed-point hit/block pushback." },
+        "meter_gain": { "status": "derived", "notes": "Exported as meter resource deltas when nonzero and not already declared." },
+        "animation": { "status": "derived", "notes": "Mapped to MESH_KEYS and KEYFRAMES_KEYS indices." },
+        "type": { "status": "derived", "notes": "Known types are encoded in StateRecord and also emitted as state tags; unknown custom types encode as 255 in StateRecord." },
+        "trigger": { "status": "preserved", "notes": "Stored in StateRecord as an enum value." },
+        "parent": { "status": "omitted", "notes": "Follow-up ownership remains engine-side in FSPK v1." },
+        "total": { "status": "derived", "notes": "Stored in StateRecord; derived from startup+active+recovery when omitted." },
+        "hits": { "status": "omitted", "notes": "The advanced multi-hit model is not exported by FSPK v1; legacy hitboxes are exported instead." },
+        "preconditions": { "status": "preserved", "notes": "Resource preconditions are stored; meter, charge, state, grounded, airborne, health, entity_count, combo_count, opponent_state, and distance variants are not represented in FSPK v1." },
+        "costs": { "status": "preserved", "notes": "Resource costs are stored; meter and health costs are not represented in FSPK v1." },
+        "movement": { "status": "engine-owned", "notes": "Authored movement is not represented in FSPK v1; runtime movement ownership is still a production blocker." },
+        "super_freeze": { "status": "omitted", "notes": "Not represented in FSPK v1." },
+        "on_use": { "status": "preserved", "notes": "Events and resource_deltas are stored; enters_state, spawn_entity, and gain_meter are not represented in FSPK v1." },
+        "on_hit": { "status": "preserved", "notes": "Events and resource_deltas are stored; gain_meter, heal, status, knockback, wall_bounce, and ground_bounce are not represented in FSPK v1." },
+        "on_block": { "status": "preserved", "notes": "Events and resource_deltas are stored; gain_meter and pushback are not represented in FSPK v1." },
+        "notifies": { "status": "preserved", "notes": "Stored in MOVE_NOTIFIES plus EVENT_EMITS/EVENT_ARGS." },
+        "advanced_hurtboxes": { "status": "omitted", "notes": "Advanced shaped hurtboxes and flags are not represented in FSPK v1; legacy hurtboxes are exported." },
+        "pushboxes": { "status": "preserved", "notes": "Stored as PUSH_WINDOWS plus SHAPES." },
+        "properties": { "status": "preserved", "notes": "Stored in STATE_PROPS; nested values are flattened to dotted property names." },
+        "base": { "status": "omitted", "notes": "Authoring-only inheritance field; variants should be flattened before FSPK export." },
+        "id": { "status": "omitted", "notes": "FSPK v1 does not store resolved variant id separately from gameplay input. This is a known limitation for variant-heavy runtime handoff." }
+      },
+      "cancel_table": {
+        "tag_rules": { "status": "preserved", "notes": "Stored in CANCEL_TAG_RULES. Selector resolution is currently based on input/type/tags." },
+        "deny": { "status": "preserved", "notes": "Stored in CANCEL_DENIES as state index pairs. Current exporter resolves deny entries by gameplay input." }
+      }
+    }
+  }
+}

@@ -2,8 +2,8 @@ mod shapes;
 
 // Re-export shape types and functions for backward compatibility
 pub use shapes::{
-    Aabb, Capsule, Circle,
-    aabb_circle_overlap, aabb_overlap, capsule_overlap, circle_overlap, shapes_overlap,
+    aabb_circle_overlap, aabb_overlap, capsule_overlap, circle_overlap, shapes_overlap, Aabb,
+    Capsule, Circle,
 };
 
 use crate::state::CharacterState;
@@ -275,7 +275,7 @@ pub fn calculate_pushbox_separation(p1_aabb: &Aabb, p2_aabb: &Aabb) -> Option<Pu
 
     Some(PushboxResult {
         p1_dx: -(half_overlap + remainder), // P1 moves opposite to overlap direction
-        p2_dx: half_overlap,                 // P2 moves in overlap direction
+        p2_dx: half_overlap,                // P2 moves in overlap direction
     })
 }
 
@@ -414,8 +414,18 @@ mod tests {
     #[test]
     fn pushbox_separation_returns_none_when_no_overlap() {
         // Two AABBs that don't overlap
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 50, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 50,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_none());
@@ -424,8 +434,18 @@ mod tests {
     #[test]
     fn pushbox_separation_returns_none_when_edge_touching() {
         // Two AABBs exactly touching (no overlap)
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 20, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 20,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_none());
@@ -438,8 +458,18 @@ mod tests {
         // Overlap = P1's right (20) - P2's left (15) = 5
         // Half = 2, remainder = 1
         // P1 moves left by -(2+1) = -3, P2 moves right by 2
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 15, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 15,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_some());
@@ -464,8 +494,18 @@ mod tests {
         // Overlap = P2's right (20) - P1's left (15) = 5, negated = -5
         // Half = -2, remainder = -1
         // P1 moves right by -(-2-1) = 3, P2 moves left by -2
-        let p1 = Aabb { x: 15, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 15,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_some());
@@ -488,8 +528,18 @@ mod tests {
         // Two AABBs with identical position and size
         // Centers are equal, so P1 is considered "left" (<=)
         // Overlap = full width = 20
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 0, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_some());
@@ -515,8 +565,18 @@ mod tests {
         // Overlap = 20 - 19 = 1
         // Half = 0, remainder = 1
         // P1 moves -1, P2 moves 0
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 19, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 19,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_some());
@@ -534,8 +594,18 @@ mod tests {
         // Overlap = 20 - 14 = 6
         // Half = 3, remainder = 0
         // P1 moves -3, P2 moves 3
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 14, y: 0, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 14,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_some());
@@ -547,9 +617,18 @@ mod tests {
 
     #[test]
     fn pushbox_result_struct_equality() {
-        let a = PushboxResult { p1_dx: -5, p2_dx: 5 };
-        let b = PushboxResult { p1_dx: -5, p2_dx: 5 };
-        let c = PushboxResult { p1_dx: -4, p2_dx: 5 };
+        let a = PushboxResult {
+            p1_dx: -5,
+            p2_dx: 5,
+        };
+        let b = PushboxResult {
+            p1_dx: -5,
+            p2_dx: 5,
+        };
+        let c = PushboxResult {
+            p1_dx: -4,
+            p2_dx: 5,
+        };
 
         assert_eq!(a, b);
         assert_ne!(a, c);
@@ -558,8 +637,18 @@ mod tests {
     #[test]
     fn pushbox_separation_only_y_overlap_returns_none() {
         // AABBs that only overlap on Y axis but not X axis
-        let p1 = Aabb { x: 0, y: 0, w: 20, h: 40 };
-        let p2 = Aabb { x: 30, y: 10, w: 20, h: 40 };
+        let p1 = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 40,
+        };
+        let p2 = Aabb {
+            x: 30,
+            y: 10,
+            w: 20,
+            h: 40,
+        };
 
         let result = calculate_pushbox_separation(&p1, &p2);
         assert!(result.is_none());

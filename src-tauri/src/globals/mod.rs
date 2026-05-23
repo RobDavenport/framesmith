@@ -26,7 +26,11 @@ impl std::fmt::Display for GlobalsError {
                 write!(f, "Global state '{}' not found in globals/states/", state)
             }
             GlobalsError::AliasConflict { alias } => {
-                write!(f, "Global alias '{}' conflicts with local state file", alias)
+                write!(
+                    f,
+                    "Global alias '{}' conflicts with local state file",
+                    alias
+                )
             }
             GlobalsError::DuplicateAlias { alias } => {
                 write!(f, "Duplicate global alias '{}' in globals.json", alias)
@@ -46,7 +50,9 @@ impl std::error::Error for GlobalsError {}
 /// Load the globals manifest for a character
 ///
 /// Returns None if globals.json doesn't exist (globals are optional)
-pub fn load_globals_manifest(character_dir: &Path) -> Result<Option<GlobalsManifest>, GlobalsError> {
+pub fn load_globals_manifest(
+    character_dir: &Path,
+) -> Result<Option<GlobalsManifest>, GlobalsError> {
     let manifest_path = character_dir.join("globals.json");
     if !manifest_path.exists() {
         return Ok(None);
@@ -68,7 +74,10 @@ pub fn load_globals_manifest(character_dir: &Path) -> Result<Option<GlobalsManif
 
 /// Load a single global state from the project's globals/states/ directory
 pub fn load_global_state(project_dir: &Path, state_name: &str) -> Result<State, GlobalsError> {
-    let state_path = project_dir.join("globals").join("states").join(format!("{}.json", state_name));
+    let state_path = project_dir
+        .join("globals")
+        .join("states")
+        .join(format!("{}.json", state_name));
 
     if !state_path.exists() {
         return Err(GlobalsError::NotFound {
@@ -148,27 +157,55 @@ pub fn apply_overrides(
             }
         }
         // Always set input to alias
-        map.insert("input".to_string(), serde_json::Value::String(alias.to_string()));
+        map.insert(
+            "input".to_string(),
+            serde_json::Value::String(alias.to_string()),
+        );
     }
 
-    let result: State = serde_json::from_value(base_json).map_err(|e| GlobalsError::ParseError {
-        path: "state deserialization".to_string(),
-        message: e.to_string(),
-    })?;
+    let result: State =
+        serde_json::from_value(base_json).map_err(|e| GlobalsError::ParseError {
+            path: "state deserialization".to_string(),
+            message: e.to_string(),
+        })?;
 
     Ok(result)
 }
 
 /// Known State field names for override validation
 const KNOWN_STATE_FIELDS: &[&str] = &[
-    "id", "input", "name", "type", "tags", "base",
-    "startup", "active", "recovery", "total",
-    "damage", "hitstun", "blockstun", "hitstop",
-    "guard", "animation",
-    "hitboxes", "hurtboxes", "pushback",
-    "movement", "on_hit", "on_block", "on_use",
-    "hits", "preconditions", "costs", "meter_gain", "notifies",
-    "trigger", "parent", "super_freeze", "advanced_hurtboxes",
+    "id",
+    "input",
+    "name",
+    "type",
+    "tags",
+    "base",
+    "startup",
+    "active",
+    "recovery",
+    "total",
+    "damage",
+    "hitstun",
+    "blockstun",
+    "hitstop",
+    "guard",
+    "animation",
+    "hitboxes",
+    "hurtboxes",
+    "pushback",
+    "movement",
+    "on_hit",
+    "on_block",
+    "on_use",
+    "hits",
+    "preconditions",
+    "costs",
+    "meter_gain",
+    "notifies",
+    "trigger",
+    "parent",
+    "super_freeze",
+    "advanced_hurtboxes",
 ];
 
 /// Resolve all global states for a character
@@ -366,7 +403,10 @@ mod tests {
         };
 
         let mut overrides = serde_json::Map::new();
-        overrides.insert("movement".to_string(), serde_json::json!({ "distance": 20 }));
+        overrides.insert(
+            "movement".to_string(),
+            serde_json::json!({ "distance": 20 }),
+        );
 
         let result = apply_overrides(base, &overrides, "idle").unwrap();
         let movement = result.movement.unwrap();

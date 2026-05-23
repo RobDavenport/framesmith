@@ -126,17 +126,11 @@ fn closest_point_on_segment(p1: (i64, i64), p2: (i64, i64), p: (i64, i64)) -> (i
         t_num
     };
 
-    (
-        p1.0 + (dx * t) / len_sq,
-        p1.1 + (dy * t) / len_sq,
-    )
+    (p1.0 + (dx * t) / len_sq, p1.1 + (dy * t) / len_sq)
 }
 
 /// Compute squared distance between closest points on two line segments.
-fn segment_distance_sq(
-    a1: (i64, i64), a2: (i64, i64),
-    b1: (i64, i64), b2: (i64, i64),
-) -> i64 {
+fn segment_distance_sq(a1: (i64, i64), a2: (i64, i64), b1: (i64, i64), b2: (i64, i64)) -> i64 {
     // Find closest point on segment A to segment B's closest point to A
     let closest_on_b_to_a1 = closest_point_on_segment(b1, b2, a1);
     let closest_on_a = closest_point_on_segment(a1, a2, closest_on_b_to_a1);
@@ -284,14 +278,28 @@ mod tests {
 
     #[test]
     fn aabb_circle_overlap_detects_intersection() {
-        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
-        let circle = Circle { x: 25, y: 10, r: 10 };
+        let aabb = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 20,
+        };
+        let circle = Circle {
+            x: 25,
+            y: 10,
+            r: 10,
+        };
         assert!(aabb_circle_overlap(&aabb, &circle)); // circle touches right edge
     }
 
     #[test]
     fn aabb_circle_overlap_detects_no_intersection() {
-        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
+        let aabb = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 20,
+        };
         let circle = Circle { x: 35, y: 10, r: 5 };
         assert!(!aabb_circle_overlap(&aabb, &circle)); // too far right
     }
@@ -299,24 +307,60 @@ mod tests {
     #[test]
     fn capsule_overlap_detects_intersection() {
         // Two overlapping horizontal capsules
-        let a = Capsule { x1: 0, y1: 0, x2: 20, y2: 0, r: 5 };
-        let b = Capsule { x1: 15, y1: 0, x2: 35, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 20,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 15,
+            y1: 0,
+            x2: 35,
+            y2: 0,
+            r: 5,
+        };
         assert!(capsule_overlap(&a, &b));
     }
 
     #[test]
     fn capsule_overlap_detects_no_intersection() {
         // Two non-overlapping capsules
-        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
-        let b = Capsule { x1: 30, y1: 0, x2: 40, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 10,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 30,
+            y1: 0,
+            x2: 40,
+            y2: 0,
+            r: 5,
+        };
         assert!(!capsule_overlap(&a, &b));
     }
 
     #[test]
     fn capsule_overlap_edge_touching_is_not_overlap() {
         // Two capsules exactly touching (distance == sum of radii)
-        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
-        let b = Capsule { x1: 20, y1: 0, x2: 30, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 10,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 20,
+            y1: 0,
+            x2: 30,
+            y2: 0,
+            r: 5,
+        };
         assert!(!capsule_overlap(&a, &b)); // distance 10 == 5+5
     }
 }

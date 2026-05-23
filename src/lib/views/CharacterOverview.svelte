@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getCurrentCharacter, getRulesRegistry, exportCharacter } from "$lib/stores/character.svelte";
   import DeleteCharacterModal from "$lib/components/DeleteCharacterModal.svelte";
-  import type { State, CancelTable } from "$lib/types";
+  import type { State, PropertyValue, CancelCondition } from "$lib/types";
 
   let exportAdapter = $state("json-blob");
   let exportPretty = $state(true);
@@ -60,14 +60,36 @@
   });
 
   // Cancel statistics
-  const chainStarters = $derived.by(() => {
+  const tagRuleCount = $derived(cancelTable?.tag_rules?.length ?? 0);
+  const deniedRouteCount = $derived.by(() => {
     if (!cancelTable) return 0;
-    return Object.keys(cancelTable.chains).length;
+    return Object.values(cancelTable.deny).reduce((total, targets) => total + targets.length, 0);
+  });
+  const alwaysRuleCount = $derived.by(() =>
+    cancelTable?.tag_rules.filter((rule) => isAlwaysCondition(rule.on)).length ?? 0
+  );
+  const confirmRuleCount = $derived.by(() =>
+    cancelTable?.tag_rules.filter((rule) => hasConfirmCondition(rule.on)).length ?? 0
+  );
+
+  const archetype = $derived.by(() => {
+    const value = character?.properties.archetype;
+    return typeof value === "string" && value.length > 0 ? value : "Unspecified";
   });
 
-  const specialCancelCount = $derived(cancelTable?.special_cancels?.length ?? 0);
-  const superCancelCount = $derived(cancelTable?.super_cancels?.length ?? 0);
-  const jumpCancelCount = $derived(cancelTable?.jump_cancels?.length ?? 0);
+  function conditionTokens(condition: CancelCondition | undefined): string[] {
+    if (!condition) return ["always"];
+    return Array.isArray(condition) ? condition : [condition];
+  }
+
+  function isAlwaysCondition(condition: CancelCondition | undefined): boolean {
+    return conditionTokens(condition).includes("always");
+  }
+
+  function hasConfirmCondition(condition: CancelCondition | undefined): boolean {
+    const tokens = conditionTokens(condition);
+    return tokens.includes("hit") || tokens.includes("block");
+  }
 
   // Format property names: convert snake_case to Title Case
   function formatPropertyName(key: string): string {
@@ -78,13 +100,16 @@
   }
 
   // Format property values: numbers get formatted, booleans become Yes/No, strings as-is
-  function formatPropertyValue(value: unknown): string {
+  function formatPropertyValue(value: PropertyValue): string {
     if (typeof value === "number") {
       // If it's a whole number, show without decimals; otherwise show one decimal
       return Number.isInteger(value) ? value.toString() : value.toFixed(1);
     }
     if (typeof value === "boolean") {
       return value ? "Yes" : "No";
+    }
+    if (Array.isArray(value) || typeof value === "object") {
+      return JSON.stringify(value);
     }
     return String(value);
   }
@@ -119,7 +144,7 @@
     <!-- Header -->
     <div class="character-header">
       <h1 class="character-name">{character.name}</h1>
-      <span class="archetype-badge">{character.archetype}</span>
+      <span class="archetype-badge">{archetype}</span>
     </div>
 
     <div class="stats-grid">
@@ -168,20 +193,20 @@
         <h3 class="card-title">Cancel Routes</h3>
         <div class="stat-list">
           <div class="stat-row">
-            <span class="stat-label">Chain Starters</span>
-            <span class="stat-value">{chainStarters}</span>
+            <span class="stat-label">Tag Rules</span>
+            <span class="stat-value">{tagRuleCount}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Special Cancels</span>
-            <span class="stat-value">{specialCancelCount}</span>
+            <span class="stat-label">Confirm Rules</span>
+            <span class="stat-value">{confirmRuleCount}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Super Cancels</span>
-            <span class="stat-value">{superCancelCount}</span>
+            <span class="stat-label">Always Rules</span>
+            <span class="stat-value">{alwaysRuleCount}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Jump Cancels</span>
-            <span class="stat-value">{jumpCancelCount}</span>
+            <span class="stat-label">Denied Routes</span>
+            <span class="stat-value">{deniedRouteCount}</span>
           </div>
         </div>
       </div>

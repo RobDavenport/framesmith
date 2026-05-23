@@ -1,7 +1,7 @@
 # Framesmith MCP Server
 
 **Status:** Active
-**Last reviewed:** 2026-02-01
+**Last reviewed:** 2026-05-22
 
 Framesmith ships an MCP server binary at `src-tauri/src/bin/mcp.rs`. It exposes tools for inspecting and editing character data on disk, with the same validation pipeline used by the app/exporters.
 
@@ -125,7 +125,9 @@ Example usage (conceptual):
 ```text
 export_character({
   "character_id": "test_char",
-  "adapter": "zx-fspack",
+  "adapter": "fspk",
   "output_path": "exports/test_char.fspk"
 })
 ```
+
+`zx-fspack` is accepted as a legacy alias for `fspk`.

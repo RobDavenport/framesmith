@@ -1,7 +1,7 @@
 # Framesmith Architecture
 
 **Status:** Active
-**Last reviewed:** 2026-02-20
+**Last reviewed:** 2026-05-23
 
 This document describes Framesmith's system architecture, the data pipeline from authoring to runtime, and the responsibility boundaries between layers.
 
@@ -26,7 +26,7 @@ flowchart TD
     subgraph Export ["Export Layer"]
         VAL["Validation Pipeline\n(rules/validate.rs)"]
         JB["json-blob adapter\n(single JSON file)"]
-        FSPK["zx-fspack adapter\n(.fspk binary)"]
+        FSPK["fspk adapter\n(.fspk binary)"]
     end
 
     subgraph Runtime ["Runtime Layer"]
@@ -66,7 +66,7 @@ flowchart LR
     subgraph Backend ["Rust Backend"]
         CMDS["Tauri Commands\n(character, project, export)"]
         SCHEMA["Schema Types\n(State, Character, CancelTable)"]
-        CODEGEN["Codegen Adapters\n(json-blob, zx-fspack)"]
+        CODEGEN["Codegen Adapters\n(json-blob, fspk)"]
         RMOD["Rules Engine\n(validate, apply, match)"]
     end
 
@@ -90,11 +90,11 @@ Character data lives on disk as a directory of JSON files. Each character has it
 
 ### Export layer
 
-The export pipeline reads JSON files, applies rule defaults, runs the shared validation pipeline (`rules/validate.rs`), and produces output through one of two adapters. The `json-blob` adapter emits a single resolved JSON file. The `zx-fspack` adapter emits a compact `.fspk` binary using fixed-size records for zero-copy deserialization. Both adapters are invoked identically from the UI, CLI, and MCP server -- validation is never bypassed.
+The export pipeline reads JSON files, applies rule defaults, runs the shared validation pipeline (`rules/validate.rs`), and produces output through one of two adapters. The `json-blob` adapter emits a single resolved JSON file. The `fspk` adapter emits a compact `.fspk` binary using fixed-size records for zero-copy deserialization. Both adapters are invoked identically from the UI, CLI, and MCP server -- validation is never bypassed.
 
 ### Runtime layer
 
-`framesmith-fspack` is a `no_std` crate that provides zero-copy views over `.fspk` binary data. `framesmith-runtime` builds on it to implement the core simulation: frame-by-frame state advancement, cancel validation (explicit chains, tag-based rules, deny lists), hit detection (AABB hitbox/hurtbox overlap), and resource management. The runtime is stateless and deterministic -- `CharacterState` is 22 bytes, `Copy`, and designed for rollback netcode.
+`framesmith-fspack` is a `no_std` crate that provides zero-copy views over `.fspk` binary data. `framesmith-runtime` builds on it to implement the core simulation: frame-by-frame state advancement, cancel validation (tag-based rules plus deny lists), hit detection (AABB hitbox/hurtbox overlap), and resource management. The runtime is stateless and deterministic -- `CharacterState` is 22 bytes, `Copy`, and designed for rollback netcode.
 
 ### WASM layer
 
@@ -108,7 +108,7 @@ The export pipeline reads JSON files, applies rule defaults, runs the shared val
 
 - **FSPK is fixed-size records.** The binary format uses fixed-size records exclusively for zero-copy deserialization. Variable-length encodings (MessagePack, JSON) are not used in FSPK sections.
 
-- **Variant inheritance is authoring-only.** The `base` field on states enables inheritance during editing, but variants are fully resolved (flattened) at export time. The runtime never sees inheritance.
+- **Variant inheritance is authoring-only.** The `base` field on states enables inheritance during loading/export, but variants are fully resolved (flattened) before runtime handoff. The runtime never sees inheritance. Overlay-aware UI editing is deferred for the first production target; resolved variants are inspectable but read-only in the editor.
 
 - **Nested properties are flattened.** `Object` and `Array` values in `PropertyValue` are flattened to dot-path keys at export (e.g., `movement.distance`). The binary format contains only flat key-value pairs.
 
@@ -118,5 +118,6 @@ The export pipeline reads JSON files, applies rule defaults, runs the shared val
 - [Rules Spec](rules-spec.md) -- validation and defaults system (SSOT)
 - [ZX FSPK Format](zx-fspack.md) -- binary pack format details
 - [Runtime Guide](runtime-guide.md) -- runtime integration patterns
+- [Variant Editing Decision](variant-editing-decision.md) -- first-target variant overlay policy
 - [MCP Server](mcp-server.md) -- AI/LLM tool integration
 - [CLI](cli.md) -- headless export commands

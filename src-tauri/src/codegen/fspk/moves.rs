@@ -6,7 +6,10 @@ use crate::codegen::fspk_format::KEY_NONE;
 use crate::commands::CharacterData;
 use crate::schema::State;
 
-use super::packing::{guard_type_to_u8, pack_hit_window, pack_hurt_window, pack_move_record, pack_shape};
+use super::packing::{
+    guard_type_to_u8, pack_hit_window, pack_hurt_window, pack_move_record, pack_shape,
+    HitWindowPackParams,
+};
 use super::types::{CancelLookup, PackedMoveData, StrRef, StringTable};
 use super::utils::{checked_u16, checked_u32};
 
@@ -57,12 +60,16 @@ pub fn pack_moves(
             packed.shapes.extend_from_slice(&pack_shape(&hb.r#box));
             packed.hit_windows.extend_from_slice(&pack_hit_window(
                 hb,
-                shape_off,
-                mv.damage,
-                mv.hitstun,
-                mv.blockstun,
-                mv.hitstop,
-                guard_type_to_u8(&mv.guard),
+                HitWindowPackParams {
+                    shapes_off: shape_off,
+                    damage: mv.damage,
+                    hitstun: mv.hitstun,
+                    blockstun: mv.blockstun,
+                    hitstop: mv.hitstop,
+                    guard: guard_type_to_u8(&mv.guard),
+                    hit_pushback: mv.pushback.hit,
+                    block_pushback: mv.pushback.block,
+                },
             ));
         }
 
@@ -70,14 +77,18 @@ pub fn pack_moves(
         for hb in &mv.hurtboxes {
             let shape_off = checked_u32(packed.shapes.len(), "shape_off")?;
             packed.shapes.extend_from_slice(&pack_shape(&hb.r#box));
-            packed.hurt_windows.extend_from_slice(&pack_hurt_window(hb, shape_off));
+            packed
+                .hurt_windows
+                .extend_from_slice(&pack_hurt_window(hb, shape_off));
         }
 
         // Pack pushboxes -> shapes + push_windows (same 12-byte format as hurt windows)
         for pb in &mv.pushboxes {
             let shape_off = checked_u32(packed.shapes.len(), "shape_off")?;
             packed.shapes.extend_from_slice(&pack_shape(&pb.r#box));
-            packed.push_windows.extend_from_slice(&pack_hurt_window(pb, shape_off));
+            packed
+                .push_windows
+                .extend_from_slice(&pack_hurt_window(pb, shape_off));
         }
 
         // Calculate lengths
@@ -246,7 +257,11 @@ mod tests {
         let mut strings = StringTable::new();
         let (mesh_keys, kf_keys) = build_asset_keys(&char_data, &mut strings).unwrap();
 
-        assert_eq!(mesh_keys.len(), 2, "Duplicate animations should be deduplicated");
+        assert_eq!(
+            mesh_keys.len(),
+            2,
+            "Duplicate animations should be deduplicated"
+        );
         assert_eq!(kf_keys.len(), 2);
     }
 

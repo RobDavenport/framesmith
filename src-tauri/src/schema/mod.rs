@@ -82,7 +82,6 @@ impl schemars::JsonSchema for Tag {
     }
 }
 
-
 /// A character property value (dynamic key-value).
 ///
 /// Supports nested structures via Array and Object variants for
@@ -149,7 +148,6 @@ pub struct Character {
     #[serde(default)]
     pub resources: Vec<CharacterResource>,
 }
-
 
 /// Character assets manifest (textures, models, animations).
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -335,7 +333,6 @@ impl Default for State {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum GuardType {
@@ -344,7 +341,6 @@ pub enum GuardType {
     Low,
     Unblockable,
 }
-
 
 /// Bit flags for cancel conditions
 pub mod cancel_flags {
@@ -442,7 +438,7 @@ impl Serialize for CancelCondition {
 
 impl<'de> Deserialize<'de> for CancelCondition {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{self, Visitor, SeqAccess};
+        use serde::de::{self, SeqAccess, Visitor};
 
         struct CancelConditionVisitor;
 
@@ -450,7 +446,9 @@ impl<'de> Deserialize<'de> for CancelCondition {
             type Value = CancelCondition;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a string ('always', 'hit', 'block', 'whiff') or array of conditions")
+                formatter.write_str(
+                    "a string ('always', 'hit', 'block', 'whiff') or array of conditions",
+                )
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
@@ -459,7 +457,10 @@ impl<'de> Deserialize<'de> for CancelCondition {
                     "hit" => Ok(CancelCondition(cancel_flags::HIT)),
                     "block" => Ok(CancelCondition(cancel_flags::BLOCK)),
                     "whiff" => Ok(CancelCondition(cancel_flags::WHIFF)),
-                    _ => Err(de::Error::unknown_variant(v, &["always", "hit", "block", "whiff"])),
+                    _ => Err(de::Error::unknown_variant(
+                        v,
+                        &["always", "hit", "block", "whiff"],
+                    )),
                 }
             }
 
@@ -539,8 +540,6 @@ pub struct CancelTable {
 // ============================================================================
 // Advanced Move Data Types
 // ============================================================================
-
-
 
 #[cfg(test)]
 mod tests {

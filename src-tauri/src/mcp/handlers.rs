@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use rmcp::{
     handler::server::tool::ToolRouter,
     model::{
@@ -12,6 +11,7 @@ use rmcp::{
     service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
+use serde::Deserialize;
 
 /// The rules specification documentation (SSOT).
 const RULES_SPEC_MD: &str = include_str!("../../../docs/rules-spec.md");
@@ -66,7 +66,9 @@ pub struct ExportCharacterParam {
     pub character_id: String,
     #[schemars(description = "Export adapter: 'fspk' (default) or 'json-blob'")]
     pub adapter: Option<String>,
-    #[schemars(description = "Output file path, relative to the project root or absolute under the project root")]
+    #[schemars(
+        description = "Output file path, relative to the project root or absolute under the project root"
+    )]
     pub output_path: String,
     #[schemars(description = "Pretty JSON output (json-blob only)")]
     pub pretty: Option<bool>,
@@ -76,7 +78,9 @@ pub struct ExportCharacterParam {
 pub struct ExportAllCharactersParam {
     #[schemars(description = "Export adapter: 'fspk' (default) or 'json-blob'")]
     pub adapter: Option<String>,
-    #[schemars(description = "Output directory, relative to the project root or absolute under the project root")]
+    #[schemars(
+        description = "Output directory, relative to the project root or absolute under the project root"
+    )]
     pub out_dir: String,
     #[schemars(description = "Pretty JSON output (json-blob only)")]
     pub pretty: Option<bool>,
@@ -131,14 +135,21 @@ impl FramesmithMcp {
         )]))
     }
 
-    #[tool(description = "Export a character to a file (runs validation + rules). Supports fspk (.fspk) and json-blob (.json).")]
+    #[tool(
+        description = "Export a character to a file (runs validation + rules). Supports fspk (.fspk) and json-blob (.json)."
+    )]
     async fn export_character(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportCharacterParam>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::commands::export_character;
+        use crate::commands::{export_character, normalize_export_adapter};
 
-        let adapter = params.adapter.unwrap_or_else(|| "fspk".to_string());
+        let adapter = normalize_export_adapter(params.adapter.as_deref().unwrap_or("fspk"))
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(e),
+                data: None,
+            })?;
         let pretty = params.pretty.unwrap_or(false);
         if adapter == "fspk" && pretty {
             return Err(McpError {
@@ -171,7 +182,7 @@ impl FramesmithMcp {
         export_character(
             self.characters_dir.clone(),
             params.character_id,
-            adapter,
+            adapter.to_string(),
             output_path.to_string_lossy().to_string(),
             pretty,
         )
@@ -194,14 +205,23 @@ impl FramesmithMcp {
         ))]))
     }
 
-    #[tool(description = "Export all characters to a directory (runs validation + rules). Returns a JSON array of per-character results.")]
+    #[tool(
+        description = "Export all characters to a directory (runs validation + rules). Returns a JSON array of per-character results."
+    )]
     async fn export_all_characters(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<ExportAllCharactersParam>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::commands::export_character;
+        use crate::commands::{
+            export_adapter_default_ext, export_character, normalize_export_adapter,
+        };
 
-        let adapter = params.adapter.unwrap_or_else(|| "fspk".to_string());
+        let adapter = normalize_export_adapter(params.adapter.as_deref().unwrap_or("fspk"))
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(e),
+                data: None,
+            })?;
         let pretty = params.pretty.unwrap_or(false);
         let keep_going = params.keep_going.unwrap_or(false);
         if adapter == "fspk" && pretty {
@@ -213,11 +233,14 @@ impl FramesmithMcp {
         }
 
         let project_root = project_root_from_characters_dir(&self.characters_dir);
-        let out_dir = resolve_output_path_under_project(&project_root, &params.out_dir).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let out_dir =
+            resolve_output_path_under_project(&project_root, &params.out_dir).map_err(|e| {
+                McpError {
+                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                    message: Cow::from(e),
+                    data: None,
+                }
+            })?;
 
         std::fs::create_dir_all(&out_dir).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -235,14 +258,18 @@ impl FramesmithMcp {
             data: None,
         })?;
 
-        let ext = adapter_default_ext(&adapter);
+        let ext = export_adapter_default_ext(adapter).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+            message: Cow::from(e),
+            data: None,
+        })?;
         let mut results: Vec<ExportResultRow> = Vec::new();
         for id in ids {
             let out_path = out_dir.join(format!("{}{}", id, ext));
             let res = export_character(
                 self.characters_dir.clone(),
                 id.clone(),
-                adapter.clone(),
+                adapter.to_string(),
                 out_path.to_string_lossy().to_string(),
                 pretty,
             );
@@ -296,18 +323,23 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get complete character data including properties, all states, and cancel table")]
+    #[tool(
+        description = "Get complete character data including properties, all states, and cancel table"
+    )]
     async fn get_character(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
         use crate::commands::load_character;
 
-        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let data =
+            load_character(self.characters_dir.clone(), params.character_id).map_err(|e| {
+                McpError {
+                    code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                    message: Cow::from(e),
+                    data: None,
+                }
+            })?;
 
         let json = serde_json::to_string_pretty(&data).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -325,17 +357,25 @@ impl FramesmithMcp {
     ) -> Result<CallToolResult, McpError> {
         use crate::commands::load_character;
 
-        let data = load_character(self.characters_dir.clone(), params.character_id.clone()).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let data = load_character(self.characters_dir.clone(), params.character_id.clone())
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                message: Cow::from(e),
+                data: None,
+            })?;
 
-        let mv = data.moves.iter().find(|m| m.input == params.state_input).ok_or_else(|| McpError {
-            code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::from(format!("State '{}' not found for character '{}'", params.state_input, params.character_id)),
-            data: None,
-        })?;
+        let mv = data
+            .moves
+            .iter()
+            .find(|m| m.input == params.state_input)
+            .ok_or_else(|| McpError {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: Cow::from(format!(
+                    "State '{}' not found for character '{}'",
+                    params.state_input, params.character_id
+                )),
+                data: None,
+            })?;
 
         let json = serde_json::to_string_pretty(&mv).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -346,7 +386,9 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Update a state's data. Provide complete state object - it will overwrite the existing state file.")]
+    #[tool(
+        description = "Update a state's data. Provide complete state object - it will overwrite the existing state file."
+    )]
     async fn update_state(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<UpdateStateParam>,
@@ -425,38 +467,47 @@ impl FramesmithMcp {
         ))]))
     }
 
-    #[tool(description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all states")]
+    #[tool(
+        description = "Get a compact frame data table for a character - shows startup, active, recovery, damage, and advantage for all states"
+    )]
     async fn get_frame_data_table(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
         use crate::commands::load_character;
 
-        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let data =
+            load_character(self.characters_dir.clone(), params.character_id).map_err(|e| {
+                McpError {
+                    code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                    message: Cow::from(e),
+                    data: None,
+                }
+            })?;
 
-        let rows: Vec<FrameDataRow> = data.moves.iter().map(|m| {
-            let total = m.startup as u16 + m.active as u16 + m.recovery as u16;
-            let advantage_on_hit = m.hitstun as i16 - m.recovery as i16;
-            let advantage_on_block = m.blockstun as i16 - m.recovery as i16;
-            FrameDataRow {
-                input: m.input.clone(),
-                name: m.name.clone(),
-                startup: m.startup,
-                active: m.active,
-                recovery: m.recovery,
-                total,
-                damage: m.damage,
-                hitstun: m.hitstun,
-                blockstun: m.blockstun,
-                advantage_on_hit,
-                advantage_on_block,
-                guard: format!("{:?}", m.guard).to_lowercase(),
-            }
-        }).collect();
+        let rows: Vec<FrameDataRow> = data
+            .moves
+            .iter()
+            .map(|m| {
+                let total = m.startup as u16 + m.active as u16 + m.recovery as u16;
+                let advantage_on_hit = m.hitstun as i16 - m.recovery as i16;
+                let advantage_on_block = m.blockstun as i16 - m.recovery as i16;
+                FrameDataRow {
+                    input: m.input.clone(),
+                    name: m.name.clone(),
+                    startup: m.startup,
+                    active: m.active,
+                    recovery: m.recovery,
+                    total,
+                    damage: m.damage,
+                    hitstun: m.hitstun,
+                    blockstun: m.blockstun,
+                    advantage_on_hit,
+                    advantage_on_block,
+                    guard: format!("{:?}", m.guard).to_lowercase(),
+                }
+            })
+            .collect();
 
         let json = serde_json::to_string_pretty(&rows).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -467,18 +518,23 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "List all states for a character with basic stats (input, name, startup, damage)")]
+    #[tool(
+        description = "List all states for a character with basic stats (input, name, startup, damage)"
+    )]
     async fn list_states(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
         use crate::commands::load_character;
 
-        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let data =
+            load_character(self.characters_dir.clone(), params.character_id).map_err(|e| {
+                McpError {
+                    code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                    message: Cow::from(e),
+                    data: None,
+                }
+            })?;
 
         #[derive(serde::Serialize)]
         struct StateSummary {
@@ -488,12 +544,16 @@ impl FramesmithMcp {
             damage: u16,
         }
 
-        let summaries: Vec<StateSummary> = data.moves.iter().map(|m| StateSummary {
-            input: m.input.clone(),
-            name: m.name.clone(),
-            startup: m.startup,
-            damage: m.damage,
-        }).collect();
+        let summaries: Vec<StateSummary> = data
+            .moves
+            .iter()
+            .map(|m| StateSummary {
+                input: m.input.clone(),
+                name: m.name.clone(),
+                startup: m.startup,
+                damage: m.damage,
+            })
+            .collect();
 
         let json = serde_json::to_string_pretty(&summaries).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -504,18 +564,21 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get the cancel table showing all cancel relationships (chains, special cancels, super cancels, jump cancels)")]
+    #[tool(description = "Get the cancel table showing tag rules and explicit deny routes")]
     async fn get_cancel_table(
         &self,
         rmcp::handler::server::wrapper::Parameters(params): rmcp::handler::server::wrapper::Parameters<CharacterIdParam>,
     ) -> Result<CallToolResult, McpError> {
         use crate::commands::load_character;
 
-        let data = load_character(self.characters_dir.clone(), params.character_id).map_err(|e| McpError {
-            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-            message: Cow::from(e),
-            data: None,
-        })?;
+        let data =
+            load_character(self.characters_dir.clone(), params.character_id).map_err(|e| {
+                McpError {
+                    code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                    message: Cow::from(e),
+                    data: None,
+                }
+            })?;
 
         let json = serde_json::to_string_pretty(&data.cancel_table).map_err(|e| McpError {
             code: rmcp::model::ErrorCode::INTERNAL_ERROR,
@@ -534,7 +597,10 @@ impl FramesmithMcp {
         use std::path::Path;
 
         // Validate character_id
-        if params.character_id.contains("..") || params.character_id.contains('/') || params.character_id.contains('\\') {
+        if params.character_id.contains("..")
+            || params.character_id.contains('/')
+            || params.character_id.contains('\\')
+        {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from("Invalid character ID"),
@@ -543,7 +609,10 @@ impl FramesmithMcp {
         }
 
         // Validate state_input
-        if params.state_input.contains("..") || params.state_input.contains('/') || params.state_input.contains('\\') {
+        if params.state_input.contains("..")
+            || params.state_input.contains('/')
+            || params.state_input.contains('\\')
+        {
             return Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from("Invalid state input"),
@@ -579,7 +648,9 @@ impl FramesmithMcp {
         ))]))
     }
 
-    #[tool(description = "Get the JSON Schema for rules files. Use this schema for IDE autocomplete when editing framesmith.rules.json files.")]
+    #[tool(
+        description = "Get the JSON Schema for rules files. Use this schema for IDE autocomplete when editing framesmith.rules.json files."
+    )]
     async fn get_rules_schema(&self) -> Result<CallToolResult, McpError> {
         use crate::rules::generate_rules_schema;
 
@@ -593,7 +664,9 @@ impl FramesmithMcp {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
-    #[tool(description = "Get the list of built-in validation rules that always run on states. These cannot be disabled.")]
+    #[tool(
+        description = "Get the list of built-in validation rules that always run on states. These cannot be disabled."
+    )]
     async fn get_builtin_validations(&self) -> Result<CallToolResult, McpError> {
         use crate::rules::get_builtin_validations;
 
@@ -610,12 +683,11 @@ impl FramesmithMcp {
     #[tool(description = "List all global states in the project")]
     async fn list_global_states(&self) -> Result<CallToolResult, McpError> {
         let project_dir = project_root_from_characters_dir(&self.characters_dir);
-        let states = crate::globals::list_global_states(&project_dir)
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
-                message: Cow::from(format!("Failed to list global states: {}", e)),
-                data: None,
-            })?;
+        let states = crate::globals::list_global_states(&project_dir).map_err(|e| McpError {
+            code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+            message: Cow::from(format!("Failed to list global states: {}", e)),
+            data: None,
+        })?;
 
         let mut result: Vec<serde_json::Value> = Vec::new();
         for name in &states {
@@ -639,8 +711,8 @@ impl FramesmithMcp {
     ) -> Result<CallToolResult, McpError> {
         validate_global_state_id(&params.id)?;
         let project_dir = project_root_from_characters_dir(&self.characters_dir);
-        let state = crate::globals::load_global_state(&project_dir, &params.id)
-            .map_err(|e| McpError {
+        let state =
+            crate::globals::load_global_state(&project_dir, &params.id).map_err(|e| McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!("Failed to load global state: {}", e)),
                 data: None,
@@ -688,9 +760,10 @@ impl FramesmithMcp {
             data: None,
         })?;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            format!("Created global state '{}'", params.id),
-        )]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Created global state '{}'",
+            params.id
+        ))]))
     }
 
     #[tool(description = "Update an existing global state")]
@@ -700,7 +773,10 @@ impl FramesmithMcp {
     ) -> Result<CallToolResult, McpError> {
         validate_global_state_id(&params.id)?;
         let project_dir = project_root_from_characters_dir(&self.characters_dir);
-        let state_path = project_dir.join("globals").join("states").join(format!("{}.json", params.id));
+        let state_path = project_dir
+            .join("globals")
+            .join("states")
+            .join(format!("{}.json", params.id));
 
         if !state_path.exists() {
             return Err(McpError {
@@ -722,9 +798,10 @@ impl FramesmithMcp {
             data: None,
         })?;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            format!("Updated global state '{}'", params.id),
-        )]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Updated global state '{}'",
+            params.id
+        ))]))
     }
 
     #[tool(description = "Delete a global state (checks for references first)")]
@@ -734,7 +811,10 @@ impl FramesmithMcp {
     ) -> Result<CallToolResult, McpError> {
         validate_global_state_id(&params.id)?;
         let project_dir = project_root_from_characters_dir(&self.characters_dir);
-        let state_path = project_dir.join("globals").join("states").join(format!("{}.json", params.id));
+        let state_path = project_dir
+            .join("globals")
+            .join("states")
+            .join(format!("{}.json", params.id));
 
         if !state_path.exists() {
             return Err(McpError {
@@ -753,7 +833,8 @@ impl FramesmithMcp {
                     if globals_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&globals_path) {
                             if content.contains(&format!("\"state\": \"{}\"", params.id))
-                                || content.contains(&format!("\"state\":\"{}\"", params.id)) {
+                                || content.contains(&format!("\"state\":\"{}\"", params.id))
+                            {
                                 return Err(McpError {
                                     code: rmcp::model::ErrorCode::INVALID_PARAMS,
                                     message: Cow::from(format!(
@@ -776,9 +857,10 @@ impl FramesmithMcp {
             data: None,
         })?;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            format!("Deleted global state '{}'", params.id),
-        )]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Deleted global state '{}'",
+            params.id
+        ))]))
     }
 }
 
@@ -884,16 +966,14 @@ impl ServerHandler for FramesmithMcp {
                     contents: vec![ResourceContents::text(guide, &request.uri)],
                 })
             }
-            "framesmith://rules_guide" => {
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(RULES_SPEC_MD, &request.uri)],
-                })
-            }
+            "framesmith://rules_guide" => Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(RULES_SPEC_MD, &request.uri)],
+            }),
             _ => Err(McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!("Unknown resource: {}", request.uri)),
                 data: None,
-            })
+            }),
         })
     }
 }
@@ -905,7 +985,10 @@ fn project_root_from_characters_dir(characters_dir: &str) -> PathBuf {
         .to_path_buf()
 }
 
-fn resolve_output_path_under_project(project_root: &Path, user_path: &str) -> Result<PathBuf, String> {
+fn resolve_output_path_under_project(
+    project_root: &Path,
+    user_path: &str,
+) -> Result<PathBuf, String> {
     if user_path.trim().is_empty() {
         return Err("output path cannot be empty".to_string());
     }
@@ -918,17 +1001,26 @@ fn resolve_output_path_under_project(project_root: &Path, user_path: &str) -> Re
     };
 
     // Canonicalize a stable project root.
-    let root_canon = project_root
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve project root {}: {}", project_root.display(), e))?;
+    let root_canon = project_root.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve project root {}: {}",
+            project_root.display(),
+            e
+        )
+    })?;
 
     // Canonicalize the output parent dir (file may not exist yet).
     let parent = abs
         .parent()
         .ok_or_else(|| "Invalid output path".to_string())?;
     let parent_canon = parent.canonicalize().or_else(|_| {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create output directory {}: {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create output directory {}: {}",
+                parent.display(),
+                e
+            )
+        })?;
         parent.canonicalize().map_err(|e| {
             format!(
                 "Failed to resolve output directory {}: {}",
@@ -946,14 +1038,6 @@ fn resolve_output_path_under_project(project_root: &Path, user_path: &str) -> Re
     }
 
     Ok(abs)
-}
-
-fn adapter_default_ext(adapter: &str) -> &'static str {
-    match adapter {
-        "fspk" => ".fspk",
-        "json-blob" => ".json",
-        _ => ".bin",
-    }
 }
 
 /// Validate a global state ID for path safety
@@ -977,10 +1061,15 @@ fn validate_global_state_id(id: &str) -> Result<(), McpError> {
 
 fn find_character_dir_names(characters_dir: &str) -> Result<Vec<String>, String> {
     let mut ids: Vec<String> = Vec::new();
-    let rd = std::fs::read_dir(characters_dir)
-        .map_err(|e| format!("Failed to read characters directory {}: {}", characters_dir, e))?;
+    let rd = std::fs::read_dir(characters_dir).map_err(|e| {
+        format!(
+            "Failed to read characters directory {}: {}",
+            characters_dir, e
+        )
+    })?;
     for entry in rd {
-        let entry = entry.map_err(|e| format!("Failed to read characters directory entry: {}", e))?;
+        let entry =
+            entry.map_err(|e| format!("Failed to read characters directory entry: {}", e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;

@@ -3,8 +3,8 @@
 use crate::bytes::{read_u16_le, read_u32_le, read_u8};
 use crate::fixed::{Q12_4, Q8_8};
 
-/// HitWindow record size (24 bytes)
-pub const HIT_WINDOW_SIZE: usize = 24;
+/// HitWindow record size (28 bytes)
+pub const HIT_WINDOW_SIZE: usize = 28;
 
 /// Shape record size (12 bytes)
 pub const SHAPE_SIZE: usize = 12;
@@ -24,7 +24,7 @@ pub const SHAPE_KIND_CAPSULE: u8 = 3;
 
 /// Zero-copy view over hit windows section.
 ///
-/// Each entry is a HitWindow24 (24 bytes).
+/// Each entry is a HitWindow28 (28 bytes).
 #[derive(Clone, Copy)]
 pub struct HitWindowsView<'a> {
     data: &'a [u8],
@@ -74,7 +74,7 @@ impl<'a> HitWindowsView<'a> {
     }
 }
 
-/// Zero-copy view over a single HitWindow24 record (24 bytes minimum).
+/// Zero-copy view over a single HitWindow28 record.
 ///
 /// Layout:
 /// - 0: start_f (u8)
@@ -91,6 +91,7 @@ impl<'a> HitWindowsView<'a> {
 /// - 16-17: shapes_len (u16)
 /// - 18-21: cancels_off (u32)
 /// - 22-23: cancels_len (u16)
+///
 /// Optional extended fields (backwards-compatible):
 /// - 24-25: hit_pushback (i16, Q12.4 fixed-point)
 /// - 26-27: block_pushback (i16, Q12.4 fixed-point)
