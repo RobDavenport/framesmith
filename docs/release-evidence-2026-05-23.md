@@ -11,7 +11,7 @@ production-readiness candidate.
 ```text
 Candidate version: 0.1.0
 Candidate branch: codex-production-readiness-plan
-Candidate branch head SHA: record with `git ls-remote --heads origin codex-production-readiness-plan`
+Candidate branch head SHA before CI repair: fe6f44ae86fe4305301dd501d8fcdb0cb6874046
 Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Target branch: main
 Supported platforms for this candidate: Windows
@@ -72,18 +72,27 @@ src-tauri/target/release/bundle/nsis/Framesmith_0.1.0_x64-setup.exe
 
 ## GitHub CI State
 
-Observed state on 2026-05-23:
+Observed state on 2026-05-23 after PR #1 was opened:
 
 ```text
-Candidate SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: fe6f44ae86fe4305301dd501d8fcdb0cb6874046
 Branch pushed: yes
-GitHub workflow runs for the observed pushed SHAs: none observed through the GitHub connector
-Pull request: not created
-Pull request creation attempt: GitHub connector returned 403 Resource not accessible by integration
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26327908309
+Workflow/job: CI / Windows Checks
+CI status: failed
+Failing step: TypeScript and Svelte check
+Failure summary: missing generated module `$lib/wasm/framesmith_runtime_wasm.js`
 ```
 
-The branch must still be opened as a pull request or otherwise run through
-GitHub Actions before the clean-checkout CI gate can be marked complete.
+Root cause: the workflow ran `npm run check` before `npm run wasm:build`.
+`src/lib/wasm/` is generated and ignored, so a clean GitHub checkout does not
+contain the WASM JavaScript or TypeScript bindings until the build step runs.
+
+Repair action: the workflow now rebuilds the WASM package before frontend type
+checking and explicitly verifies the generated JavaScript and TypeScript binding
+files exist. The clean-checkout CI gate remains open until a repaired PR run
+passes.
 
 ## Branch Protection State
 
@@ -119,5 +128,5 @@ Windows machine or clean VM before marking the installer gate complete.
 
 ```text
 Decision: not ready
-Reason: GitHub clean-checkout CI, required-CI branch protection, and manual Windows installer smoke evidence are still missing.
+Reason: GitHub clean-checkout CI is currently failing pending repair verification; required-CI branch protection and manual Windows installer smoke evidence are still missing.
 ```

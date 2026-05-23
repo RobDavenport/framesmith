@@ -35,6 +35,24 @@ jobs:
       - name: Dependency audit
         run: npm audit
 
+      - name: Rebuild WASM package
+        run: npm run wasm:build
+
+      - name: Verify WASM package exists
+        run: |
+          if (-not (Test-Path src/lib/wasm/framesmith_runtime_wasm.js)) {
+            throw "Missing generated WASM JavaScript binding"
+          }
+          if (-not (Test-Path src/lib/wasm/framesmith_runtime_wasm.d.ts)) {
+            throw "Missing generated WASM TypeScript declarations"
+          }
+
+      - name: Refresh generated schemas
+        run: cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema
+
+      - name: Verify generated files are current
+        run: git diff --exit-code -- schemas/rules.schema.json
+
       - name: Install Playwright browser
         run: npx playwright install chromium
 
@@ -43,15 +61,6 @@ jobs:
 
       - name: Frontend and logic tests
         run: npm run test:run
-
-      - name: Rebuild WASM package
-        run: npm run wasm:build
-
-      - name: Refresh generated schemas
-        run: cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema
-
-      - name: Verify generated files are current
-        run: git diff --exit-code -- schemas/rules.schema.json src/lib/wasm
 
       - name: Browser smoke tests
         run: npm run test:e2e

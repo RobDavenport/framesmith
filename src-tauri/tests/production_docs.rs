@@ -43,6 +43,10 @@ const RELEASE_EVIDENCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/release-evidence-2026-05-23.md"
 ));
+const CI_WORKFLOW: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../.github/workflows/ci.yml"
+));
 const CHARACTER_COMMANDS: &str = include_str!("../src/commands/character.rs");
 
 #[test]
@@ -219,7 +223,9 @@ fn release_runbook_covers_candidate_evidence() {
         "npm ci",
         "npm audit",
         "npm ls @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-opener",
-        "git diff --exit-code -- schemas/rules.schema.json src/lib/wasm",
+        "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js'",
+        "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts'",
+        "git diff --exit-code -- schemas/rules.schema.json",
         "GitHub Actions URL",
         "Protected branch/ruleset",
         "windows-installer-smoke-test.md",
@@ -242,8 +248,11 @@ fn current_release_evidence_records_external_blockers() {
         "# Release Evidence 2026-05-23",
         "codex-production-readiness-plan",
         "Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d",
-        "GitHub workflow runs for the observed pushed SHAs: none observed",
-        "GitHub connector returned 403 Resource not accessible by integration",
+        "https://github.com/RobDavenport/framesmith/pull/1",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26327908309",
+        "CI status: failed",
+        "workflow ran `npm run check` before `npm run wasm:build`",
+        "workflow now rebuilds the WASM package before frontend type",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
     ] {
@@ -256,4 +265,24 @@ fn current_release_evidence_records_external_blockers() {
     assert!(DOCS_INDEX.contains("release-evidence-2026-05-23.md"));
     assert!(PRODUCTION_PLAN.contains("release-evidence-2026-05-23.md"));
     assert!(PRODUCTION_PLAN.contains("[x] Current candidate release evidence is recorded."));
+}
+
+#[test]
+fn ci_builds_wasm_before_frontend_typecheck() {
+    let rebuild_wasm = CI_WORKFLOW
+        .find("name: Rebuild WASM package")
+        .expect("CI should rebuild the WASM package");
+    let verify_wasm = CI_WORKFLOW
+        .find("name: Verify WASM package exists")
+        .expect("CI should verify generated WASM bindings exist");
+    let typecheck = CI_WORKFLOW
+        .find("name: TypeScript and Svelte check")
+        .expect("CI should run frontend type checks");
+
+    assert!(
+        rebuild_wasm < verify_wasm && verify_wasm < typecheck,
+        "clean CI must build ignored WASM bindings before type checking imports"
+    );
+    assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.js"));
+    assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.d.ts"));
 }

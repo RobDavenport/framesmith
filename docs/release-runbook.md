@@ -42,7 +42,8 @@ npm audit
 npm ls @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-opener
 cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema
 npm run wasm:build
-git diff --exit-code -- schemas/rules.schema.json src/lib/wasm
+pwsh -NoProfile -Command "if (-not (Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js')) { throw 'Missing generated WASM JavaScript binding' }; if (-not (Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts')) { throw 'Missing generated WASM TypeScript declarations' }"
+git diff --exit-code -- schemas/rules.schema.json
 npm run check
 npm run test:run
 npm run test:e2e

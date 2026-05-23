@@ -13,6 +13,11 @@ an executable first-target training scenario contract. It is still not finished
 as a production game-development pipeline because clean-checkout CI enforcement,
 branch protection, and manual platform smoke testing remain open.
 
+PR #1 produced one clean-checkout CI failure on 2026-05-23 because the workflow
+ran frontend type checking before rebuilding ignored WASM bindings. The workflow
+has been corrected to build and verify WASM before `npm run check`; the
+clean-run gate remains open until GitHub Actions passes on the repaired branch.
+
 ## Readiness Definition
 
 Framesmith is production ready when all of these are true:
@@ -58,16 +63,16 @@ Verified on 2026-05-23 in the current Windows workspace:
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | Pass | CI-level backend clippy gate is clean. |
 | Runtime crate clippy with `-D warnings` | Pass | `framesmith-runtime`, `framesmith-runtime-wasm`, and `framesmith-fspack` are clean. |
 | Cargo fmt checks | Pass | Formatting is clean for `src-tauri` and runtime crates. |
-| CI workflow | Added | `.github/workflows/ci.yml` checks dependency audit, generated files, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and uploads Windows installer artifacts; branch protection still must be configured in GitHub. |
+| CI workflow | Repair pending verification | `.github/workflows/ci.yml` checks dependency audit, builds and verifies generated WASM before frontend type checks, checks generated schemas, runs formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and uploads Windows installer artifacts; branch protection still must be configured in GitHub. |
 
 This is not yet a clean-checkout certification. CI should be allowed to run on a
 fresh runner before marking clean-checkout reproducibility complete.
 
 Current candidate evidence is recorded in
 [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md). The
-candidate branch `codex-production-readiness-plan` was pushed, but no GitHub
-Actions run was observed for the pushed SHAs through the available connector,
-and the connector cannot create a pull request for the branch.
+candidate branch `codex-production-readiness-plan` is open as PR #1. The first
+GitHub Actions run failed because generated WASM was not built before
+type-checking; the workflow has been repaired and still needs a passing rerun.
 
 ## Completed Since Audit
 
@@ -111,7 +116,7 @@ remain external.
 
 Actions:
 
-- Let GitHub Actions run the new CI workflow on a clean runner.
+- Let GitHub Actions rerun the repaired CI workflow on a clean runner.
 - Make the CI workflow required before merges.
 - Keep Windows as the first supported packaging target.
 - Keep Linux and macOS out of the first production target until platform
@@ -378,6 +383,7 @@ Run this checklist before a tagged release:
 - [ ] `cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema`.
 - [ ] Generated JSON schemas committed with no unexpected drift.
 - [ ] `npm run wasm:build`.
+- [ ] Generated WASM JavaScript and TypeScript bindings exist.
 - [ ] `npm run check`.
 - [ ] `npm run test:run`.
 - [ ] `npm run test:e2e`.
