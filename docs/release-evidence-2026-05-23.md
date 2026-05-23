@@ -249,7 +249,8 @@ The maintainer must configure or verify branch protection/rulesets requiring
 the `Windows Checks` job from the CI workflow before the branch-protection gate
 can be marked complete. Follow
 [`branch-protection-setup.md`](branch-protection-setup.md) and record the
-resulting evidence here.
+resulting evidence here. `scripts/check-branch-protection.ps1` can validate an
+authenticated branch-protection API response or a saved JSON response.
 
 ## Installer Smoke State
 
@@ -268,6 +269,8 @@ Warnings: unsigned-build warning expected but not manually verified
 
 Run [`windows-installer-smoke-test.md`](windows-installer-smoke-test.md) on a
 Windows machine or clean VM before marking the installer gate complete.
+`scripts/verify-windows-installer-artifacts.ps1` can verify MSI/NSIS artifact
+contents before the manual install/uninstall smoke flow.
 
 ## Decision
 

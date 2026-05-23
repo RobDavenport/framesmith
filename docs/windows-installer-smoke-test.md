@@ -16,6 +16,16 @@ src-tauri/target/release/bundle/msi/Framesmith_<version>_x64_en-US.msi
 src-tauri/target/release/bundle/nsis/Framesmith_<version>_x64-setup.exe
 ```
 
+Before installing, verify the artifact directory contains non-empty MSI and
+NSIS outputs:
+
+```powershell
+.\scripts\verify-windows-installer-artifacts.ps1 -Path src-tauri\target\release\bundle -Version 0.1.0
+```
+
+For a downloaded CI artifact, extract the ZIP and point `-Path` at the extracted
+directory.
+
 ## MSI Smoke Test
 
 1. Install the MSI on a Windows machine or clean VM.

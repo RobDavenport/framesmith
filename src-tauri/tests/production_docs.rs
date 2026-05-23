@@ -51,6 +51,18 @@ const CI_WORKFLOW: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../.github/workflows/ci.yml"
 ));
+const CHECK_BRANCH_PROTECTION_SCRIPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../scripts/check-branch-protection.ps1"
+));
+const VERIFY_INSTALLER_ARTIFACTS_SCRIPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../scripts/verify-windows-installer-artifacts.ps1"
+));
+const BRANCH_PROTECTION_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../tests/fixtures/github-branch-protection-main.json"
+));
 const CHARACTER_COMMANDS: &str = include_str!("../src/commands/character.rs");
 
 #[test]
@@ -173,6 +185,7 @@ fn windows_installer_smoke_test_is_documented_and_linked() {
         "# Windows Installer Smoke Test",
         "Framesmith_<version>_x64_en-US.msi",
         "Framesmith_<version>_x64-setup.exe",
+        ".\\scripts\\verify-windows-installer-artifacts.ps1",
         "Training starts from the packaged WASM and FSPK path.",
         "Evidence To Record",
     ] {
@@ -267,6 +280,8 @@ fn branch_protection_setup_covers_required_ci_gate() {
         "Do not allow bypassing the above settings",
         "Blocked merge evidence:",
         "branch-protection endpoint",
+        ".\\scripts\\check-branch-protection.ps1",
+        "tests\\fixtures\\github-branch-protection-main.json",
     ] {
         assert!(
             BRANCH_PROTECTION_SETUP.contains(required),
@@ -292,6 +307,67 @@ fn branch_protection_setup_covers_required_ci_gate() {
     assert!(PRODUCTION_PLAN.contains(
         "Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet."
     ));
+}
+
+#[test]
+fn release_evidence_helper_scripts_are_documented_and_auditable() {
+    for required in [
+        "GITHUB_TOKEN is required unless -ProtectionJsonPath",
+        "https://api.github.com/repos/$Owner/$Repo/branches/$Branch/protection",
+        "Required status check '$RequiredCheck' was not found",
+        "Branch protection does not require branches to be up to date",
+        "Branch protection verified.",
+    ] {
+        assert!(
+            CHECK_BRANCH_PROTECTION_SCRIPT.contains(required),
+            "branch protection helper should contain: {required}"
+        );
+    }
+
+    for required in [
+        "No MSI installer was found",
+        "No NSIS setup executable was found",
+        "Installer output is smaller than",
+        "Windows installer artifacts verified.",
+    ] {
+        assert!(
+            VERIFY_INSTALLER_ARTIFACTS_SCRIPT.contains(required),
+            "installer artifact helper should contain: {required}"
+        );
+    }
+
+    for required in [
+        "\"strict\": true",
+        "\"Windows Checks\"",
+        "\"required_pull_request_reviews\"",
+        "\"allow_force_pushes\"",
+        "\"enabled\": false",
+    ] {
+        assert!(
+            BRANCH_PROTECTION_FIXTURE.contains(required),
+            "branch protection fixture should contain: {required}"
+        );
+    }
+
+    for linked_doc in [
+        PRODUCTION_PLAN,
+        RELEASE_RUNBOOK,
+        RELEASE_EVIDENCE,
+        BRANCH_PROTECTION_SETUP,
+        WINDOWS_INSTALLER_SMOKE_TEST,
+    ] {
+        assert!(
+            linked_doc.contains("scripts\\check-branch-protection.ps1")
+                || linked_doc.contains("scripts/check-branch-protection.ps1")
+                || linked_doc.contains(".\\scripts\\check-branch-protection.ps1")
+                || linked_doc.contains("scripts/verify-windows-installer-artifacts.ps1")
+                || linked_doc.contains(".\\scripts\\verify-windows-installer-artifacts.ps1"),
+            "release docs should reference at least one helper script"
+        );
+    }
+
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Branch protection and installer artifact evidence helpers exist."));
 }
 
 #[test]
@@ -326,6 +402,8 @@ fn current_release_evidence_records_external_blockers() {
         "passed the repaired `Verify Windows installer outputs` step",
         "branch-protection-setup.md",
         "`Windows Checks` job from the CI workflow",
+        "scripts/check-branch-protection.ps1",
+        "scripts/verify-windows-installer-artifacts.ps1",
         "Automation note: repository connector reports admin permission",
         "MSI result: not manually smoke tested",
         "Decision: not ready",

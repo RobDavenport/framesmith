@@ -82,6 +82,11 @@ After pushing the candidate commit:
 3. Confirm the `framesmith-windows-installers` artifact exists.
 4. Download the artifact or record the artifact URL for installer smoke
    testing.
+5. If the artifact is downloaded, extract it and verify installer contents:
+
+```powershell
+.\scripts\verify-windows-installer-artifacts.ps1 -Path <extracted-artifact-directory> -Version 0.1.0
+```
 
 Record:
 
@@ -103,6 +108,13 @@ Before treating `main` as production-protected:
 4. Require branches to be up to date before merging.
 5. Require pull requests if the team uses reviewed changes.
 6. Record evidence that a non-green or pending-check change cannot merge.
+
+Optional API verification:
+
+```powershell
+$env:GITHUB_TOKEN = '<repo-admin-token>'
+.\scripts\check-branch-protection.ps1 -Owner RobDavenport -Repo framesmith -Branch main -RequiredCheck 'Windows Checks' -RequirePullRequest
+```
 
 Record:
 

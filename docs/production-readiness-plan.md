@@ -137,6 +137,8 @@ concatenation.
 - Added [`branch-protection-setup.md`](branch-protection-setup.md) with the
   exact `Windows Checks` requirement and evidence template for the remaining CI
   enforcement gate.
+- Added reusable PowerShell evidence helpers for branch-protection API
+  verification and MSI/NSIS artifact integrity checks.
 
 ## Remaining Production Blockers
 
@@ -431,7 +433,7 @@ Current candidate release-checklist evidence:
 | Documentation examples and export limitations | Pass | `docs_cli_examples`, `export_fidelity_contract`, `fspk_roundtrip`, and `production_docs` tests cover documented CLI examples, field preservation, lossy examples, and release docs. |
 | Target-game fit review | Pass for the first production target | `production-handoff-decision.md`, `combat-coverage.md`, `training-scenario-contract.md`, and `production-gap-backlog.md` document current ownership and future target-game gaps. |
 | Branch protection | Open external gate | Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet. |
-| Windows installer smoke | Open external gate | Run `windows-installer-smoke-test.md` against the MSI and NSIS installers and record evidence. |
+| Windows installer smoke | Open external gate | Run `windows-installer-smoke-test.md` against the MSI and NSIS installers and record evidence; `scripts/verify-windows-installer-artifacts.ps1` verifies artifact contents before install. |
 | Linux and macOS smoke | Not in first target scope | Both platforms are explicitly out of scope for the first supported target. |
 
 Run this checklist before a tagged release:
@@ -505,6 +507,7 @@ Run this checklist before a tagged release:
 - [x] Production gap backlog exists for target-game-required runtime/FSPK work.
 - [x] Release runbook exists for clean-checkout, CI, branch-protection, and installer evidence.
 - [x] Branch protection setup is documented with the exact required CI check.
+- [x] Branch protection and installer artifact evidence helpers exist.
 - [x] Current candidate release evidence is recorded.
 - [x] Frontend/tooling dependency audit reports 0 vulnerabilities in the verified workspace.
 - [x] Tauri npm packages are pinned to the Rust-compatible minor line.

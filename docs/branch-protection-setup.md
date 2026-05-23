@@ -77,6 +77,19 @@ Acceptable blocked-merge evidence:
 - An authenticated API response from the branch-protection endpoint showing
   `Windows Checks` in required status checks.
 
+Optional command-line verification after the rule is configured:
+
+```powershell
+$env:GITHUB_TOKEN = '<repo-admin-token>'
+.\scripts\check-branch-protection.ps1 -Owner RobDavenport -Repo framesmith -Branch main -RequiredCheck 'Windows Checks' -RequirePullRequest
+```
+
+To verify a saved branch-protection API response without network access:
+
+```powershell
+.\scripts\check-branch-protection.ps1 -ProtectionJsonPath tests\fixtures\github-branch-protection-main.json -RequirePullRequest
+```
+
 ## Current Tooling Limit
 
 The current repository connector can inspect repository metadata and pull
