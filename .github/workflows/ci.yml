@@ -112,7 +112,8 @@ jobs:
           if ($nsis.Count -eq 0) {
             throw "No NSIS setup executable was produced"
           }
-          foreach ($file in @($msi + $nsis)) {
+          $installerFiles = @($msi) + @($nsis)
+          foreach ($file in $installerFiles) {
             if ($file.Length -le 0) {
               throw "Installer output is empty: $($file.FullName)"
             }

@@ -62,7 +62,7 @@ cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets 
 cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
 npm run tauri build
-pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; foreach ($file in @($msi + $nsis)) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
+pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; $installerFiles = @($msi) + @($nsis); foreach ($file in $installerFiles) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
 git diff --check
 ```
 
@@ -198,6 +198,22 @@ attempts to download and inspect artifact `7176298714` from the signed file URL
 failed in this environment because PowerShell/curl could not complete the TLS
 download; GitHub artifact metadata remains the authoritative evidence for the
 remote artifact until manual smoke testing downloads it.
+
+Fifth observed state on 2026-05-23 after adding installer-output verification:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: 4df4b57ee9a0066f0a669dea3bd7c95ad0b75883
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26330825628
+Workflow/job: CI / Windows Checks
+CI status: failed
+Failing step: Verify Windows installer outputs
+Failure summary: verifier treated single `FileInfo` values as arrays before concatenation
+```
+
+Repair action: the verifier now wraps both installer query results with `@(...)`
+before concatenating them, so it handles the one-MSI/one-NSIS case observed in
+CI while preserving the non-empty installer-output gate.
 
 ## Branch Protection State
 

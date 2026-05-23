@@ -62,7 +62,7 @@ cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets 
 cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
 npm run tauri build
-pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; foreach ($file in @($msi + $nsis)) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
+pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; $installerFiles = @($msi) + @($nsis); foreach ($file in $installerFiles) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
 ```
 
 Expected local package outputs:
