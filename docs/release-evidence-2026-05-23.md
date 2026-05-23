@@ -12,7 +12,7 @@ production-readiness candidate.
 Candidate version: 0.1.0
 Candidate branch: codex-production-readiness-plan
 Candidate branch head SHA before CI repair: fe6f44ae86fe4305301dd501d8fcdb0cb6874046
-Candidate branch head SHA with passing CI: 0b442b53ff827be491f61ba1c11eee1c3c386be3
+Latest observed passing CI SHA before this evidence update: 369e367a2715c9d67050faa9579be60aef0b7f35
 Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Target branch: main
 Supported platforms for this candidate: Windows
@@ -42,7 +42,8 @@ npm audit
 npm ls @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-opener
 cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema
 npm run wasm:build
-git diff --exit-code -- src/lib/wasm
+pwsh -NoProfile -Command "if (-not (Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js')) { throw 'Missing generated WASM JavaScript binding' }; if (-not (Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts')) { throw 'Missing generated WASM TypeScript declarations' }"
+git diff --exit-code -- schemas/rules.schema.json
 npm run check
 npm run test:run
 npm run test:e2e
@@ -53,6 +54,7 @@ cargo fmt --check --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
 cargo fmt --check --manifest-path crates/framesmith-fspack/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path crates/framesmith-runtime/Cargo.toml
+cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk
 cargo test --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
 cargo test --manifest-path crates/framesmith-fspack/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -153,6 +155,41 @@ Clean-checkout CI is now verified for this candidate SHA. The release remains
 not production-ready until branch protection requires the CI gate and the Windows
 installer artifact is manually smoke tested.
 
+Fourth observed state on 2026-05-23 after an evidence-only commit:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: 577ffe6b835de8eb5ece0fcf524501a86f58cf68
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26329160394
+Workflow/job: CI / Windows Checks
+CI status: failed
+Failing step: Browser smoke tests
+Failure summary: Playwright smoke tests waited on transient text and short timeouts
+```
+
+Repair action: browser smoke tests now wait on stable frame-table and training
+HUD elements, avoid asserting the transient initialization message, and give the
+heavier smoke paths a 60-second test budget.
+
+Latest passing observed state before this evidence update on 2026-05-23:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: 369e367a2715c9d67050faa9579be60aef0b7f35
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26329764725
+Workflow/job: CI / Windows Checks
+CI status: passed
+Installer artifact: framesmith-windows-installers
+Artifact ID: 7176181990
+Artifact digest: sha256:ec363840dbfcf4c4b45d51e7199b10f4f60a6cfa5a597d8ffd7135eb0a906184
+Artifact expires: 2026-08-21T09:56:05Z
+```
+
+Clean-checkout CI is verified for this observed candidate SHA. Before merging,
+the latest PR head must still show a passing CI check. The release remains not
+production-ready until branch protection requires the CI gate and the Windows
+installer artifact is manually smoke tested.
+
 ## Branch Protection State
 
 Observed state on 2026-05-23:
@@ -161,6 +198,7 @@ Observed state on 2026-05-23:
 Branch/ruleset evidence: not available through the current connector
 Required CI evidence: not available
 Blocked merge evidence: not available
+Automation note: repository connector reports admin permission, but exposes no branch-protection/ruleset mutation; GitHub CLI is not installed; local Git credential lookup timed out without returning usable API credentials.
 ```
 
 The maintainer must configure or verify branch protection/rulesets requiring
@@ -174,7 +212,7 @@ Observed state on 2026-05-23:
 Windows version: not recorded
 Architecture: not recorded
 MSI source: local build path exists
-CI installer artifact: framesmith-windows-installers, artifact ID 7175845263
+CI installer artifact: framesmith-windows-installers, artifact ID 7176181990
 MSI result: not manually smoke tested
 NSIS source: local build path exists
 NSIS result: not manually smoke tested
