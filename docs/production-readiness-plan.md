@@ -65,10 +65,9 @@ fresh runner before marking clean-checkout reproducibility complete.
 
 Current candidate evidence is recorded in
 [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md). The
-candidate branch `codex-production-readiness-plan` was pushed at commit
-`51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d`, but no GitHub Actions run was
-observed for that SHA through the available connector, and the connector cannot
-create a pull request for the branch.
+candidate branch `codex-production-readiness-plan` was pushed, but no GitHub
+Actions run was observed for the pushed SHAs through the available connector,
+and the connector cannot create a pull request for the branch.
 
 ## Completed Since Audit
 

@@ -11,7 +11,8 @@ production-readiness candidate.
 ```text
 Candidate version: 0.1.0
 Candidate branch: codex-production-readiness-plan
-Candidate commit SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
+Candidate branch head SHA: record with `git ls-remote --heads origin codex-production-readiness-plan`
+Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Target branch: main
 Supported platforms for this candidate: Windows
 Target game / integration: first production target contract in production-readiness-plan.md
@@ -24,7 +25,7 @@ Branch:
 https://github.com/RobDavenport/framesmith/tree/codex-production-readiness-plan
 ```
 
-Commit:
+Local validation baseline commit:
 
 ```text
 https://github.com/RobDavenport/framesmith/commit/51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
@@ -76,7 +77,7 @@ Observed state on 2026-05-23:
 ```text
 Candidate SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Branch pushed: yes
-GitHub workflow runs for candidate SHA: none observed through the GitHub connector
+GitHub workflow runs for the observed pushed SHAs: none observed through the GitHub connector
 Pull request: not created
 Pull request creation attempt: GitHub connector returned 403 Resource not accessible by integration
 ```

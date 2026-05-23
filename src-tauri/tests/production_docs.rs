@@ -241,8 +241,8 @@ fn current_release_evidence_records_external_blockers() {
     for required in [
         "# Release Evidence 2026-05-23",
         "codex-production-readiness-plan",
-        "51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d",
-        "GitHub workflow runs for candidate SHA: none observed",
+        "Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d",
+        "GitHub workflow runs for the observed pushed SHAs: none observed",
         "GitHub connector returned 403 Resource not accessible by integration",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
