@@ -109,8 +109,7 @@ framesmith/
     README.md, design.md, data-formats.md, rules-spec.md,
     zx-fspack.md, mcp-server.md, runtime-guide.md, runtime-api.md,
     cli.md, global-states.md, character-authoring-guide.md,
-    movement-reference.md
-    plans/                   # Implementation plans (removed when done)
+    movement-reference.md, implementation-history.md
 ```
 
 ## Task-Type Routing
@@ -157,7 +156,7 @@ npm run test:run                 # vitest (training, rendercore tests)
 cargo run --bin mcp -- --characters-dir ../characters
 
 # CLI export (from framesmith/src-tauri/)
-cargo run --bin framesmith -- export --all --project .. --out-dir ../exports
+cargo run --bin framesmith-cli -- export --project .. --all --out-dir ../exports
 ```
 
 ## Editor Views

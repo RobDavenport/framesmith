@@ -4,7 +4,7 @@
 //! for both happy paths and error cases.
 
 use framesmith_lib::commands::{
-    create_character, create_move, delete_character, list_characters, load_character,
+    create_character, create_move, delete_character, list_characters, load_character, save_move,
 };
 use std::fs;
 use std::path::Path;
@@ -59,7 +59,8 @@ fn create_test_character(characters_dir: &str, id: &str) {
     fs::create_dir_all(char_path.join("states")).unwrap();
 
     // Create cancel_table.json
-    let cancel_json = r#"{"chains": {}, "special_cancels": [], "super_cancels": [], "jump_cancels": []}"#;
+    let cancel_json =
+        r#"{"chains": {}, "special_cancels": [], "super_cancels": [], "jump_cancels": []}"#;
     fs::write(char_path.join("cancel_table.json"), cancel_json).unwrap();
 
     // Create empty rules.json for character
@@ -265,6 +266,39 @@ fn test_create_move_duplicate_returns_error() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("already exists"));
+}
+
+#[test]
+fn save_move_rejects_resolved_variant_to_protect_base_state() {
+    let temp_dir = TempDir::new().unwrap();
+    let characters_dir = setup_test_project(&temp_dir);
+
+    create_test_character(&characters_dir, "test-char");
+
+    let mut mv = create_move(
+        characters_dir.clone(),
+        "test-char".to_string(),
+        "5H".to_string(),
+        "Heavy Punch".to_string(),
+    )
+    .unwrap();
+    mv.id = Some("5H~level1".to_string());
+    mv.damage = 900;
+
+    let result = save_move(characters_dir.clone(), "test-char".to_string(), mv);
+
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .contains("Resolved variant states are read-only"));
+
+    let state_path = Path::new(&characters_dir)
+        .join("test-char")
+        .join("states")
+        .join("5H.json");
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(state_path).unwrap()).unwrap();
+    assert_eq!(saved["damage"], 500);
 }
 
 #[test]

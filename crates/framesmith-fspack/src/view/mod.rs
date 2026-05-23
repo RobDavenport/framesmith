@@ -59,7 +59,7 @@ pub const SECTION_KEYFRAMES_KEYS: u32 = 3;
 /// Array of StateRecord structs
 pub const SECTION_STATES: u32 = 4;
 
-/// Array of HitWindow24 structs
+/// Array of HitWindow28 structs
 pub const SECTION_HIT_WINDOWS: u32 = 5;
 
 /// Array of HurtWindow12 structs
@@ -205,7 +205,7 @@ impl<'a> PackView<'a> {
 
         // Parse section headers
         let mut sections = [SectionInfo::default(); MAX_SECTIONS];
-        for i in 0..section_count {
+        for (i, section) in sections.iter_mut().enumerate().take(section_count) {
             let header_offset = HEADER_SIZE + i * SECTION_HEADER_SIZE;
 
             let kind = read_u32_le(bytes, header_offset).ok_or(Error::OutOfBounds)?;
@@ -221,7 +221,7 @@ impl<'a> PackView<'a> {
                 return Err(Error::OutOfBounds);
             }
 
-            sections[i] = SectionInfo {
+            *section = SectionInfo {
                 kind,
                 offset,
                 len,

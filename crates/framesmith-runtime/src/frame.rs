@@ -23,11 +23,7 @@ fn advance_frame_counter(state: &CharacterState) -> CharacterState {
 /// # Returns
 /// New state and whether the move ended this frame.
 #[must_use]
-pub fn next_frame(
-    state: &CharacterState,
-    pack: &PackView,
-    input: &FrameInput,
-) -> FrameResult {
+pub fn next_frame(state: &CharacterState, pack: &PackView, input: &FrameInput) -> FrameResult {
     // Try to transition if a state was requested
     if let Some(target) = input.requested_state {
         if crate::cancel::can_cancel_to(state, pack, target) {

@@ -7,6 +7,44 @@ use super::character::{
     load_character_files, project_rules_path, resolve_and_merge_globals, CharacterData,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportAdapter {
+    Fspk,
+    JsonBlob,
+}
+
+impl ExportAdapter {
+    pub fn parse(adapter: &str) -> Result<Self, String> {
+        match adapter {
+            "fspk" | "zx-fspack" => Ok(Self::Fspk),
+            "json-blob" => Ok(Self::JsonBlob),
+            _ => Err(format!("Unknown adapter: {}", adapter)),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fspk => "fspk",
+            Self::JsonBlob => "json-blob",
+        }
+    }
+
+    pub fn default_ext(self) -> &'static str {
+        match self {
+            Self::Fspk => ".fspk",
+            Self::JsonBlob => ".json",
+        }
+    }
+}
+
+pub fn normalize_export_adapter(adapter: &str) -> Result<&'static str, String> {
+    Ok(ExportAdapter::parse(adapter)?.as_str())
+}
+
+pub fn export_adapter_default_ext(adapter: &str) -> Result<&'static str, String> {
+    Ok(ExportAdapter::parse(adapter)?.default_ext())
+}
+
 #[tauri::command]
 pub fn export_character(
     characters_dir: String,
@@ -15,6 +53,8 @@ pub fn export_character(
     output_path: String,
     pretty: bool,
 ) -> Result<(), String> {
+    let adapter = ExportAdapter::parse(&adapter)?;
+
     let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
 
@@ -42,7 +82,8 @@ pub fn export_character(
     let mut error_messages = Vec::new();
 
     let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
-    let char_issues = crate::rules::validate_character_resources_with_registry(&character, &registry);
+    let char_issues =
+        crate::rules::validate_character_resources_with_registry(&character, &registry);
     error_messages.extend(
         char_issues
             .into_iter()
@@ -85,15 +126,15 @@ pub fn export_character(
         cancel_table,
     };
 
-    let output = match adapter.as_str() {
-        "json-blob" => {
+    let output = match adapter {
+        ExportAdapter::JsonBlob => {
             if pretty {
                 export_json_blob_pretty(&char_data)?
             } else {
                 export_json_blob(&char_data)?
             }
         }
-        "fspk" => {
+        ExportAdapter::Fspk => {
             let merged_rules =
                 crate::rules::MergedRules::merge(project_rules.as_ref(), character_rules.as_ref());
             let bytes = export_fspk(&char_data, Some(&merged_rules))?;
@@ -101,11 +142,38 @@ pub fn export_character(
                 .map_err(|e| format!("Failed to write export file: {}", e))?;
             return Ok(());
         }
-        _ => return Err(format!("Unknown adapter: {}", adapter)),
     };
 
     fs::write(&output_path, output).map_err(|e| format!("Failed to write export file: {}", e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod export_adapter_tests {
+    use super::*;
+
+    #[test]
+    fn fspk_is_the_canonical_binary_adapter_name() {
+        assert_eq!(normalize_export_adapter("fspk").unwrap(), "fspk");
+        assert_eq!(export_adapter_default_ext("fspk").unwrap(), ".fspk");
+    }
+
+    #[test]
+    fn zx_fspack_is_accepted_as_a_legacy_alias() {
+        assert_eq!(normalize_export_adapter("zx-fspack").unwrap(), "fspk");
+        assert_eq!(export_adapter_default_ext("zx-fspack").unwrap(), ".fspk");
+    }
+
+    #[test]
+    fn json_blob_adapter_keeps_json_extension() {
+        assert_eq!(normalize_export_adapter("json-blob").unwrap(), "json-blob");
+        assert_eq!(export_adapter_default_ext("json-blob").unwrap(), ".json");
+    }
+
+    #[test]
+    fn unknown_adapter_is_rejected() {
+        assert!(normalize_export_adapter("rust").is_err());
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

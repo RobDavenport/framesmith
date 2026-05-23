@@ -3,8 +3,8 @@
 //! Minimal CLI intended for automation (e.g. exporting .fspk packs).
 //!
 //! Examples:
-//!   cargo run --bin framesmith -- export --project .. --character test_char --out ..\\exports\\test_char.fspk
-//!   cargo run --bin framesmith -- export --project .. --all --out-dir ..\\exports
+//!   cargo run --bin framesmith-cli -- export --project .. --character test_char --out ..\\exports\\test_char.fspk
+//!   cargo run --bin framesmith-cli -- export --project .. --all --out-dir ..\\exports
 
 use std::env;
 use std::fs;
@@ -14,14 +14,14 @@ use std::process;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Adapter {
     #[default]
-    ZxFspack,
+    Fspk,
     JsonBlob,
 }
 
 impl Adapter {
     fn parse(s: &str) -> Result<Self, String> {
         match s {
-            "fspk" => Ok(Self::ZxFspack),
+            "fspk" | "zx-fspack" => Ok(Self::Fspk),
             "json-blob" => Ok(Self::JsonBlob),
             _ => Err(format!("Unknown adapter: {}", s)),
         }
@@ -29,14 +29,14 @@ impl Adapter {
 
     fn as_str(self) -> &'static str {
         match self {
-            Self::ZxFspack => "fspk",
+            Self::Fspk => "fspk",
             Self::JsonBlob => "json-blob",
         }
     }
 
     fn default_ext(self) -> &'static str {
         match self {
-            Self::ZxFspack => ".fspk",
+            Self::Fspk => ".fspk",
             Self::JsonBlob => ".json",
         }
     }
@@ -56,7 +56,7 @@ struct ExportArgs {
 }
 
 fn usage() -> &'static str {
-    "Framesmith CLI\n\nUSAGE:\n  framesmith export [options]\n\nOPTIONS:\n  --project <dir>         Project root (expects <dir>/characters)\n  --characters-dir <dir>  Characters directory (overrides --project)\n  --character <id>        Character ID (folder name under characters dir)\n  --all                   Export all characters\n  --out <file>            Output file (single-character export)\n  --out-dir <dir>         Output directory (export all)\n  --adapter <name>        Adapter: fspk (default), json-blob\n  --pretty                Pretty JSON output (json-blob only)\n  --keep-going            Continue exporting others after an error (export all only)\n  -h, --help              Print help\n\nENV:\n  FRAMESMITH_CHARACTERS_DIR  Default characters directory if not provided\n"
+    "Framesmith CLI\n\nUSAGE:\n  framesmith-cli export [options]\n\nOPTIONS:\n  --project <dir>         Project root (expects <dir>/characters)\n  --characters-dir <dir>  Characters directory (overrides --project)\n  --character <id>        Character ID (folder name under characters dir)\n  --all                   Export all characters\n  --out <file>            Output file (single-character export)\n  --out-dir <dir>         Output directory (export all)\n  --adapter <name>        Adapter: fspk (default), json-blob\n  --pretty                Pretty JSON output (json-blob only)\n  --keep-going            Continue exporting others after an error (export all only)\n  -h, --help              Print help\n\nENV:\n  FRAMESMITH_CHARACTERS_DIR  Default characters directory if not provided\n"
 }
 
 fn main() {
@@ -85,7 +85,7 @@ fn real_main() -> Result<(), String> {
 
 fn cmd_export(args: &[String]) -> Result<(), String> {
     let mut cfg = ExportArgs {
-        adapter: Adapter::ZxFspack,
+        adapter: Adapter::Fspk,
         ..Default::default()
     };
 
@@ -153,7 +153,7 @@ fn cmd_export(args: &[String]) -> Result<(), String> {
         return Err("--out-dir cannot be used with --character (use --out)".to_string());
     }
 
-    if cfg.adapter == Adapter::ZxFspack && cfg.pretty {
+    if cfg.adapter == Adapter::Fspk && cfg.pretty {
         return Err("--pretty is only supported for json-blob".to_string());
     }
 

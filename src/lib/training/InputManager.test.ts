@@ -20,6 +20,7 @@ describe('InputManager', () => {
       P: 'KeyJ',
       K: 'KeyK',
       S: 'KeyL',
+      T: 'KeyP',
     },
   };
 
@@ -233,6 +234,7 @@ describe('InputManager', () => {
           P: 'KeyA',
           K: 'KeyS',
           S: 'KeyD',
+          T: 'KeyF',
         },
       };
 

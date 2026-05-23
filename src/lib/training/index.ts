@@ -11,6 +11,7 @@ export { InputManager, type TrainingInputConfig } from './InputManager.svelte';
 export {
   InputBuffer,
   type InputSnapshot,
+  type InputBufferSnapshot,
   type ButtonName,
   type MotionPattern,
   type ChargePattern,

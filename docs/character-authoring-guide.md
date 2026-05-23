@@ -219,24 +219,13 @@ Movement states need cancel rules to transition between each other and into atta
 
 ```json
 {
-  "chains": {
-    "0_idle": ["0_walk_forward", "0_walk_backward", "1_crouch", "66", "44"],
-    "0_walk_forward": ["0_idle", "0_walk_backward", "1_crouch", "66"],
-    "0_walk_backward": ["0_idle", "0_walk_forward", "1_crouch", "44"],
-    "1_crouch": ["0_idle", "0_walk_forward", "0_walk_backward"]
-  },
   "tag_rules": [
-    {
-      "from_tag": "system",
-      "to_tag": "normal",
-      "condition": "on_complete"
-    },
-    {
-      "from_tag": "normal",
-      "to_tag": "special",
-      "condition": "on_hit_or_block"
-    }
-  ]
+    { "from": "system", "to": "movement", "on": "always" },
+    { "from": "movement", "to": "system", "on": "always" },
+    { "from": "system", "to": "normal", "on": "always" },
+    { "from": "normal", "to": "special", "on": ["hit", "block"] }
+  ],
+  "deny": {}
 }
 ```
 
@@ -247,6 +236,8 @@ Instead of explicit pairs, use tags for common patterns:
 - Tag movement states as `system` or `movement`
 - Tag attack types as `normal`, `special`, `super`
 - Define rules like "normals cancel into specials on hit"
+- Use `deny` for specific routes that should be blocked even when a broad tag
+  rule would otherwise allow them
 
 ## Using Global States
 

@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    name: Windows Checks
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.10.3
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Dependency audit
+        run: npm audit
+
+      - name: Rebuild WASM package
+        run: npm run wasm:build
+
+      - name: Verify WASM package exists
+        run: |
+          if (-not (Test-Path src/lib/wasm/framesmith_runtime_wasm.js)) {
+            throw "Missing generated WASM JavaScript binding"
+          }
+          if (-not (Test-Path src/lib/wasm/framesmith_runtime_wasm.d.ts)) {
+            throw "Missing generated WASM TypeScript declarations"
+          }
+
+      - name: Refresh generated schemas
+        run: cargo run --manifest-path src-tauri/Cargo.toml --bin generate_schema
+
+      - name: Verify generated files are current
+        run: git diff --exit-code -- schemas/rules.schema.json
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+
+      - name: TypeScript and Svelte check
+        run: npm run check
+
+      - name: Frontend and logic tests
+        run: npm run test:run
+
+      - name: Browser smoke tests
+        run: npm run test:e2e
+
+      - name: Build web frontend
+        run: npm run build
+
+      - name: Rust formatting
+        run: |
+          cargo fmt --check --manifest-path src-tauri/Cargo.toml
+          cargo fmt --check --manifest-path crates/framesmith-runtime/Cargo.toml
+          cargo fmt --check --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
+          cargo fmt --check --manifest-path crates/framesmith-fspack/Cargo.toml
+
+      - name: Test Tauri backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Test runtime crate
+        run: cargo test --manifest-path crates/framesmith-runtime/Cargo.toml
+
+      - name: Build runtime WASM test fixture
+        run: cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk
+
+      - name: Test runtime WASM crate
+        run: cargo test --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
+
+      - name: Test FSPK reader crate
+        run: cargo test --manifest-path crates/framesmith-fspack/Cargo.toml
+
+      - name: Clippy Tauri backend
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Clippy runtime crates
+        run: |
+          cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
+
+      - name: Verify branch protection helper fixture
+        run: .\scripts\check-branch-protection.ps1 -ProtectionJsonPath tests\fixtures\github-branch-protection-main.json -RequirePullRequest
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Verify Windows installer outputs
+        run: .\scripts\verify-windows-installer-artifacts.ps1 -Path src-tauri\target\release\bundle
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: framesmith-windows-installers
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*setup.exe

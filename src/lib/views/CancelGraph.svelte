@@ -1,23 +1,19 @@
 <script lang="ts">
   import { getCurrentCharacter, getRulesRegistry } from "$lib/stores/character.svelte";
-  import type { State, CancelTable } from "$lib/types";
+  import type { State, CancelCondition, CancelTagRule } from "$lib/types";
+  import { getStateKey } from "$lib/utils";
 
   const characterData = $derived(getCurrentCharacter());
   const moves = $derived(characterData?.moves ?? []);
   const cancelTable = $derived(characterData?.cancel_table);
   const registry = $derived(getRulesRegistry());
 
-  // Default chain order if not specified in registry
   const defaultChainOrder = ["L", "M", "H"];
-
-  // Get chain order from registry or use default
   const chainOrder = $derived(registry?.chain_order ?? defaultChainOrder);
 
-  // Default filter groups for type detection
   const defaultSpecialTypes = ["special", "ex", "rekka"];
   const defaultSuperTypes = ["super"];
 
-  // Get type groups from registry
   const specialTypes = $derived(
     registry?.move_types?.filter_groups?.["specials"] ?? defaultSpecialTypes
   );
@@ -25,68 +21,76 @@
     registry?.move_types?.filter_groups?.["supers"] ?? defaultSuperTypes
   );
 
-  // Check if cancel table is effectively empty (tag-based system)
   const isCancelTableEmpty = $derived.by(() => {
     if (!cancelTable) return true;
-    return (
-      Object.keys(cancelTable.chains).length === 0 &&
-      cancelTable.special_cancels.length === 0 &&
-      cancelTable.super_cancels.length === 0 &&
-      cancelTable.jump_cancels.length === 0
-    );
+    return cancelTable.tag_rules.length === 0 && Object.keys(cancelTable.deny).length === 0;
   });
 
-  // Extract button from input (e.g., "5L" -> "L", "j.H" -> "H", "2M" -> "M")
   function extractButton(input: string): string | null {
-    // Match trailing alphabetic characters
     const match = input.match(/([A-Z]+)$/i);
     return match ? match[1].toUpperCase() : null;
   }
 
-  // Check if a state has a specific tag (tags are resolved by rules)
   function hasTag(move: State, tag: string): boolean {
-    return (move as any).tags?.includes(tag) ?? false;
+    return move.tags?.includes(tag) ?? false;
   }
 
-  // Check if state is a special type
   function isSpecialType(move: State): boolean {
     if (move.type) {
       return specialTypes.includes(move.type);
     }
-    // Fallback to input pattern
     return /\d{3,}/.test(move.input);
   }
 
-  // Check if state is a super type
   function isSuperType(move: State): boolean {
     if (move.type) {
       return superTypes.includes(move.type);
     }
-    // Fallback to 6+ digit input pattern
     return /\d{6,}/.test(move.input);
   }
 
-  // SVG dimensions
+  function normalizeSelector(selector: string): string {
+    return selector.toLowerCase();
+  }
+
+  function stateTokens(move: State): Set<string> {
+    const tokens = new Set<string>([normalizeSelector(move.input), normalizeSelector(getStateKey(move))]);
+    if (move.type) tokens.add(normalizeSelector(move.type));
+    for (const tag of move.tags ?? []) {
+      tokens.add(normalizeSelector(tag));
+    }
+    return tokens;
+  }
+
+  function matchesSelector(selector: string, move: State): boolean {
+    const normalized = normalizeSelector(selector);
+    return normalized === "any" || stateTokens(move).has(normalized);
+  }
+
+  function conditionTokens(condition: CancelCondition | undefined): string[] {
+    if (!condition) return ["always"];
+    return Array.isArray(condition) ? condition : [condition];
+  }
+
   const width = 800;
   const height = 600;
   const centerX = width / 2;
   const centerY = height / 2;
   const radius = Math.min(width, height) * 0.35;
 
-  // Edge colors by type
   const edgeColors = {
-    chain: "#4ade80", // green - chains
-    special: "#60a5fa", // blue - special cancels
-    super: "#fbbf24", // yellow - super cancels
-    jump: "#c084fc", // purple - jump cancels
+    chain: "#4ade80",
+    special: "#60a5fa",
+    super: "#fbbf24",
+    jump: "#c084fc",
   };
 
-  // Hover state
   let hoveredMove = $state<string | null>(null);
 
-  // Calculate node positions in a circle
   interface NodePosition {
+    key: string;
     input: string;
+    label: string;
     name: string;
     x: number;
     y: number;
@@ -99,9 +103,12 @@
     const angleStep = (2 * Math.PI) / moves.length;
 
     moves.forEach((move, index) => {
-      const angle = index * angleStep - Math.PI / 2; // Start from top
+      const angle = index * angleStep - Math.PI / 2;
+      const key = getStateKey(move);
       positions.push({
+        key,
         input: move.input,
+        label: key === move.input ? move.input : key,
         name: move.name,
         x: centerX + radius * Math.cos(angle),
         y: centerY + radius * Math.sin(angle),
@@ -111,59 +118,74 @@
     return positions;
   });
 
-  // Get position for a move by input
-  function getNodePosition(input: string): NodePosition | undefined {
-    return nodePositions.find((n) => n.input === input);
+  function getNodePosition(key: string): NodePosition | undefined {
+    return nodePositions.find((n) => n.key === key);
   }
 
-  // Edge type definition
   interface Edge {
     from: string;
     to: string;
     type: "chain" | "special" | "super" | "jump";
+    label?: string;
   }
 
-  // Build edges from cancel table OR from tags if cancel table is empty
+  function addEdge(edgeList: Edge[], seen: Set<string>, edge: Edge) {
+    const key = `${edge.from}\0${edge.to}\0${edge.type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edgeList.push(edge);
+  }
+
+  function isDenied(from: State, to: State): boolean {
+    if (!cancelTable) return false;
+    const fromKey = getStateKey(from);
+    const toKey = getStateKey(to);
+    const denyLists = [
+      cancelTable.deny[fromKey],
+      cancelTable.deny[from.input],
+      cancelTable.deny[normalizeSelector(fromKey)],
+      cancelTable.deny[normalizeSelector(from.input)],
+    ].filter(Boolean) as string[][];
+
+    return denyLists.some((targets) =>
+      targets.some((target) =>
+        target === toKey ||
+        target === to.input ||
+        normalizeSelector(target) === normalizeSelector(toKey) ||
+        normalizeSelector(target) === normalizeSelector(to.input)
+      )
+    );
+  }
+
+  function inferEdgeType(rule: CancelTagRule, targetMove: State): Edge["type"] {
+    const to = normalizeSelector(rule.to);
+    if (to === "super" || isSuperType(targetMove)) return "super";
+    if (to === "special" || isSpecialType(targetMove)) return "special";
+    return "chain";
+  }
+
+  function ruleLabel(rule: CancelTagRule): string {
+    return conditionTokens(rule.on).join("+");
+  }
+
   const edges = $derived.by(() => {
     const edgeList: Edge[] = [];
-    const moveInputs = new Set(moves.map((m) => m.input));
-    const movesByInput = new Map(moves.map((m) => [m.input, m]));
+    const seen = new Set<string>();
 
-    // If cancel table has explicit data, use it
     if (!isCancelTableEmpty && cancelTable) {
-      // Chain edges (from chains object)
-      for (const [fromMove, targets] of Object.entries(cancelTable.chains)) {
-        if (!moveInputs.has(fromMove)) continue;
-        for (const toMove of targets) {
-          if (moveInputs.has(toMove)) {
-            edgeList.push({ from: fromMove, to: toMove, type: "chain" });
-          }
-        }
-      }
+      for (const rule of cancelTable.tag_rules) {
+        const fromMoves = moves.filter((move) => matchesSelector(rule.from, move));
+        const toMoves = moves.filter((move) => matchesSelector(rule.to, move));
 
-      // Special cancel edges
-      const specialMovesList = moves.filter((m) => isSpecialType(m));
-      for (const fromInput of cancelTable.special_cancels) {
-        if (!moveInputs.has(fromInput)) continue;
-        for (const specialMove of specialMovesList) {
-          if (fromInput !== specialMove.input) {
-            const existingChain = edgeList.find(
-              (e) => e.from === fromInput && e.to === specialMove.input && e.type === "chain"
-            );
-            if (!existingChain) {
-              edgeList.push({ from: fromInput, to: specialMove.input, type: "special" });
-            }
-          }
-        }
-      }
-
-      // Super cancel edges
-      const superMovesList = moves.filter((m) => isSuperType(m));
-      for (const fromInput of cancelTable.super_cancels) {
-        if (!moveInputs.has(fromInput)) continue;
-        for (const superMove of superMovesList) {
-          if (fromInput !== superMove.input) {
-            edgeList.push({ from: fromInput, to: superMove.input, type: "super" });
+        for (const fromMove of fromMoves) {
+          for (const toMove of toMoves) {
+            if (isDenied(fromMove, toMove)) continue;
+            addEdge(edgeList, seen, {
+              from: getStateKey(fromMove),
+              to: getStateKey(toMove),
+              type: inferEdgeType(rule, toMove),
+              label: ruleLabel(rule),
+            });
           }
         }
       }
@@ -171,8 +193,6 @@
       return edgeList;
     }
 
-    // Tag-based edge derivation (when cancel table is empty)
-    // Build index of moves by button for chain lookup
     const movesByButton = new Map<string, State[]>();
     for (const move of moves) {
       const button = extractButton(move.input);
@@ -183,7 +203,6 @@
       }
     }
 
-    // Get special and super moves for cancel targets
     const specialMovesList = moves.filter((m) => isSpecialType(m));
     const superMovesList = moves.filter((m) => isSuperType(m));
 
@@ -191,77 +210,66 @@
       const moveButton = extractButton(move.input);
       const buttonIndex = moveButton ? chainOrder.indexOf(moveButton) : -1;
 
-      // Chain tag: can cancel into moves with buttons later in chain order
       if (hasTag(move, "chain") && buttonIndex >= 0) {
         for (let i = buttonIndex + 1; i < chainOrder.length; i++) {
           const targetButton = chainOrder[i];
           const targetMoves = movesByButton.get(targetButton) ?? [];
           for (const targetMove of targetMoves) {
-            // Only chain into normals (same position: standing/crouching/jumping)
-            // For simplicity, just add the edge
-            if (move.input !== targetMove.input) {
-              edgeList.push({ from: move.input, to: targetMove.input, type: "chain" });
+            if (getStateKey(move) !== getStateKey(targetMove)) {
+              addEdge(edgeList, seen, { from: getStateKey(move), to: getStateKey(targetMove), type: "chain" });
             }
           }
         }
       }
 
-      // Self-gatling tag: can cancel into itself
       if (hasTag(move, "self_gatling")) {
-        edgeList.push({ from: move.input, to: move.input, type: "chain" });
+        const key = getStateKey(move);
+        addEdge(edgeList, seen, { from: key, to: key, type: "chain" });
       }
 
-      // Special cancel tag: can cancel into any special move
       if (hasTag(move, "special_cancel")) {
         for (const specialMove of specialMovesList) {
-          if (move.input !== specialMove.input) {
-            // Avoid duplicate if already added as chain
-            const exists = edgeList.some(
-              (e) => e.from === move.input && e.to === specialMove.input
-            );
-            if (!exists) {
-              edgeList.push({ from: move.input, to: specialMove.input, type: "special" });
-            }
+          if (getStateKey(move) !== getStateKey(specialMove)) {
+            addEdge(edgeList, seen, { from: getStateKey(move), to: getStateKey(specialMove), type: "special" });
           }
         }
       }
 
-      // Super cancel tag: can cancel into any super move
       if (hasTag(move, "super_cancel")) {
         for (const superMove of superMovesList) {
-          if (move.input !== superMove.input) {
-            edgeList.push({ from: move.input, to: superMove.input, type: "super" });
+          if (getStateKey(move) !== getStateKey(superMove)) {
+            addEdge(edgeList, seen, { from: getStateKey(move), to: getStateKey(superMove), type: "super" });
           }
         }
       }
-
-      // Jump cancel tag: mark for visual indicator (handled separately)
-      // No edges needed since jump is not a move
     }
 
     return edgeList;
   });
 
-  // Calculate edge path with curve for better visibility
   function getEdgePath(from: NodePosition, to: NodePosition): string {
-    // Calculate control point for a curved line
+    if (from.key === to.key) {
+      return `M ${from.x} ${from.y - 24} C ${from.x + 52} ${from.y - 78}, ${from.x + 78} ${from.y + 20}, ${from.x + 24} ${from.y + 24}`;
+    }
+
     const midX = (from.x + to.x) / 2;
     const midY = (from.y + to.y) / 2;
-
-    // Offset the control point toward the center for inward curve
     const dx = midX - centerX;
     const dy = midY - centerY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const curveAmount = 0.3;
-    const controlX = midX - (dx / dist) * radius * curveAmount;
-    const controlY = midY - (dy / dist) * radius * curveAmount;
+    const controlX = dist === 0 ? midX : midX - (dx / dist) * radius * curveAmount;
+    const controlY =
+      dist === 0 ? midY - radius * curveAmount : midY - (dy / dist) * radius * curveAmount;
 
     return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
   }
 
-  // Calculate arrow marker position along the curve
   function getArrowTransform(from: NodePosition, to: NodePosition): string {
-    // Position arrow at 70% along the path
+    if (from.key === to.key) {
+      return `translate(${from.x + 24}, ${from.y + 24}) rotate(140)`;
+    }
+
     const t = 0.7;
     const midX = (from.x + to.x) / 2;
     const midY = (from.y + to.y) / 2;
@@ -269,14 +277,12 @@
     const dy = midY - centerY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const curveAmount = 0.3;
-    const controlX = midX - (dx / dist) * radius * curveAmount;
-    const controlY = midY - (dy / dist) * radius * curveAmount;
+    const controlX = dist === 0 ? midX : midX - (dx / dist) * radius * curveAmount;
+    const controlY =
+      dist === 0 ? midY - radius * curveAmount : midY - (dy / dist) * radius * curveAmount;
 
-    // Quadratic bezier point at t
     const x = (1 - t) * (1 - t) * from.x + 2 * (1 - t) * t * controlX + t * t * to.x;
     const y = (1 - t) * (1 - t) * from.y + 2 * (1 - t) * t * controlY + t * t * to.y;
-
-    // Calculate angle
     const tangentX = 2 * (1 - t) * (controlX - from.x) + 2 * t * (to.x - controlX);
     const tangentY = 2 * (1 - t) * (controlY - from.y) + 2 * t * (to.y - controlY);
     const angle = (Math.atan2(tangentY, tangentX) * 180) / Math.PI;
@@ -284,33 +290,30 @@
     return `translate(${x}, ${y}) rotate(${angle})`;
   }
 
-  // Check if edge is highlighted (connected to hovered node)
   function isEdgeHighlighted(edge: Edge): boolean {
     if (!hoveredMove) return true;
     return edge.from === hoveredMove || edge.to === hoveredMove;
   }
 
-  // Check if node is highlighted
-  function isNodeHighlighted(input: string): boolean {
+  function isNodeHighlighted(key: string): boolean {
     if (!hoveredMove) return true;
-    if (input === hoveredMove) return true;
-    // Also highlight connected nodes
+    if (key === hoveredMove) return true;
     return edges.some(
       (e) =>
-        (e.from === hoveredMove && e.to === input) ||
-        (e.to === hoveredMove && e.from === input)
+        (e.from === hoveredMove && e.to === key) ||
+        (e.to === hoveredMove && e.from === key)
     );
   }
 
-  // Check if move has jump cancel (from cancel table or tags)
-  function hasJumpCancel(input: string): boolean {
-    // Check explicit cancel table first
-    if (cancelTable?.jump_cancels?.includes(input)) {
-      return true;
-    }
-    // Check for jump_cancel tag
-    const move = moves.find((m) => m.input === input);
-    return move ? hasTag(move, "jump_cancel") : false;
+  function hasJumpCancel(key: string): boolean {
+    const move = moves.find((m) => getStateKey(m) === key);
+    if (!move) return false;
+    if (hasTag(move, "jump_cancel")) return true;
+
+    return cancelTable?.tag_rules.some((rule) => {
+      const to = normalizeSelector(rule.to);
+      return (to === "jump" || to === "jump_cancel") && matchesSelector(rule.from, move);
+    }) ?? false;
   }
 </script>
 
@@ -372,21 +375,21 @@
           {#each nodePositions as node}
             <g
               class="node"
-              class:dimmed={!isNodeHighlighted(node.input)}
-              class:hovered={hoveredMove === node.input}
-              onmouseenter={() => (hoveredMove = node.input)}
+              class:dimmed={!isNodeHighlighted(node.key)}
+              class:hovered={hoveredMove === node.key}
+              onmouseenter={() => (hoveredMove = node.key)}
               onmouseleave={() => (hoveredMove = null)}
-              onfocus={() => (hoveredMove = node.input)}
+              onfocus={() => (hoveredMove = node.key)}
               onblur={() => (hoveredMove = null)}
               onkeydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  hoveredMove = hoveredMove === node.input ? null : node.input;
+                  hoveredMove = hoveredMove === node.key ? null : node.key;
                 }
               }}
               role="button"
               tabindex="0"
-              aria-label={`${node.input} - ${node.name}`}
+              aria-label={`${node.label} - ${node.name}`}
             >
               <!-- Node circle -->
               <circle
@@ -397,7 +400,7 @@
               />
 
               <!-- Jump cancel indicator -->
-              {#if hasJumpCancel(node.input)}
+              {#if hasJumpCancel(node.key)}
                 <circle
                   cx={node.x}
                   cy={node.y}
@@ -414,7 +417,7 @@
                 dominant-baseline="central"
                 text-anchor="middle"
               >
-                {node.input}
+                {node.label}
               </text>
             </g>
           {/each}
@@ -447,12 +450,15 @@
 
     <!-- Move info on hover -->
     {#if hoveredMove}
-      {@const hoveredNode = nodePositions.find((n) => n.input === hoveredMove)}
+      {@const hoveredNode = nodePositions.find((n) => n.key === hoveredMove)}
       {@const outgoing = edges.filter((e) => e.from === hoveredMove)}
       {@const incoming = edges.filter((e) => e.to === hoveredMove)}
       {#if hoveredNode}
         <div class="hover-info">
-          <strong>{hoveredNode.input}</strong> - {hoveredNode.name}
+          <strong>{hoveredNode.label}</strong> - {hoveredNode.name}
+          {#if hoveredNode.label !== hoveredNode.input}
+            <span class="hover-input">({hoveredNode.input})</span>
+          {/if}
           <div class="hover-connections">
             {#if outgoing.length > 0}
               <div class="connection-list">
@@ -630,6 +636,13 @@
 
   .hover-info strong {
     font-size: 15px;
+  }
+
+  .hover-input {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 12px;
+    margin-left: 4px;
   }
 
   .hover-connections {

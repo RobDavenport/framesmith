@@ -1,10 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
 use framesmith_lib::mcp::handlers::FramesmithMcp;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::{transport::stdio, ServiceExt};
 
 #[derive(Parser, Debug)]
-#[command(name = "framesmith-mcp", about = "Framesmith MCP server for character data")]
+#[command(
+    name = "framesmith-mcp",
+    about = "Framesmith MCP server for character data"
+)]
 struct Args {
     /// Path to the characters directory (overrides FRAMESMITH_CHARACTERS_DIR env var)
     #[arg(long, short = 'c')]

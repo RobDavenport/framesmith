@@ -4,7 +4,9 @@ use crate::codegen::fspk_format::{write_u16_le, write_u32_le, write_u8};
 use crate::schema::{EventArgValue, EventEmit};
 
 use super::types::StringTable;
-use super::utils::{checked_u16, checked_u32, write_i64_le, write_range, write_strref, write_u64_le};
+use super::utils::{
+    checked_u16, checked_u32, write_i64_le, write_range, write_strref, write_u64_le,
+};
 
 // Event argument type tags
 pub const EVENT_ARG_TAG_BOOL: u8 = 0;

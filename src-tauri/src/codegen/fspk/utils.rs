@@ -62,7 +62,13 @@ pub fn write_u64_le(buf: &mut Vec<u8>, value: u64) {
 /// Write a section header to the buffer.
 ///
 /// Section header layout: kind(u32) + offset(u32) + length(u32) + alignment(u32)
-pub fn write_section_header(buf: &mut Vec<u8>, kind: u32, offset: u32, length: u32, alignment: u32) {
+pub fn write_section_header(
+    buf: &mut Vec<u8>,
+    kind: u32,
+    offset: u32,
+    length: u32,
+    alignment: u32,
+) {
     write_u32_le(buf, kind);
     write_u32_le(buf, offset);
     write_u32_le(buf, length);

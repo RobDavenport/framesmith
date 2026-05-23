@@ -1,7 +1,7 @@
 # Framesmith Runtime Integration Guide
 
 **Status:** Active
-**Last reviewed:** 2026-02-01
+**Last reviewed:** 2026-05-23
 
 ## Overview
 
@@ -13,6 +13,126 @@
 2. **Copy-friendly**: `CharacterState` is 22 bytes, `Copy`, and deterministic
 3. **`no_std` compatible**: No heap allocations (unless `alloc` feature is enabled)
 4. **Rollback-ready**: Cheap state cloning enables efficient rollback netcode
+
+## Runtime Ownership Contract
+
+The runtime is intentionally small. It consumes `.fspk` data and answers
+deterministic questions; the game engine still owns policy, positioning, and
+presentation.
+
+| Area | Framesmith Provides | Engine Owns |
+|------|---------------------|-------------|
+| State timing | `next_frame()` advances state frame counters and reports `move_ended`. | Which state to enter after a move ends, including idle, landing, wakeup, and scripted transitions. |
+| Cancel validation | `can_cancel_to()`, `available_cancels()`, tag rules, explicit denies, and resource preconditions. | Input parsing, buffering, command priority, and mapping commands to state indices. |
+| Resource costs | Resource costs and resource preconditions for exported resource records. | Applying resource deltas from hits, blocks, whiffs, events, round rules, and scripted game logic. |
+| Hit detection | Active hit window vs hurt window overlap plus `HitResult` data. | Whether contact is hit/block/whiff, guard rules, damage application, health, hitstop/blockstop scheduling, combo rules, proration, and defender state transitions. |
+| Pushboxes | `check_pushbox()` returns deterministic horizontal separation for overlapping exported pushboxes. | Applying separation to world positions, corner rules, stage bounds, collision priority, and vertical/platform behavior. |
+| Movement | Authored movement fields are available in `json-blob` and editor data. | Applying movement curves/velocity, gravity, floor/wall collision, air state, and stage constraints. FSPK v1 does not serialize movement values. |
+| Projectiles/entities | Authoring fields can describe spawn intent in JSON. | Entity lifecycle, collision, ownership, rollback state, and rendering. FSPK v1 does not serialize spawned entity behavior. |
+| Effects/events | FSPK stores event emits and primitive args for supported event locations. | Dispatching events to VFX/SFX/gameplay systems and deciding when one-shot effects become authoritative in rollback. |
+
+For field-by-field export coverage, see
+[`export-fidelity-contract.md`](export-fidelity-contract.md). For the canonical
+production handoff and FSPK v1 movement policy, see
+[`production-handoff-decision.md`](production-handoff-decision.md).
+
+## Engine Consumption Examples
+
+### Applying Authored Movement From `json-blob`
+
+FSPK v1 does not serialize movement values. Engines that need authored movement
+should read it from the canonical `json-blob` handoff and include any mutable
+velocity/accumulator values in engine rollback state.
+
+```typescript
+type Facing = 1 | -1;
+type Vec2 = { x: number; y: number };
+
+function applyAuthoredMovement(
+  state: State,
+  frame: number,
+  position: Vec2,
+  velocity: Vec2,
+  facing: Facing
+) {
+  const movement = state.movement;
+  if (!movement) return;
+
+  const total = state.total ?? state.startup + state.active + state.recovery;
+  const [start, end] = movement.frames ?? [0, total - 1];
+  if (frame < start || frame > end) return;
+
+  if (movement.distance !== undefined && movement.direction) {
+    const frames = Math.max(1, end - start + 1);
+    const sign = movement.direction === "backward" ? -1 : 1;
+    position.x += (movement.distance / frames) * sign * facing;
+    return;
+  }
+
+  if (movement.velocity) {
+    position.x += velocity.x * facing;
+    position.y += velocity.y;
+    velocity.x += movement.acceleration?.x ?? 0;
+    velocity.y += movement.acceleration?.y ?? 0;
+  }
+}
+```
+
+### Applying FSPK Resource Deltas In The Engine
+
+FSPK v1 stores resource deltas, but the core runtime does not decide when to
+apply every delta. Engines should apply the records when their authoritative
+gameplay event occurs: on use, on hit, or on block.
+`resource_index_for_name()` below is engine-owned because resource lookup policy
+depends on how the game maps named resource definitions to runtime slots.
+
+```rust
+use framesmith_fspack::{
+    PackView,
+    RESOURCE_DELTA_TRIGGER_ON_BLOCK,
+    RESOURCE_DELTA_TRIGGER_ON_HIT,
+    RESOURCE_DELTA_TRIGGER_ON_USE,
+};
+use framesmith_runtime::{resource, set_resource, CharacterState};
+
+fn apply_resource_deltas_for_trigger(
+    pack: &PackView,
+    state: &mut CharacterState,
+    state_index: usize,
+    trigger: u8,
+) {
+    let Some(extras) = pack.state_extras() else { return };
+    let Some(deltas) = pack.move_resource_deltas() else { return };
+    let Some(extra) = extras.get(state_index) else { return };
+
+    let (off, len) = extra.resource_deltas();
+    for i in 0..len as usize {
+        let Some(delta) = deltas.get_at(off, i) else { continue };
+        if delta.trigger() != trigger {
+            continue;
+        }
+
+        let Some(name) = pack.string(delta.name_off(), delta.name_len()) else { continue };
+        let Some(resource_index) = resource_index_for_name(name) else { continue };
+
+        let current = resource(state, resource_index);
+        let next = (current as i32 + delta.delta()).clamp(0, u16::MAX as i32) as u16;
+        set_resource(state, resource_index, next);
+    }
+}
+
+fn on_move_started(pack: &PackView, state: &mut CharacterState, state_index: usize) {
+    apply_resource_deltas_for_trigger(pack, state, state_index, RESOURCE_DELTA_TRIGGER_ON_USE);
+}
+
+fn on_attack_hit(pack: &PackView, state: &mut CharacterState, state_index: usize) {
+    apply_resource_deltas_for_trigger(pack, state, state_index, RESOURCE_DELTA_TRIGGER_ON_HIT);
+}
+
+fn on_attack_blocked(pack: &PackView, state: &mut CharacterState, state_index: usize) {
+    apply_resource_deltas_for_trigger(pack, state, state_index, RESOURCE_DELTA_TRIGGER_ON_BLOCK);
+}
+```
 
 ## Quick Start
 
@@ -92,11 +212,10 @@ let result = next_frame(&state, &pack, &input);
 Players request state transitions via `FrameInput::requested_state`. The runtime validates cancels based on:
 
 1. **Explicit denies** - Hard blocks between specific states
-2. **Explicit chain cancels** - State-specific cancel routes (rekkas, target combos)
-3. **Tag-based rules** - Pattern rules like "normals can cancel into specials on hit"
+2. **Tag-based rules** - Pattern rules like "normals can cancel into specials on hit"
 
 ```rust
-use framesmith_runtime::{can_cancel_to, available_cancels};
+use framesmith_runtime::{available_cancels, available_cancels_buf, can_cancel_to};
 
 // Check if a specific cancel is valid
 if can_cancel_to(&state, &pack, target_state) {
@@ -117,9 +236,9 @@ let count = available_cancels_buf(&state, &pack, &mut buf);
 **Cancel conditions:**
 
 - `always` - Cancel allowed anytime in frame range
-- `on_hit` - Only after `report_hit()` called
-- `on_block` - Only after `report_block()` called
-- `on_whiff` - Only when neither hit nor block confirmed
+- `hit` - Only after `report_hit()` called
+- `block` - Only after `report_block()` called
+- `whiff` - Only when neither hit nor block confirmed
 
 ### Action Cancels
 
@@ -189,6 +308,29 @@ report_block(&mut attacker_state);
 ```
 
 This updates `hit_confirmed` or `block_confirmed` on the state, which tag-based cancel rules check.
+
+## Pushbox Separation
+
+Use `check_pushbox()` to detect body overlap for the current frame:
+
+```rust
+use framesmith_runtime::check_pushbox;
+
+let separation = check_pushbox(
+    &p1_state, &p1_pack, p1_pos,
+    &p2_state, &p2_pack, p2_pos,
+);
+
+if let Some(sep) = separation {
+    // Engine applies these deltas to world positions after stage/corner policy.
+    p1_pos.0 += sep.p1_dx;
+    p2_pos.0 += sep.p2_dx;
+}
+```
+
+The runtime only calculates overlap resolution from exported pushboxes. The
+engine must clamp the result to floors, walls, corners, camera bounds, and any
+game-specific collision priority rules.
 
 ## Resources
 
@@ -329,6 +471,21 @@ function tick() {
 }
 ```
 
+For browser training tools that need frame step-back, capture and restore
+session snapshots. The snapshot covers the deterministic runtime state and
+character positions; the host app must also restore its own input history,
+health/combo counters, camera, and UI state.
+
+```typescript
+const beforeFrame = session.snapshot();
+
+const result = session.tick(playerInput, DummyState.Stand);
+render(result);
+
+// Step back to the exact runtime state from before the tick.
+session.restore(beforeFrame);
+```
+
 ## Troubleshooting
 
 ### Cancel Not Working
@@ -386,4 +543,5 @@ init_resources(&mut state, &pack); // Sets starting values
 
 - [Runtime API Reference](runtime-api.md) - Complete type and function documentation
 - [ZX FSPK Format](zx-fspack.md) - Binary pack format specification
+- [Export Fidelity Contract](export-fidelity-contract.md) - Adapter field coverage and FSPK limits
 - [Data Formats](data-formats.md) - On-disk JSON formats
