@@ -62,6 +62,7 @@ cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets 
 cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
 npm run tauri build
+pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; foreach ($file in @($msi + $nsis)) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
 git diff --check
 ```
 
@@ -189,6 +190,14 @@ Clean-checkout CI is verified for this observed candidate SHA. Before merging,
 the latest PR head must still show a passing CI check. The release remains not
 production-ready until branch protection requires the CI gate and the Windows
 installer artifact is manually smoke tested.
+
+Additional hardening after this run: the CI workflow now verifies that at least
+one MSI and one NSIS setup executable exist and that all installer outputs are
+non-empty before uploading the `framesmith-windows-installers` artifact. Shell
+attempts to download and inspect artifact `7176298714` from the signed file URL
+failed in this environment because PowerShell/curl could not complete the TLS
+download; GitHub artifact metadata remains the authoritative evidence for the
+remote artifact until manual smoke testing downloads it.
 
 ## Branch Protection State
 

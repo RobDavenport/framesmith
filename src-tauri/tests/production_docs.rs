@@ -226,6 +226,8 @@ fn release_runbook_covers_candidate_evidence() {
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js'",
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts'",
         "cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk",
+        "No MSI installer was produced",
+        "No NSIS setup executable was produced",
         "git diff --exit-code -- schemas/rules.schema.json",
         "GitHub Actions URL",
         "Protected branch/ruleset",
@@ -266,6 +268,8 @@ fn current_release_evidence_records_external_blockers() {
         "browser smoke tests now wait on stable frame-table and training",
         "https://github.com/RobDavenport/framesmith/actions/runs/26329764725",
         "Artifact ID: 7176181990",
+        "the CI workflow now verifies that at least",
+        "attempts to download and inspect artifact `7176298714`",
         "Automation note: repository connector reports admin permission",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
@@ -316,4 +320,25 @@ fn ci_generates_runtime_wasm_fixture_before_crate_test() {
         "clean CI must generate ignored exports/test_char.fspk before WASM crate tests"
     );
     assert!(CI_WORKFLOW.contains("--bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk"));
+}
+
+#[test]
+fn ci_verifies_windows_installers_before_upload() {
+    let build_tauri = CI_WORKFLOW
+        .find("name: Build Tauri app")
+        .expect("CI should build the Tauri app");
+    let verify_installers = CI_WORKFLOW
+        .find("name: Verify Windows installer outputs")
+        .expect("CI should verify Windows installer outputs");
+    let upload = CI_WORKFLOW
+        .find("name: Upload Windows installers")
+        .expect("CI should upload Windows installers");
+
+    assert!(
+        build_tauri < verify_installers && verify_installers < upload,
+        "CI must verify installer outputs before artifact upload"
+    );
+    assert!(CI_WORKFLOW.contains("No MSI installer was produced"));
+    assert!(CI_WORKFLOW.contains("No NSIS setup executable was produced"));
+    assert!(CI_WORKFLOW.contains("Installer output is empty"));
 }

@@ -76,7 +76,7 @@ Verified on 2026-05-23 in the current Windows workspace:
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | Pass | CI-level backend clippy gate is clean. |
 | Runtime crate clippy with `-D warnings` | Pass | `framesmith-runtime`, `framesmith-runtime-wasm`, and `framesmith-fspack` are clean. |
 | Cargo fmt checks | Pass | Formatting is clean for `src-tauri` and runtime crates. |
-| CI workflow | Pass | `.github/workflows/ci.yml` passed on GitHub Actions run `26329764725`, checking dependency audit, generated WASM, generated schemas, runtime WASM FSPK fixture generation, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and Windows installer artifact upload; branch protection still must be configured in GitHub. |
+| CI workflow | Pass | `.github/workflows/ci.yml` passed on GitHub Actions run `26329764725`, checking dependency audit, generated WASM, generated schemas, runtime WASM FSPK fixture generation, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, non-empty Windows installer outputs, and Windows installer artifact upload; branch protection still must be configured in GitHub. |
 
 Clean-checkout CI is verified for candidate SHA
 `369e367a2715c9d67050faa9579be60aef0b7f35`. Required-branch enforcement and
