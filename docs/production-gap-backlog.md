@@ -53,7 +53,9 @@ Trigger: before using the repository as a production source of truth.
 Scope:
 
 - Protect `main` or configure an equivalent ruleset.
-- Require the CI workflow before merge.
+- Follow [`branch-protection-setup.md`](branch-protection-setup.md).
+- Require `Windows Checks` from the `CI` workflow before merge.
+- Require branches to be up to date before merging.
 - Require pull requests or another reviewed-change policy if the production
   game team uses shared branches.
 
@@ -65,6 +67,8 @@ Required evidence:
 Acceptance criteria:
 
 - Production branches cannot accept changes without a green CI result.
+- Release evidence names the protected branch or ruleset and records the
+  blocked-merge proof.
 
 ### PROD-WIN-001: Windows Installer Manual Smoke
 

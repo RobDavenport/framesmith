@@ -39,6 +39,10 @@ const RELEASE_RUNBOOK: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/release-runbook.md"
 ));
+const BRANCH_PROTECTION_SETUP: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/branch-protection-setup.md"
+));
 const RELEASE_EVIDENCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/release-evidence-2026-05-23.md"
@@ -232,6 +236,8 @@ fn release_runbook_covers_candidate_evidence() {
         "git diff --exit-code -- schemas/rules.schema.json",
         "GitHub Actions URL",
         "Protected branch/ruleset",
+        "Strict up-to-date requirement",
+        "Bypass policy",
         "windows-installer-smoke-test.md",
         "Final Evidence Template",
     ] {
@@ -244,6 +250,48 @@ fn release_runbook_covers_candidate_evidence() {
     assert!(DOCS_INDEX.contains("release-runbook.md"));
     assert!(PRODUCTION_PLAN.contains("release-runbook.md"));
     assert!(PRODUCTION_PLAN.contains("[x] Release runbook exists for clean-checkout"));
+}
+
+#[test]
+fn branch_protection_setup_covers_required_ci_gate() {
+    for required in [
+        "# Branch Protection Setup",
+        "RobDavenport/framesmith",
+        "Branch name pattern:",
+        "main",
+        "Required status check:",
+        "Windows Checks",
+        "CI / Windows Checks",
+        "Require status checks to pass before merging.",
+        "Require branches to be up to date before merging.",
+        "Do not allow bypassing the above settings",
+        "Blocked merge evidence:",
+        "branch-protection endpoint",
+    ] {
+        assert!(
+            BRANCH_PROTECTION_SETUP.contains(required),
+            "branch protection setup should document: {required}"
+        );
+    }
+
+    for linked_doc in [
+        DOCS_INDEX,
+        PRODUCTION_PLAN,
+        PRODUCTION_GAP_BACKLOG,
+        RELEASE_RUNBOOK,
+        RELEASE_EVIDENCE,
+    ] {
+        assert!(
+            linked_doc.contains("branch-protection-setup.md"),
+            "permanent docs should link branch-protection-setup.md"
+        );
+    }
+
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Branch protection setup is documented with the exact required CI check."));
+    assert!(PRODUCTION_PLAN.contains(
+        "Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet."
+    ));
 }
 
 #[test]
@@ -276,6 +324,8 @@ fn current_release_evidence_records_external_blockers() {
         "https://github.com/RobDavenport/framesmith/actions/runs/26332001870",
         "Artifact ID: 7176775382",
         "passed the repaired `Verify Windows installer outputs` step",
+        "branch-protection-setup.md",
+        "`Windows Checks` job from the CI workflow",
         "Automation note: repository connector reports admin permission",
         "MSI result: not manually smoke tested",
         "Decision: not ready",

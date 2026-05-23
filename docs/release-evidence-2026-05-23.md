@@ -246,7 +246,10 @@ Automation note: repository connector reports admin permission, but exposes no b
 ```
 
 The maintainer must configure or verify branch protection/rulesets requiring
-the CI workflow before the branch-protection gate can be marked complete.
+the `Windows Checks` job from the CI workflow before the branch-protection gate
+can be marked complete. Follow
+[`branch-protection-setup.md`](branch-protection-setup.md) and record the
+resulting evidence here.
 
 ## Installer Smoke State
 

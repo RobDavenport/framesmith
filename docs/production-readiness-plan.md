@@ -134,6 +134,9 @@ concatenation.
 - Added [`windows-installer-smoke-test.md`](windows-installer-smoke-test.md) so
   the remaining manual Windows installer gate has repeatable steps and evidence
   to record.
+- Added [`branch-protection-setup.md`](branch-protection-setup.md) with the
+  exact `Windows Checks` requirement and evidence template for the remaining CI
+  enforcement gate.
 
 ## Remaining Production Blockers
 
@@ -149,7 +152,8 @@ authenticated API client.
 
 Actions:
 
-- Make the CI workflow required before merges.
+- Follow [`branch-protection-setup.md`](branch-protection-setup.md) and require
+  `Windows Checks` from the `CI` workflow before merges to `main`.
 - Keep Windows as the first supported packaging target.
 - Keep Linux and macOS out of the first production target until platform
   dependencies, package formats, and manual smoke-test steps are documented.
@@ -390,6 +394,8 @@ Completed:
 - Added [`production-gap-backlog.md`](production-gap-backlog.md) and
   [`release-runbook.md`](release-runbook.md) so future production gaps and
   release-candidate evidence have permanent homes.
+- Added [`branch-protection-setup.md`](branch-protection-setup.md) for exact
+  required-check configuration and branch-protection evidence capture.
 - Added [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md) for
   the current candidate branch and external release-gate evidence.
 
@@ -405,6 +411,28 @@ Acceptance criteria:
 - Release artifacts are reproducible from a clean checkout.
 
 ## Release Checklist
+
+The checklist below is the reusable template for a tagged release. For the
+current `0.1.0` candidate, the machine-verifiable items are covered by the
+current snapshot and GitHub Actions evidence above. The only unresolved
+candidate items are branch protection enforcement and manual Windows installer
+smoke testing.
+
+Current candidate release-checklist evidence:
+
+| Area | Current candidate status | Evidence |
+|------|--------------------------|----------|
+| Version metadata | Pass | `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` all declare `0.1.0`. |
+| Dependency install, audit, and Tauri package alignment | Pass | Current snapshot records `npm ci`, `npm audit`, and Tauri package alignment; CI run `26332439997` passed dependency install and audit. |
+| Generated schemas and WASM bindings | Pass | CI run `26332439997` passed schema refresh, generated-file drift check, WASM rebuild, and generated WASM existence checks. |
+| Frontend checks, Vitest, Playwright, and web build | Pass | CI run `26332439997` passed `npm run check`, `npm run test:run`, browser smoke tests, and `npm run build`. |
+| Rust formatting, tests, and clippy | Pass | CI run `26332439997` passed formatting, backend/runtime/FSPK tests, runtime WASM fixture generation, and clippy with warnings denied. |
+| Windows Tauri package build and artifact upload | Pass | CI run `26332439997` passed `npm run tauri build`, installer-output verification, and uploaded `framesmith-windows-installers`. |
+| Documentation examples and export limitations | Pass | `docs_cli_examples`, `export_fidelity_contract`, `fspk_roundtrip`, and `production_docs` tests cover documented CLI examples, field preservation, lossy examples, and release docs. |
+| Target-game fit review | Pass for the first production target | `production-handoff-decision.md`, `combat-coverage.md`, `training-scenario-contract.md`, and `production-gap-backlog.md` document current ownership and future target-game gaps. |
+| Branch protection | Open external gate | Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet. |
+| Windows installer smoke | Open external gate | Run `windows-installer-smoke-test.md` against the MSI and NSIS installers and record evidence. |
+| Linux and macOS smoke | Not in first target scope | Both platforms are explicitly out of scope for the first supported target. |
 
 Run this checklist before a tagged release:
 
@@ -476,6 +504,7 @@ Run this checklist before a tagged release:
 - [x] Runtime guide includes engine-consumption examples for movement and resource deltas.
 - [x] Production gap backlog exists for target-game-required runtime/FSPK work.
 - [x] Release runbook exists for clean-checkout, CI, branch-protection, and installer evidence.
+- [x] Branch protection setup is documented with the exact required CI check.
 - [x] Current candidate release evidence is recorded.
 - [x] Frontend/tooling dependency audit reports 0 vulnerabilities in the verified workspace.
 - [x] Tauri npm packages are pinned to the Rust-compatible minor line.

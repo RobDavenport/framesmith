@@ -97,17 +97,21 @@ Artifact URL or download source:
 
 Before treating `main` as production-protected:
 
-1. Configure a branch protection rule or repository ruleset for `main`.
-2. Require the CI workflow to pass before merge.
-3. Require pull requests if the team uses reviewed changes.
-4. Record evidence that a non-green change cannot merge.
+1. Follow [`branch-protection-setup.md`](branch-protection-setup.md).
+2. Configure a branch protection rule or repository ruleset for `main`.
+3. Require `Windows Checks` from the `CI` workflow to pass before merge.
+4. Require branches to be up to date before merging.
+5. Require pull requests if the team uses reviewed changes.
+6. Record evidence that a non-green or pending-check change cannot merge.
 
 Record:
 
 ```text
 Protected branch/ruleset:
 Required status checks:
+Strict up-to-date requirement:
 Review requirement:
+Bypass policy:
 Evidence location:
 ```
 
