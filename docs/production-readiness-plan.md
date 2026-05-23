@@ -20,7 +20,9 @@ clean-run gate remains open until GitHub Actions passes on the repaired branch.
 The next PR run passed that gate and exposed a second clean-checkout assumption:
 runtime WASM tests needed ignored `exports/test_char.fspk` output. CI and the
 release runbook now generate that fixture from tracked character data before the
-runtime WASM crate test.
+runtime WASM crate test. A follow-up run showed the same test crate still
+referenced the ignored legacy `exports/glitch.fspk`; those integration tests now
+use the generated `test_char.fspk` fixture instead.
 
 ## Readiness Definition
 
@@ -78,7 +80,9 @@ candidate branch `codex-production-readiness-plan` is open as PR #1. The first
 GitHub Actions run failed because generated WASM was not built before
 type-checking. The second run passed that gate and failed because the runtime
 WASM crate expected an ignored FSPK fixture. The workflow and runbook now
-generate the fixture before runtime WASM tests and still need a passing rerun.
+generate the fixture before runtime WASM tests. A third run exposed a remaining
+legacy `glitch.fspk` include in the same test crate; the test now uses the
+generated `test_char.fspk` fixture and still needs a passing rerun.
 
 ## Completed Since Audit
 

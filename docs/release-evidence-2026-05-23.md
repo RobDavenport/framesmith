@@ -115,6 +115,25 @@ Repair action: the workflow now exports `characters/test_char` with
 `framesmith-cli` before running the runtime WASM crate tests. The runbook records
 the same fixture-generation step for clean local release verification.
 
+Third observed state on 2026-05-23 after the fixture-generation repair:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: a568acfc81e4eb48390b8175fda49eb3bd1db1a0
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26328384684
+Workflow/job: CI / Windows Checks
+CI status: failed
+Failing step: Test runtime WASM crate
+Failure summary: integration tests still included ignored legacy fixture `exports/glitch.fspk`
+```
+
+Root cause: the runtime WASM integration tests referenced `exports/glitch.fspk`,
+but no tracked `characters/glitch` source exists to regenerate that ignored
+binary artifact in a clean checkout.
+
+Repair action: the integration tests now use the generated `test_char.fspk`
+fixture that CI builds from tracked `characters/test_char` data.
+
 ## Branch Protection State
 
 Observed state on 2026-05-23:

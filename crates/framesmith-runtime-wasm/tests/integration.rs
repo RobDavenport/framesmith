@@ -6,16 +6,16 @@
 
 use framesmith_runtime_wasm::{CharacterState, DummyState, HitResult};
 
-/// Test that we can load the real glitch.fspk and parse it.
+const TEST_CHAR_FSPK: &[u8] = include_bytes!("../../../exports/test_char.fspk");
+
+/// Test that we can load the generated test_char.fspk and parse it.
 #[test]
 fn can_parse_real_fspk() {
     use framesmith_fspack::PackView;
 
-    // Load the real test file
-    let fspk_data = include_bytes!("../../../exports/glitch.fspk");
-    let pack = PackView::parse(fspk_data);
+    let pack = PackView::parse(TEST_CHAR_FSPK);
 
-    assert!(pack.is_ok(), "Should parse glitch.fspk successfully");
+    assert!(pack.is_ok(), "Should parse test_char.fspk successfully");
 
     let pack = pack.unwrap();
     // Verify it has states
@@ -30,8 +30,7 @@ fn simulate_with_real_fspk() {
     use framesmith_fspack::PackView;
     use framesmith_runtime::{init_resources, next_frame, CharacterState as RtState, FrameInput};
 
-    let fspk_data = include_bytes!("../../../exports/glitch.fspk");
-    let pack = PackView::parse(fspk_data).unwrap();
+    let pack = PackView::parse(TEST_CHAR_FSPK).unwrap();
 
     // Initialize state
     let mut state = RtState::default();

@@ -257,6 +257,9 @@ fn current_release_evidence_records_external_blockers() {
         "https://github.com/RobDavenport/framesmith/actions/runs/26328098854",
         "Failing step: Test runtime WASM crate",
         "workflow now exports `characters/test_char` with",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328384684",
+        "ignored legacy fixture `exports/glitch.fspk`",
+        "integration tests now use the generated `test_char.fspk`",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
     ] {
