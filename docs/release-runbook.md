@@ -62,7 +62,7 @@ cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets 
 cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
 npm run tauri build
-pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; $installerFiles = @($msi) + @($nsis); foreach ($file in $installerFiles) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
+.\scripts\verify-windows-installer-artifacts.ps1 -Path src-tauri\target\release\bundle -Version 0.1.0
 ```
 
 Expected local package outputs:
@@ -82,7 +82,8 @@ After pushing the candidate commit:
 3. Confirm the `framesmith-windows-installers` artifact exists.
 4. Download the artifact or record the artifact URL for installer smoke
    testing.
-5. If the artifact is downloaded, extract it and verify installer contents:
+5. If the artifact is downloaded, extract it and verify installer contents. This
+   is the same helper CI runs before artifact upload:
 
 ```powershell
 .\scripts\verify-windows-installer-artifacts.ps1 -Path <extracted-artifact-directory> -Version 0.1.0

@@ -138,7 +138,8 @@ concatenation.
   exact `Windows Checks` requirement and evidence template for the remaining CI
   enforcement gate.
 - Added reusable PowerShell evidence helpers for branch-protection API
-  verification and MSI/NSIS artifact integrity checks.
+  verification and MSI/NSIS artifact integrity checks; CI runs the helper
+  fixture and the installer artifact verifier.
 
 ## Remaining Production Blockers
 
@@ -429,7 +430,7 @@ Current candidate release-checklist evidence:
 | Generated schemas and WASM bindings | Pass | CI run `26332439997` passed schema refresh, generated-file drift check, WASM rebuild, and generated WASM existence checks. |
 | Frontend checks, Vitest, Playwright, and web build | Pass | CI run `26332439997` passed `npm run check`, `npm run test:run`, browser smoke tests, and `npm run build`. |
 | Rust formatting, tests, and clippy | Pass | CI run `26332439997` passed formatting, backend/runtime/FSPK tests, runtime WASM fixture generation, and clippy with warnings denied. |
-| Windows Tauri package build and artifact upload | Pass | CI run `26332439997` passed `npm run tauri build`, installer-output verification, and uploaded `framesmith-windows-installers`. |
+| Windows Tauri package build and artifact upload | Pass | CI run `26332439997` passed `npm run tauri build`, installer-output verification, and uploaded `framesmith-windows-installers`; current CI also runs the reusable installer artifact verifier. |
 | Documentation examples and export limitations | Pass | `docs_cli_examples`, `export_fidelity_contract`, `fspk_roundtrip`, and `production_docs` tests cover documented CLI examples, field preservation, lossy examples, and release docs. |
 | Target-game fit review | Pass for the first production target | `production-handoff-decision.md`, `combat-coverage.md`, `training-scenario-contract.md`, and `production-gap-backlog.md` document current ownership and future target-game gaps. |
 | Branch protection | Open external gate | Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet. |
@@ -507,7 +508,8 @@ Run this checklist before a tagged release:
 - [x] Production gap backlog exists for target-game-required runtime/FSPK work.
 - [x] Release runbook exists for clean-checkout, CI, branch-protection, and installer evidence.
 - [x] Branch protection setup is documented with the exact required CI check.
-- [x] Branch protection and installer artifact evidence helpers exist.
+- [x] Branch protection and installer artifact evidence helpers exist and are
+  exercised by CI.
 - [x] Current candidate release evidence is recorded.
 - [x] Frontend/tooling dependency audit reports 0 vulnerabilities in the verified workspace.
 - [x] Tauri npm packages are pinned to the Rust-compatible minor line.

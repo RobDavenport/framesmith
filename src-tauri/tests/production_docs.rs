@@ -243,9 +243,7 @@ fn release_runbook_covers_candidate_evidence() {
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js'",
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts'",
         "cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk",
-        "No MSI installer was produced",
-        "No NSIS setup executable was produced",
-        "$installerFiles = @($msi) + @($nsis)",
+        ".\\scripts\\verify-windows-installer-artifacts.ps1 -Path src-tauri\\target\\release\\bundle -Version 0.1.0",
         "git diff --exit-code -- schemas/rules.schema.json",
         "GitHub Actions URL",
         "Protected branch/ruleset",
@@ -367,7 +365,7 @@ fn release_evidence_helper_scripts_are_documented_and_auditable() {
     }
 
     assert!(PRODUCTION_PLAN
-        .contains("[x] Branch protection and installer artifact evidence helpers exist."));
+        .contains("[x] Branch protection and installer artifact evidence helpers exist and are"));
 }
 
 #[test]
@@ -472,7 +470,32 @@ fn ci_verifies_windows_installers_before_upload() {
         build_tauri < verify_installers && verify_installers < upload,
         "CI must verify installer outputs before artifact upload"
     );
-    assert!(CI_WORKFLOW.contains("No MSI installer was produced"));
-    assert!(CI_WORKFLOW.contains("No NSIS setup executable was produced"));
-    assert!(CI_WORKFLOW.contains("Installer output is empty"));
+    assert!(CI_WORKFLOW.contains(".\\scripts\\verify-windows-installer-artifacts.ps1 -Path"));
+}
+
+#[test]
+fn ci_exercises_release_gate_helpers() {
+    let branch_helper = CI_WORKFLOW
+        .find("name: Verify branch protection helper fixture")
+        .expect("CI should verify the branch protection helper fixture");
+    let build_tauri = CI_WORKFLOW
+        .find("name: Build Tauri app")
+        .expect("CI should build the Tauri app after helper validation");
+    let installer_helper = CI_WORKFLOW
+        .find("name: Verify Windows installer outputs")
+        .expect("CI should verify installer outputs with the release helper");
+    let upload = CI_WORKFLOW
+        .find("name: Upload Windows installers")
+        .expect("CI should upload verified installer outputs");
+
+    assert!(
+        branch_helper < build_tauri && build_tauri < installer_helper && installer_helper < upload,
+        "CI should validate release helpers before relying on uploaded installers"
+    );
+    assert!(CI_WORKFLOW.contains(
+        ".\\scripts\\check-branch-protection.ps1 -ProtectionJsonPath tests\\fixtures\\github-branch-protection-main.json -RequirePullRequest"
+    ));
+    assert!(CI_WORKFLOW.contains(
+        ".\\scripts\\verify-windows-installer-artifacts.ps1 -Path src-tauri\\target\\release\\bundle"
+    ));
 }

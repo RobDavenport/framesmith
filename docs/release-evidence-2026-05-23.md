@@ -62,7 +62,7 @@ cargo clippy --manifest-path crates/framesmith-runtime/Cargo.toml --all-targets 
 cargo clippy --manifest-path crates/framesmith-runtime-wasm/Cargo.toml --all-targets -- -D warnings
 cargo clippy --manifest-path crates/framesmith-fspack/Cargo.toml --all-targets -- -D warnings
 npm run tauri build
-pwsh -NoProfile -Command "$msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Filter '*.msi' -File; $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*setup.exe' -File; if ($msi.Count -eq 0) { throw 'No MSI installer was produced' }; if ($nsis.Count -eq 0) { throw 'No NSIS setup executable was produced' }; $installerFiles = @($msi) + @($nsis); foreach ($file in $installerFiles) { if ($file.Length -le 0) { throw \"Installer output is empty: $($file.FullName)\" } }"
+.\scripts\verify-windows-installer-artifacts.ps1 -Path src-tauri\target\release\bundle -Version 0.1.0
 git diff --check
 ```
 
@@ -250,7 +250,8 @@ the `Windows Checks` job from the CI workflow before the branch-protection gate
 can be marked complete. Follow
 [`branch-protection-setup.md`](branch-protection-setup.md) and record the
 resulting evidence here. `scripts/check-branch-protection.ps1` can validate an
-authenticated branch-protection API response or a saved JSON response.
+authenticated branch-protection API response or a saved JSON response; CI
+exercises the saved-response fixture so the helper does not drift silently.
 
 ## Installer Smoke State
 
@@ -270,7 +271,8 @@ Warnings: unsigned-build warning expected but not manually verified
 Run [`windows-installer-smoke-test.md`](windows-installer-smoke-test.md) on a
 Windows machine or clean VM before marking the installer gate complete.
 `scripts/verify-windows-installer-artifacts.ps1` can verify MSI/NSIS artifact
-contents before the manual install/uninstall smoke flow.
+contents before the manual install/uninstall smoke flow. The CI installer
+verification step uses this helper before uploading the artifact.
 
 ## Decision
 
