@@ -39,6 +39,10 @@ const RELEASE_RUNBOOK: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/release-runbook.md"
 ));
+const RELEASE_EVIDENCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/release-evidence-2026-05-23.md"
+));
 const CHARACTER_COMMANDS: &str = include_str!("../src/commands/character.rs");
 
 #[test]
@@ -230,4 +234,26 @@ fn release_runbook_covers_candidate_evidence() {
     assert!(DOCS_INDEX.contains("release-runbook.md"));
     assert!(PRODUCTION_PLAN.contains("release-runbook.md"));
     assert!(PRODUCTION_PLAN.contains("[x] Release runbook exists for clean-checkout"));
+}
+
+#[test]
+fn current_release_evidence_records_external_blockers() {
+    for required in [
+        "# Release Evidence 2026-05-23",
+        "codex-production-readiness-plan",
+        "51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d",
+        "GitHub workflow runs for candidate SHA: none observed",
+        "GitHub connector returned 403 Resource not accessible by integration",
+        "MSI result: not manually smoke tested",
+        "Decision: not ready",
+    ] {
+        assert!(
+            RELEASE_EVIDENCE.contains(required),
+            "release evidence should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("release-evidence-2026-05-23.md"));
+    assert!(PRODUCTION_PLAN.contains("release-evidence-2026-05-23.md"));
+    assert!(PRODUCTION_PLAN.contains("[x] Current candidate release evidence is recorded."));
 }

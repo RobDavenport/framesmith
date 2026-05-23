@@ -24,6 +24,7 @@ Last reviewed: 2026-05-23
 | Training scenario contract | [`training-scenario-contract.md`](training-scenario-contract.md) |
 | Production gap backlog | [`production-gap-backlog.md`](production-gap-backlog.md) |
 | Release runbook | [`release-runbook.md`](release-runbook.md) |
+| Current release evidence | [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md) |
 | Schema migration notes | [`schema-migration.md`](schema-migration.md) |
 | Windows installer smoke test | [`windows-installer-smoke-test.md`](windows-installer-smoke-test.md) |
 | Global states | [`global-states.md`](global-states.md) |
@@ -65,6 +66,7 @@ Last reviewed: 2026-05-23
 | [`training-scenario-contract.md`](training-scenario-contract.md) | Executable target training scenarios and ownership policy |
 | [`production-gap-backlog.md`](production-gap-backlog.md) | Concrete implementation issues for external gates and future target-game gaps |
 | [`release-runbook.md`](release-runbook.md) | Repeatable release-candidate validation and evidence capture steps |
+| [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md) | Current candidate validation evidence and external release blockers |
 | [`schema-migration.md`](schema-migration.md) | Migration notes for current character, cancel, variant, and adapter schema changes |
 | [`windows-installer-smoke-test.md`](windows-installer-smoke-test.md) | Manual MSI/NSIS smoke-test steps and evidence to record |
 | [`global-states.md`](global-states.md) | Global state model and usage |

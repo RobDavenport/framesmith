@@ -63,6 +63,13 @@ Verified on 2026-05-23 in the current Windows workspace:
 This is not yet a clean-checkout certification. CI should be allowed to run on a
 fresh runner before marking clean-checkout reproducibility complete.
 
+Current candidate evidence is recorded in
+[`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md). The
+candidate branch `codex-production-readiness-plan` was pushed at commit
+`51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d`, but no GitHub Actions run was
+observed for that SHA through the available connector, and the connector cannot
+create a pull request for the branch.
+
 ## Completed Since Audit
 
 - Restored runtime cancel availability APIs and rebuilt WASM from source.
@@ -347,6 +354,8 @@ Completed:
 - Added [`production-gap-backlog.md`](production-gap-backlog.md) and
   [`release-runbook.md`](release-runbook.md) so future production gaps and
   release-candidate evidence have permanent homes.
+- Added [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md) for
+  the current candidate branch and external release-gate evidence.
 
 Maintenance triggers:
 
@@ -429,6 +438,7 @@ Run this checklist before a tagged release:
 - [x] Runtime guide includes engine-consumption examples for movement and resource deltas.
 - [x] Production gap backlog exists for target-game-required runtime/FSPK work.
 - [x] Release runbook exists for clean-checkout, CI, branch-protection, and installer evidence.
+- [x] Current candidate release evidence is recorded.
 - [x] Frontend/tooling dependency audit reports 0 vulnerabilities in the verified workspace.
 - [x] Tauri npm packages are pinned to the Rust-compatible minor line.
 - [ ] Clean-checkout CI run has passed.
