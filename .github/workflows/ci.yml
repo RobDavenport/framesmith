@@ -81,6 +81,9 @@ jobs:
       - name: Test runtime crate
         run: cargo test --manifest-path crates/framesmith-runtime/Cargo.toml
 
+      - name: Build runtime WASM test fixture
+        run: cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk
+
       - name: Test runtime WASM crate
         run: cargo test --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
 

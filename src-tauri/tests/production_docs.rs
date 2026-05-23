@@ -225,6 +225,7 @@ fn release_runbook_covers_candidate_evidence() {
         "npm ls @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-opener",
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js'",
         "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts'",
+        "cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk",
         "git diff --exit-code -- schemas/rules.schema.json",
         "GitHub Actions URL",
         "Protected branch/ruleset",
@@ -253,6 +254,9 @@ fn current_release_evidence_records_external_blockers() {
         "CI status: failed",
         "workflow ran `npm run check` before `npm run wasm:build`",
         "workflow now rebuilds the WASM package before frontend type",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328098854",
+        "Failing step: Test runtime WASM crate",
+        "workflow now exports `characters/test_char` with",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
     ] {
@@ -285,4 +289,20 @@ fn ci_builds_wasm_before_frontend_typecheck() {
     );
     assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.js"));
     assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.d.ts"));
+}
+
+#[test]
+fn ci_generates_runtime_wasm_fixture_before_crate_test() {
+    let build_fixture = CI_WORKFLOW
+        .find("name: Build runtime WASM test fixture")
+        .expect("CI should build the runtime WASM FSPK test fixture");
+    let wasm_tests = CI_WORKFLOW
+        .find("name: Test runtime WASM crate")
+        .expect("CI should run runtime WASM crate tests");
+
+    assert!(
+        build_fixture < wasm_tests,
+        "clean CI must generate ignored exports/test_char.fspk before WASM crate tests"
+    );
+    assert!(CI_WORKFLOW.contains("--bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk"));
 }

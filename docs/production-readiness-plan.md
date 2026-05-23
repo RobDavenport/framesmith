@@ -17,6 +17,10 @@ PR #1 produced one clean-checkout CI failure on 2026-05-23 because the workflow
 ran frontend type checking before rebuilding ignored WASM bindings. The workflow
 has been corrected to build and verify WASM before `npm run check`; the
 clean-run gate remains open until GitHub Actions passes on the repaired branch.
+The next PR run passed that gate and exposed a second clean-checkout assumption:
+runtime WASM tests needed ignored `exports/test_char.fspk` output. CI and the
+release runbook now generate that fixture from tracked character data before the
+runtime WASM crate test.
 
 ## Readiness Definition
 
@@ -63,7 +67,7 @@ Verified on 2026-05-23 in the current Windows workspace:
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | Pass | CI-level backend clippy gate is clean. |
 | Runtime crate clippy with `-D warnings` | Pass | `framesmith-runtime`, `framesmith-runtime-wasm`, and `framesmith-fspack` are clean. |
 | Cargo fmt checks | Pass | Formatting is clean for `src-tauri` and runtime crates. |
-| CI workflow | Repair pending verification | `.github/workflows/ci.yml` checks dependency audit, builds and verifies generated WASM before frontend type checks, checks generated schemas, runs formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and uploads Windows installer artifacts; branch protection still must be configured in GitHub. |
+| CI workflow | Repair pending verification | `.github/workflows/ci.yml` checks dependency audit, builds and verifies generated WASM before frontend type checks, checks generated schemas, generates the runtime WASM FSPK test fixture from tracked data, runs formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and uploads Windows installer artifacts; branch protection still must be configured in GitHub. |
 
 This is not yet a clean-checkout certification. CI should be allowed to run on a
 fresh runner before marking clean-checkout reproducibility complete.
@@ -72,7 +76,9 @@ Current candidate evidence is recorded in
 [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md). The
 candidate branch `codex-production-readiness-plan` is open as PR #1. The first
 GitHub Actions run failed because generated WASM was not built before
-type-checking; the workflow has been repaired and still needs a passing rerun.
+type-checking. The second run passed that gate and failed because the runtime
+WASM crate expected an ignored FSPK fixture. The workflow and runbook now
+generate the fixture before runtime WASM tests and still need a passing rerun.
 
 ## Completed Since Audit
 
@@ -389,6 +395,7 @@ Run this checklist before a tagged release:
 - [ ] `npm run test:e2e`.
 - [ ] `npm run build`.
 - [ ] `cargo fmt --check` for `src-tauri` and runtime crates.
+- [ ] Runtime WASM test fixture generated with `framesmith-cli`.
 - [ ] `cargo test` for `src-tauri`, `framesmith-runtime`,
   `framesmith-runtime-wasm`, and `framesmith-fspack`.
 - [ ] `cargo clippy --all-targets -- -D warnings` for the backend and runtime

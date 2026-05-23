@@ -54,6 +54,7 @@ cargo fmt --check --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
 cargo fmt --check --manifest-path crates/framesmith-fspack/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path crates/framesmith-runtime/Cargo.toml
+cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk
 cargo test --manifest-path crates/framesmith-runtime-wasm/Cargo.toml
 cargo test --manifest-path crates/framesmith-fspack/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

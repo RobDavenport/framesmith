@@ -94,6 +94,27 @@ checking and explicitly verifies the generated JavaScript and TypeScript binding
 files exist. The clean-checkout CI gate remains open until a repaired PR run
 passes.
 
+Second observed state on 2026-05-23 after the WASM-order repair:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: 333b1ba8d222267c10b7f9537be21a0a70060f75
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26328098854
+Workflow/job: CI / Windows Checks
+CI status: failed
+Failing step: Test runtime WASM crate
+Failure summary: missing ignored fixture `exports/test_char.fspk`
+```
+
+Root cause: `framesmith-runtime-wasm` test code includes
+`exports/test_char.fspk` at compile time, but `exports/*.fspk` artifacts are
+generated and ignored. The local workspace had the file from a previous export;
+a clean GitHub checkout did not.
+
+Repair action: the workflow now exports `characters/test_char` with
+`framesmith-cli` before running the runtime WASM crate tests. The runbook records
+the same fixture-generation step for clean local release verification.
+
 ## Branch Protection State
 
 Observed state on 2026-05-23:
