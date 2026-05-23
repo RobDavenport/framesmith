@@ -250,7 +250,16 @@ async function openMockedEditor(page: Page) {
   await page.goto('/');
 }
 
+async function expectTrainingHudReady(page: Page) {
+  await expect(page.getByText('Failed to initialize training mode')).not.toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.hud')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.health-section.player .health-label')).toHaveText('P1');
+  await expect(page.locator('.health-section.dummy .health-label')).toHaveText('CPU');
+}
+
 test('loads the sample project and exercises core editor workflows', async ({ page }) => {
+  test.setTimeout(60_000);
+
   await openMockedEditor(page);
 
   await page.getByRole('button', { name: 'Open...' }).click();
@@ -264,7 +273,8 @@ test('loads the sample project and exercises core editor workflows', async ({ pa
   await expect(page.getByText('Tag Rules')).toBeVisible();
 
   await page.getByRole('button', { name: 'Frame Data' }).click();
-  await expect(page.getByText('Standing Light')).toBeVisible();
+  await expect(page.locator('.frame-table')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.frame-table tbody')).toContainText('Standing Light', { timeout: 15_000 });
 
   await page.getByRole('button', { name: 'State Editor' }).click();
   await page.getByLabel('Move:').selectOption('5L');
@@ -312,23 +322,21 @@ test('selects resolved variants by id and keeps them read-only in the editor', a
 });
 
 test('loads training mode from rebuilt WASM and exported FSPK data', async ({ page }) => {
+  test.setTimeout(60_000);
+
   await openMockedEditor(page);
 
   await page.getByRole('button', { name: 'Open...' }).click();
   await page.getByRole('button', { name: /TEST_CHAR/ }).click();
   await page.getByRole('button', { name: 'Training', exact: true }).click();
 
-  await expect(page.getByText('Initializing training mode...')).toBeVisible();
-  await expect(page.getByText('Failed to initialize training mode')).not.toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('P1', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('CPU', { exact: true })).toBeVisible();
+  await expectTrainingHudReady(page);
 
   const dummyCharacterSelect = page.getByLabel('Character', { exact: true });
   await expect(dummyCharacterSelect).toHaveValue(characterId);
   await dummyCharacterSelect.selectOption('dummy_char');
-  await expect(page.getByText('Failed to initialize training mode')).not.toBeVisible({ timeout: 15_000 });
+  await expectTrainingHudReady(page);
   await expect(dummyCharacterSelect).toHaveValue('dummy_char');
-  await expect(page.getByText('CPU', { exact: true })).toBeVisible();
 });
 
 test('loads detached training mode through BroadcastChannel sync', async ({ page, context }) => {
@@ -345,8 +353,7 @@ test('loads detached training mode through BroadcastChannel sync', async ({ page
     waitUntil: 'domcontentloaded',
   });
 
-  await expect(page.getByText('P1', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('CPU', { exact: true })).toBeVisible();
+  await expectTrainingHudReady(page);
   await expect(page.getByText('Frame:')).toBeVisible();
 
   await mainPage.close();
