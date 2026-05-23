@@ -10,8 +10,8 @@ Current assessment: Framesmith is no longer blocked by the build and schema
 drift found in the initial audit. The current workspace builds, tests, rebuilds
 WASM from source, runs browser smoke tests, produces Windows packages, and has
 an executable first-target training scenario contract. It is still not finished
-as a production game-development pipeline because clean-checkout CI enforcement,
-branch protection, and manual platform smoke testing remain open.
+as a production game-development pipeline because branch protection and manual
+platform smoke testing remain open.
 
 PR #1 produced one clean-checkout CI failure on 2026-05-23 because the workflow
 ran frontend type checking before rebuilding ignored WASM bindings. The workflow
@@ -22,7 +22,9 @@ runtime WASM tests needed ignored `exports/test_char.fspk` output. CI and the
 release runbook now generate that fixture from tracked character data before the
 runtime WASM crate test. A follow-up run showed the same test crate still
 referenced the ignored legacy `exports/glitch.fspk`; those integration tests now
-use the generated `test_char.fspk` fixture instead.
+use the generated `test_char.fspk` fixture instead. Run `26328577057` passed on
+GitHub for candidate SHA `0b442b53ff827be491f61ba1c11eee1c3c386be3` and
+uploaded the `framesmith-windows-installers` artifact.
 
 ## Readiness Definition
 
@@ -69,10 +71,11 @@ Verified on 2026-05-23 in the current Windows workspace:
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | Pass | CI-level backend clippy gate is clean. |
 | Runtime crate clippy with `-D warnings` | Pass | `framesmith-runtime`, `framesmith-runtime-wasm`, and `framesmith-fspack` are clean. |
 | Cargo fmt checks | Pass | Formatting is clean for `src-tauri` and runtime crates. |
-| CI workflow | Repair pending verification | `.github/workflows/ci.yml` checks dependency audit, builds and verifies generated WASM before frontend type checks, checks generated schemas, generates the runtime WASM FSPK test fixture from tracked data, runs formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and uploads Windows installer artifacts; branch protection still must be configured in GitHub. |
+| CI workflow | Pass | `.github/workflows/ci.yml` passed on GitHub Actions run `26328577057`, checking dependency audit, generated WASM, generated schemas, runtime WASM FSPK fixture generation, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, and Windows installer artifact upload; branch protection still must be configured in GitHub. |
 
-This is not yet a clean-checkout certification. CI should be allowed to run on a
-fresh runner before marking clean-checkout reproducibility complete.
+Clean-checkout CI is verified for candidate SHA
+`0b442b53ff827be491f61ba1c11eee1c3c386be3`. Required-branch enforcement and
+manual installer smoke testing are still open.
 
 Current candidate evidence is recorded in
 [`release-evidence-2026-05-23.md`](release-evidence-2026-05-23.md). The
@@ -82,7 +85,8 @@ type-checking. The second run passed that gate and failed because the runtime
 WASM crate expected an ignored FSPK fixture. The workflow and runbook now
 generate the fixture before runtime WASM tests. A third run exposed a remaining
 legacy `glitch.fspk` include in the same test crate; the test now uses the
-generated `test_char.fspk` fixture and still needs a passing rerun.
+generated `test_char.fspk` fixture. The next run passed and uploaded installer
+artifact `framesmith-windows-installers`.
 
 ## Completed Since Audit
 
@@ -121,12 +125,10 @@ generated `test_char.fspk` fixture and still needs a passing rerun.
 
 ### 1. Clean-Checkout And CI Enforcement
 
-Status: local CI definition complete; GitHub clean-run and branch protection
-remain external.
+Status: GitHub clean-run complete; branch protection remains external.
 
 Actions:
 
-- Let GitHub Actions rerun the repaired CI workflow on a clean runner.
 - Make the CI workflow required before merges.
 - Keep Windows as the first supported packaging target.
 - Keep Linux and macOS out of the first production target until platform
@@ -457,7 +459,7 @@ Run this checklist before a tagged release:
 - [x] Current candidate release evidence is recorded.
 - [x] Frontend/tooling dependency audit reports 0 vulnerabilities in the verified workspace.
 - [x] Tauri npm packages are pinned to the Rust-compatible minor line.
-- [ ] Clean-checkout CI run has passed.
+- [x] Clean-checkout CI run has passed.
 - [ ] CI is required before merges.
 - [x] Overlay-aware variant editing is implemented or explicitly deferred for
   the target game.

@@ -12,6 +12,7 @@ production-readiness candidate.
 Candidate version: 0.1.0
 Candidate branch: codex-production-readiness-plan
 Candidate branch head SHA before CI repair: fe6f44ae86fe4305301dd501d8fcdb0cb6874046
+Candidate branch head SHA with passing CI: 0b442b53ff827be491f61ba1c11eee1c3c386be3
 Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Target branch: main
 Supported platforms for this candidate: Windows
@@ -134,6 +135,24 @@ binary artifact in a clean checkout.
 Repair action: the integration tests now use the generated `test_char.fspk`
 fixture that CI builds from tracked `characters/test_char` data.
 
+Passing observed state on 2026-05-23:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: 0b442b53ff827be491f61ba1c11eee1c3c386be3
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26328577057
+Workflow/job: CI / Windows Checks
+CI status: passed
+Installer artifact: framesmith-windows-installers
+Artifact ID: 7175845263
+Artifact digest: sha256:bc208ae2bc18fd2435ed7b18079e37b2d00ec2c72a499eeaf601fe8de849c4f3
+Artifact expires: 2026-08-21T08:52:31Z
+```
+
+Clean-checkout CI is now verified for this candidate SHA. The release remains
+not production-ready until branch protection requires the CI gate and the Windows
+installer artifact is manually smoke tested.
+
 ## Branch Protection State
 
 Observed state on 2026-05-23:
@@ -155,6 +174,7 @@ Observed state on 2026-05-23:
 Windows version: not recorded
 Architecture: not recorded
 MSI source: local build path exists
+CI installer artifact: framesmith-windows-installers, artifact ID 7175845263
 MSI result: not manually smoke tested
 NSIS source: local build path exists
 NSIS result: not manually smoke tested
@@ -168,5 +188,5 @@ Windows machine or clean VM before marking the installer gate complete.
 
 ```text
 Decision: not ready
-Reason: GitHub clean-checkout CI is currently failing pending repair verification; required-CI branch protection and manual Windows installer smoke evidence are still missing.
+Reason: GitHub clean-checkout CI now passes, but required-CI branch protection and manual Windows installer smoke evidence are still missing.
 ```

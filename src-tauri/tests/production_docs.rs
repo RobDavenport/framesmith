@@ -260,6 +260,10 @@ fn current_release_evidence_records_external_blockers() {
         "https://github.com/RobDavenport/framesmith/actions/runs/26328384684",
         "ignored legacy fixture `exports/glitch.fspk`",
         "integration tests now use the generated `test_char.fspk`",
+        "Candidate branch head SHA with passing CI: 0b442b53ff827be491f61ba1c11eee1c3c386be3",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328577057",
+        "CI status: passed",
+        "Artifact ID: 7175845263",
         "MSI result: not manually smoke tested",
         "Decision: not ready",
     ] {
@@ -272,6 +276,7 @@ fn current_release_evidence_records_external_blockers() {
     assert!(DOCS_INDEX.contains("release-evidence-2026-05-23.md"));
     assert!(PRODUCTION_PLAN.contains("release-evidence-2026-05-23.md"));
     assert!(PRODUCTION_PLAN.contains("[x] Current candidate release evidence is recorded."));
+    assert!(PRODUCTION_PLAN.contains("[x] Clean-checkout CI run has passed."));
 }
 
 #[test]
