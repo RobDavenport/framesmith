@@ -24,12 +24,15 @@ runtime WASM crate test. A follow-up run showed the same test crate still
 referenced the ignored legacy `exports/glitch.fspk`; those integration tests now
 use the generated `test_char.fspk` fixture instead. Run `26328577057` passed on
 GitHub for candidate SHA `0b442b53ff827be491f61ba1c11eee1c3c386be3` and
-uploaded the `framesmith-windows-installers` artifact. A later evidence-only
-commit exposed browser-smoke timing flakiness; the smoke tests now wait on
-stable frame-table and training HUD elements. Current-head run `26329764725`
-passed for candidate SHA `369e367a2715c9d67050faa9579be60aef0b7f35` and
-uploaded installer artifact `7176181990`. Check the latest PR head before merge
-because evidence-only commits can trigger another CI run.
+uploaded the `framesmith-windows-installers` artifact. Later PR runs exposed
+browser-smoke timing flakiness and a Windows installer verifier bug in the
+single-MSI/single-NSIS case; the smoke tests now wait on stable frame-table and
+training HUD elements, and the verifier wraps both installer query results
+before concatenation. The latest code-bearing PR run observed before this
+documentation update, `26332001870`, passed for candidate SHA
+`ef14779e718a5ffd22666f9533f6b9023db42355` and uploaded installer artifact
+`7176775382`. Check the latest PR head before merge because evidence-only
+commits can trigger another CI run.
 
 ## Readiness Definition
 
@@ -76,10 +79,10 @@ Verified on 2026-05-23 in the current Windows workspace:
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | Pass | CI-level backend clippy gate is clean. |
 | Runtime crate clippy with `-D warnings` | Pass | `framesmith-runtime`, `framesmith-runtime-wasm`, and `framesmith-fspack` are clean. |
 | Cargo fmt checks | Pass | Formatting is clean for `src-tauri` and runtime crates. |
-| CI workflow | Pass | `.github/workflows/ci.yml` passed on GitHub Actions run `26329764725`, checking dependency audit, generated WASM, generated schemas, runtime WASM FSPK fixture generation, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, non-empty Windows installer outputs, and Windows installer artifact upload; branch protection still must be configured in GitHub. |
+| CI workflow | Pass | `.github/workflows/ci.yml` passed on GitHub Actions run `26332001870`, checking dependency audit, generated WASM, generated schemas, runtime WASM FSPK fixture generation, formatting, frontend, browser smoke tests, Rust tests, backend/runtime clippy, Tauri packaging, non-empty Windows installer outputs, and Windows installer artifact upload; branch protection still must be configured in GitHub. |
 
 Clean-checkout CI is verified for candidate SHA
-`369e367a2715c9d67050faa9579be60aef0b7f35`. Required-branch enforcement and
+`ef14779e718a5ffd22666f9533f6b9023db42355`. Required-branch enforcement and
 manual installer smoke testing are still open; if another commit lands, the new
 PR head must also pass CI.
 
@@ -94,7 +97,10 @@ legacy `glitch.fspk` include in the same test crate; the test now uses the
 generated `test_char.fspk` fixture. The next run passed and uploaded installer
 artifact `framesmith-windows-installers`. A subsequent evidence-only commit
 exposed browser-smoke timing flakiness; the tests were hardened and current-head
-run `26329764725` passed.
+run `26329764725` passed. A later installer-output verification hardening commit
+failed because the verifier did not handle single `FileInfo` values, then run
+`26332001870` passed after wrapping both installer query results before
+concatenation.
 
 ## Completed Since Audit
 

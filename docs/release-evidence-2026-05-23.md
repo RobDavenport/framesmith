@@ -12,7 +12,7 @@ production-readiness candidate.
 Candidate version: 0.1.0
 Candidate branch: codex-production-readiness-plan
 Candidate branch head SHA before CI repair: fe6f44ae86fe4305301dd501d8fcdb0cb6874046
-Latest observed passing CI SHA before this evidence update: 369e367a2715c9d67050faa9579be60aef0b7f35
+Latest observed passing CI SHA before this evidence update: ef14779e718a5ffd22666f9533f6b9023db42355
 Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d
 Target branch: main
 Supported platforms for this candidate: Windows
@@ -172,7 +172,7 @@ Repair action: browser smoke tests now wait on stable frame-table and training
 HUD elements, avoid asserting the transient initialization message, and give the
 heavier smoke paths a 60-second test budget.
 
-Latest passing observed state before this evidence update on 2026-05-23:
+Passing observed state after browser-smoke hardening on 2026-05-23:
 
 ```text
 Pull request: https://github.com/RobDavenport/framesmith/pull/1
@@ -215,6 +215,25 @@ Repair action: the verifier now wraps both installer query results with `@(...)`
 before concatenating them, so it handles the one-MSI/one-NSIS case observed in
 CI while preserving the non-empty installer-output gate.
 
+Latest passing observed state before this evidence update on 2026-05-23:
+
+```text
+Pull request: https://github.com/RobDavenport/framesmith/pull/1
+Candidate SHA: ef14779e718a5ffd22666f9533f6b9023db42355
+GitHub Actions run: https://github.com/RobDavenport/framesmith/actions/runs/26332001870
+Workflow/job: CI / Windows Checks
+CI status: passed
+Installer artifact: framesmith-windows-installers
+Artifact ID: 7176775382
+Artifact digest: sha256:41245e80a68d4c02a3089d81cfafae6d86a981eb6cecdc07428eb2c553fff5ac
+Artifact expires: 2026-08-21T11:55:22Z
+```
+
+This run passed the repaired `Verify Windows installer outputs` step and the
+artifact upload. The release remains not production-ready until branch
+protection requires the CI gate and the Windows installer artifact is manually
+smoke tested.
+
 ## Branch Protection State
 
 Observed state on 2026-05-23:
@@ -237,7 +256,7 @@ Observed state on 2026-05-23:
 Windows version: not recorded
 Architecture: not recorded
 MSI source: local build path exists
-CI installer artifact: framesmith-windows-installers, artifact ID 7176181990
+CI installer artifact: framesmith-windows-installers, artifact ID 7176775382
 MSI result: not manually smoke tested
 NSIS source: local build path exists
 NSIS result: not manually smoke tested
