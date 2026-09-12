@@ -1,6 +1,6 @@
 [package]
 name = "framesmith-runtime"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "no_std stateless runtime for fighting game character simulation"
 license = "MIT OR Apache-2.0"
@@ -11,6 +11,6 @@ alloc = ["framesmith-fspack/alloc"]
 std = ["alloc", "framesmith-fspack/std"]
 
 [dependencies]
-framesmith-fspack = { path = "../framesmith-fspack" }
+framesmith-fspack = { version = "0.2.0", path = "../framesmith-fspack" }
 
 [dev-dependencies]

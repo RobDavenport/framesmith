@@ -129,21 +129,27 @@ pub fn export_character(
     let output = match adapter {
         ExportAdapter::JsonBlob => {
             if pretty {
-                export_json_blob_pretty(&char_data)?
+                export_json_blob_pretty(&char_data)?.into_bytes()
             } else {
-                export_json_blob(&char_data)?
+                export_json_blob(&char_data)?.into_bytes()
             }
         }
         ExportAdapter::Fspk => {
             let merged_rules =
                 crate::rules::MergedRules::merge(project_rules.as_ref(), character_rules.as_ref());
-            let bytes = export_fspk(&char_data, Some(&merged_rules))?;
-            fs::write(&output_path, bytes)
-                .map_err(|e| format!("Failed to write export file: {}", e))?;
-            return Ok(());
+            export_fspk(&char_data, Some(&merged_rules))?
         }
     };
 
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create export directory {}: {}",
+                parent.display(),
+                e
+            )
+        })?;
+    }
     fs::write(&output_path, output).map_err(|e| format!("Failed to write export file: {}", e))?;
     Ok(())
 }
@@ -151,6 +157,37 @@ pub fn export_character(
 #[cfg(test)]
 mod export_adapter_tests {
     use super::*;
+
+    #[test]
+    fn native_export_creates_missing_parents_for_both_adapters() {
+        let root = tempfile::tempdir().unwrap();
+        let chars = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../characters");
+        for (adapter, ext) in [("fspk", "fspk"), ("json-blob", "json")] {
+            let out = root
+                .path()
+                .join(adapter)
+                .join("nested")
+                .join(format!("test.{ext}"));
+            assert!(!out.parent().unwrap().exists());
+            export_character(
+                chars.to_string_lossy().into_owned(),
+                "test_char".into(),
+                adapter.into(),
+                out.to_string_lossy().into_owned(),
+                adapter == "json-blob",
+            )
+            .unwrap();
+            let bytes = fs::read(&out).unwrap();
+            if adapter == "fspk" {
+                assert!(framesmith_fspack::PackView::parse(&bytes).is_ok());
+            } else {
+                assert!(
+                    serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["moves"]
+                        .is_array()
+                );
+            }
+        }
+    }
 
     #[test]
     fn fspk_is_the_canonical_binary_adapter_name() {

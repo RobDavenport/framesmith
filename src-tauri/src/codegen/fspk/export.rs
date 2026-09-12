@@ -1,9 +1,12 @@
 //! Main FSPK export function.
 
-use std::collections::HashMap;
+use framesmith_fspack::payload::{
+    builder::encode_parts, SECTION_PAYLOAD_NODES, SECTION_PAYLOAD_STRINGS, VERSION_2,
+};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::codegen::fspk_format::{
-    write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE, MAGIC, SCHEMA_HEADER_SIZE,
+    write_u16_le, write_u32_le, write_u8, HEADER_SIZE, MAGIC, SCHEMA_HEADER_SIZE,
     SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS, SECTION_EVENT_ARGS,
     SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS,
     SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
@@ -18,8 +21,8 @@ use crate::rules::MergedRules;
 use super::builders::{align_up, SectionData, SectionHeader, StringTable};
 use super::moves::{build_asset_keys, pack_moves};
 use super::properties::{
-    find_similar, pack_character_props, pack_character_props_with_schema, pack_state_props,
-    pack_state_props_with_schema,
+    find_similar, flatten_properties, pack_character_props, pack_character_props_with_schema,
+    pack_state_props, pack_state_props_with_schema,
 };
 use super::sections::{
     pack_event_emits, pack_resource_defs, OPT_U16_NONE, RESOURCE_DELTA_TRIGGER_ON_BLOCK,
@@ -46,7 +49,14 @@ pub fn export_fspk(
     // Canonicalize move ordering so move indices are deterministic.
     // (Do this here as a backstop even if callers already sorted.)
     let mut char_data = char_data.clone();
-    char_data.moves.sort_by(|a, b| a.input.cmp(&b.input));
+    char_data
+        .moves
+        .sort_by(|a, b| (&a.input, &a.id).cmp(&(&b.input, &b.id)));
+
+    // Canonical full-fidelity binary data; compact sections are convenience views.
+    let payload = serde_json::to_value(&char_data).map_err(|error| error.to_string())?;
+    let (payload_nodes, payload_strings) =
+        encode_parts(&payload).map_err(|error| error.to_string())?;
 
     // Step 1: Build string table and asset keys
     let mut strings = StringTable::new();
@@ -70,12 +80,17 @@ pub fn export_fspk(
     }
 
     // Build input-to-index map for resolving chain targets
-    let input_to_index: HashMap<&str, u16> = char_data
-        .moves
-        .iter()
-        .enumerate()
-        .map(|(i, m)| (m.input.as_str(), i as u16))
-        .collect();
+    let mut input_to_index = HashMap::new();
+    for (i, state) in char_data.moves.iter().enumerate() {
+        input_to_index
+            .entry(state.input.as_str())
+            .or_insert(checked_u16(i, "state index")?);
+    }
+    for (i, state) in char_data.moves.iter().enumerate() {
+        if let Some(id) = state.id.as_deref().filter(|id| !id.is_empty()) {
+            input_to_index.insert(id, checked_u16(i, "state index")?);
+        }
+    }
 
     // Build cancel lookup for resolving deny entries
     let cancel_lookup = CancelLookup { input_to_index };
@@ -412,15 +427,20 @@ pub fn export_fspk(
     // Encode cancel denies
     // CancelDeny4: from_idx (u16) + to_idx (u16) = 4 bytes
     let mut cancel_denies_data: Vec<u8> = Vec::new();
+    let mut deny_pairs = BTreeSet::new();
     for (from_input, deny_list) in &char_data.cancel_table.deny {
         if let Some(&from_idx) = cancel_lookup.input_to_index.get(from_input.as_str()) {
             for to_input in deny_list {
                 if let Some(&to_idx) = cancel_lookup.input_to_index.get(to_input.as_str()) {
-                    write_u16_le(&mut cancel_denies_data, from_idx);
-                    write_u16_le(&mut cancel_denies_data, to_idx);
+                    deny_pairs.insert((from_idx, to_idx));
                 }
             }
         }
+    }
+
+    for (from_idx, to_idx) in deny_pairs {
+        write_u16_le(&mut cancel_denies_data, from_idx);
+        write_u16_le(&mut cancel_denies_data, to_idx);
     }
 
     // Build schema lookups if rules with property/tag schema are provided
@@ -464,6 +484,29 @@ pub fn export_fspk(
                 let id = checked_u16(i, "tag schema ID")?;
                 tag_schema.insert(name.clone(), id);
                 tag_names.push(name.clone());
+            }
+        }
+
+        // A schema marker selects schema records for both property groups.
+        // Derive undeclared groups rather than mislabel string-reference records.
+        if char_prop_names.is_empty() {
+            char_prop_names = flatten_properties(&char_data.character.properties)
+                .into_keys()
+                .collect();
+            for (i, name) in char_prop_names.iter().enumerate() {
+                char_prop_schema.insert(name.clone(), checked_u16(i, "character property id")?);
+            }
+        }
+        if state_prop_names.is_empty() {
+            state_prop_names = char_data
+                .moves
+                .iter()
+                .flat_map(|state| flatten_properties(&state.properties).into_keys())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            for (i, name) in state_prop_names.iter().enumerate() {
+                state_prop_schema.insert(name.clone(), checked_u16(i, "state property id")?);
             }
         }
 
@@ -779,11 +822,18 @@ pub fn export_fspk(
         });
     }
 
-    if sections.len() > 24 {
-        return Err(format!(
-            "Too many sections ({}), MAX_SECTIONS is 24",
-            sections.len()
-        ));
+    sections.push(SectionData {
+        kind: SECTION_PAYLOAD_NODES,
+        align: 4,
+        bytes: payload_nodes,
+    });
+    sections.push(SectionData {
+        kind: SECTION_PAYLOAD_STRINGS,
+        align: 1,
+        bytes: payload_strings,
+    });
+    if sections.len() > framesmith_fspack::MAX_SECTIONS {
+        return Err(format!("Too many sections ({})", sections.len()));
     }
 
     // Step 5: Calculate section offsets (honor per-section alignment)
@@ -812,7 +862,7 @@ pub fn export_fspk(
     // Step 6: Build the final binary
     let mut output = Vec::with_capacity(current_offset);
     output.extend_from_slice(&MAGIC);
-    write_u32_le(&mut output, FLAGS_RESERVED);
+    write_u32_le(&mut output, VERSION_2);
     write_u32_le(&mut output, total_len);
     write_u32_le(&mut output, section_count);
 
@@ -1003,7 +1053,11 @@ mod tests {
 
         // Verify flags
         let flags = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-        assert_eq!(flags, 0, "Flags should be 0");
+        assert_eq!(
+            flags,
+            framesmith_fspack::payload::VERSION_2,
+            "versioned typed payload"
+        );
 
         // Verify total length matches actual output
         let total_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
@@ -1015,7 +1069,7 @@ mod tests {
 
         // Verify section count: 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 11, "Section count should be 11");
+        assert_eq!(section_count, 13, "includes both v2 payload sections");
     }
 
     #[test]
@@ -1037,7 +1091,7 @@ mod tests {
 
         // Section count should be 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 9);
+        assert_eq!(section_count, 11);
     }
 
     #[test]
@@ -1106,8 +1160,8 @@ mod tests {
         // MOVE_EXTRAS and CHARACTER_PROPS are expected when there are moves.
         // 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11
         assert_eq!(
-            section_count, 11,
-            "Expected STATE_EXTRAS, MOVE_RESOURCE_DELTAS, and CHARACTER_PROPS sections to be present"
+            section_count, 13,
+            "Expected v2 payload, STATE_EXTRAS, MOVE_RESOURCE_DELTAS, and CHARACTER_PROPS sections to be present"
         );
         let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
         let extras_kind = u32::from_le_bytes([
@@ -1265,7 +1319,7 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11 sections
-        assert_eq!(pack.section_count(), 11);
+        assert_eq!(pack.section_count(), 13);
 
         // Verify move count matches
         let moves = pack.states().expect("should have MOVES section");
@@ -1378,7 +1432,7 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
-        assert_eq!(pack.section_count(), 9);
+        assert_eq!(pack.section_count(), 11);
 
         // Verify moves section is empty
         let moves = pack.states().expect("should have MOVES section");

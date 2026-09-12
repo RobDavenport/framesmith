@@ -1091,6 +1091,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "framesmith-fspack",
+ "framesmith-runtime",
  "rmcp",
  "schemars 1.2.0",
  "serde",
@@ -1105,7 +1106,17 @@ dependencies = [
 
 [[package]]
 name = "framesmith-fspack"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "framesmith-runtime"
+version = "0.2.0"
+dependencies = [
+ "framesmith-fspack",
+]
 
 [[package]]
 name = "futf"

@@ -13,7 +13,8 @@ pub mod state;
 #[cfg(feature = "alloc")]
 pub use cancel::available_cancels;
 pub use cancel::{
-    available_cancels_buf, can_cancel_to, ACTION_CHAIN, ACTION_JUMP, ACTION_SPECIAL, ACTION_SUPER,
+    available_cancels_buf, can_cancel_action, can_cancel_to, ACTION_CHAIN, ACTION_JUMP,
+    ACTION_SPECIAL, ACTION_SUPER,
 };
 pub use collision::{
     aabb_circle_overlap, aabb_overlap, calculate_pushbox_separation, capsule_overlap, check_hits,

@@ -1,72 +1,75 @@
 # Production Handoff Decision
 
-Status: active
-Last reviewed: 2026-05-23
-
-This document records the current production handoff policy for teams using
-Framesmith in a real game pipeline.
+Status: active; applies to crates 0.2.0 and FSPK v2.
 
 ## Decision
 
-For the first production target, `json-blob` is the canonical source-of-truth
-runtime handoff.
+`fspk` v2 is the canonical binary runtime handoff. JSON remains the editable
+authoring/debug format; a runtime does not need a JSON sidecar.
 
-`fspk` v1 is a compact validated runtime pack for the subset currently covered
-by `docs/export-fidelity-contract.md`, but it is not the only authoritative
-handoff for a full game integration. A game may generate FSPK from the canonical
-JSON data as a cache or fast-load runtime artifact.
+The binary contains the complete resolved `CharacterData` in fixed-width typed
+nodes and a UTF-8 pool. `PackView::payload()` exposes it without allocation or
+JSON parsing. `state_data(index)` uses the same input-then-id ordering as the
+compiled tables; `state_id(index)` preserves resolved variant identity.
 
-## Why
+Legacy compact tables remain useful for the optional frame/cancel/resource/
+collision helpers. They are **not** the full-fidelity source: use the typed
+payload for movement, advanced hits/hurtboxes, custom effects, nested values,
+precise numbers, and other engine-owned data. Preserving data does not implement
+its gameplay behavior.
 
-- `json-blob` preserves every resolved `CharacterData` field.
-- `fspk` v1 intentionally omits or derives editor-facing fields, resolved
-  variant identity, advanced hit data, movement values, advanced hurtbox flags,
-  and super-freeze behavior.
-- Shipping a game from `json-blob` plus optional FSPK caches avoids pretending
-  the current binary format is full-fidelity before FSPK v2 exists.
+The editor defaults to FSPK; JSON Blob is an explicit debug export. Authoring
+property numbers use IEEE binary64 (`f64`); JSON reloads enable round-trip float
+parsing rather than changing a value by an ULP. Generic payload builders also
+support signed/unsigned 64-bit integers and null, independently of the editor's
+more constrained `PropertyValue` schema.
 
 ## Movement Policy
 
-Movement is `json-blob` only for FSPK v1.
+FSPK v2 preserves movement values. The engine owns movement application, easing,
+gravity, floors/walls/corners, stage bounds, and any mutable velocity/accumulator
+state needed for rollback. No renderer, coordinate system or 60-Hz clock is
+required by the generic binary views.
 
-Framesmith can author `movement` values and `json-blob` preserves them. FSPK v1
-may mark a state as movement by type, but it does not serialize movement
-distance, velocity, acceleration, frame ranges, or easing. The consuming engine
-owns movement application, collision against floors/walls/corners, stage bounds,
-and any velocity or movement accumulator values needed for rollback.
+The executable [`engine_payloads` example](../crates/framesmith-fspack/examples/engine_payloads.rs)
+reads fractional travel and runs contrasting charge/reload policies entirely
+from binary. It needs neither the editor nor a fighting-game schema.
 
 ## Example Pipeline
 
-Canonical handoff:
+Canonical handoff (from the repository root):
 
 ```bash
-cd src-tauri
-cargo run --bin framesmith-cli -- export --project .. --character test_char --adapter json-blob --pretty --out ../exports/test_char.json
+cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk
+cargo run --manifest-path crates/framesmith-runtime/Cargo.toml --example headless -- exports/test_char.fspk
+cargo run --manifest-path crates/framesmith-fspack/Cargo.toml --features builder --example engine_payloads
 ```
 
-Optional runtime pack:
+Optional debug export:
 
 ```bash
-cd src-tauri
-cargo run --bin framesmith-cli -- export --project .. --character test_char --adapter fspk --out ../exports/test_char.fspk
+cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter json-blob --pretty --out exports/test_char.json
 ```
 
-Engine-side policy:
+## Compatibility and Migration
 
-- Load `json-blob` for full authored data, tooling, debugging, movement, and
-  mechanics not represented in FSPK v1.
-- Load `fspk` for covered runtime-fast paths such as state timing, legacy hit
-  and hurt windows, pushboxes, resource records, events, tags, cancel rules, and
-  compact properties.
-- Treat FSPK as a generated cache unless the target game explicitly accepts the
-  v1 subset as complete for its combat model.
+- FSPK v1 uses header flags `0`; v2 uses `2` and requires both typed payload
+  sections. Readers reject unknown flags and malformed/truncated references.
+- The 0.2.0 reader still reads structurally valid v1 packs. `payload()` returns
+  `None` for v1, never fabricated missing values. Invalid legacy packs must be
+  re-exported rather than accepted through a lenient fallback.
+- Re-export the original authoring project to recover v1-omitted fields. A v1
+  binary alone cannot reconstruct them. Keep the original pack until the new
+  consumer and pack have passed the game's own acceptance checks.
+- Upgrade consumers to 0.2.0 for full fidelity. Old readers may ignore version
+  flags and see only the legacy tables; that is not v2 support.
+- `CharacterState.frame` and `instance_duration` are now `u16`. Do not persist
+  native Rust struct memory as a portable binary format; version application
+  snapshots explicitly. In-memory `Copy` snapshots still support deterministic
+  replay. Resource initialization now reports unsupported capacity instead of
+  silently truncating; failed cost payment leaves all balances unchanged.
 
-## When This Decision Changes
-
-Use FSPK as the canonical handoff only after FSPK v2 or later has:
-
-- A migration plan for existing packs.
-- Field classifications updated in `docs/export-fidelity-contract.json`.
-- Roundtrip tests for every newly preserved or derived field.
-- Runtime or engine-consumption examples for movement and any newly runtime-owned
-  combat mechanics.
+See [the fidelity contract](export-fidelity-contract.md) and
+[the binary layout](zx-fspack.md). Native Rust and the shipped WASM training
+wrapper are the integration surfaces here; no Bevy, Godot, Unity, Unreal or
+Nethercore engine adapter is shipped or certified by these examples.

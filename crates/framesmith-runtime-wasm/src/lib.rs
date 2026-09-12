@@ -3,7 +3,7 @@
 //! This crate provides a high-level `TrainingSession` API for running
 //! character simulations in the browser.
 
-use framesmith_fspack::PackView;
+use framesmith_fspack::{OwnedPack, PackView};
 use framesmith_runtime::{
     available_cancels, check_hits, check_pushbox, init_resources, next_frame,
     CharacterState as RtCharacterState, FrameInput, HitResult as RtHitResult,
@@ -64,11 +64,11 @@ impl CharacterState {
         if self.current_state > u16::MAX as u32 {
             return Err("Snapshot current_state exceeds u16".to_string());
         }
-        if self.frame > u8::MAX as u32 {
-            return Err("Snapshot frame exceeds u8".to_string());
+        if self.frame > u16::MAX as u32 {
+            return Err("Snapshot frame exceeds u16".to_string());
         }
-        if self.instance_duration > u8::MAX as u32 {
-            return Err("Snapshot instance_duration exceeds u8".to_string());
+        if self.instance_duration > u16::MAX as u32 {
+            return Err("Snapshot instance_duration exceeds u16".to_string());
         }
         if self.resources.len() > MAX_RESOURCES {
             return Err("Snapshot has too many resource values".to_string());
@@ -84,8 +84,8 @@ impl CharacterState {
 
         Ok(RtCharacterState {
             current_state: self.current_state as u16,
-            frame: self.frame as u8,
-            instance_duration: self.instance_duration as u8,
+            frame: self.frame as u16,
+            instance_duration: self.instance_duration as u16,
             hit_confirmed: self.hit_confirmed,
             block_confirmed: self.block_confirmed,
             resources,
@@ -186,8 +186,8 @@ pub struct TrainingSnapshot {
 #[wasm_bindgen]
 pub struct TrainingSession {
     // Owned copies of the pack data
-    player_pack_data: Vec<u8>,
-    dummy_pack_data: Vec<u8>,
+    player_pack_data: OwnedPack,
+    dummy_pack_data: OwnedPack,
     // Current character states
     player_state: RtCharacterState,
     dummy_state: RtCharacterState,
@@ -211,22 +211,37 @@ impl TrainingSession {
     #[wasm_bindgen(constructor)]
     pub fn new(player_fspk: &[u8], dummy_fspk: &[u8]) -> Result<TrainingSession, JsError> {
         // Validate the pack data by trying to parse it
-        let player_pack = PackView::parse(player_fspk)
+        let player_pack_data = OwnedPack::new(player_fspk.to_vec())
             .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
-        let dummy_pack = PackView::parse(dummy_fspk)
+        let dummy_pack_data = OwnedPack::new(dummy_fspk.to_vec())
             .map_err(|e| JsError::new(&format!("Invalid dummy FSPK: {:?}", e)))?;
 
+        let player_pack = player_pack_data.view();
+        let dummy_pack = dummy_pack_data.view();
+        for pack in [&player_pack, &dummy_pack] {
+            if pack
+                .states()
+                .is_none_or(|states| states.is_empty() || states.len() > u16::MAX as usize)
+            {
+                return Err(JsError::new("Training requires compiled character states"));
+            }
+        }
         // Initialize character states
         let mut player_state = RtCharacterState::default();
         let mut dummy_state = RtCharacterState::default();
 
         // Initialize resources from pack definitions
-        init_resources(&mut player_state, &player_pack);
-        init_resources(&mut dummy_state, &dummy_pack);
+        if !init_resources(&mut player_state, &player_pack)
+            || !init_resources(&mut dummy_state, &dummy_pack)
+        {
+            return Err(JsError::new(
+                "Training resource definitions exceed helper limits",
+            ));
+        }
 
         Ok(TrainingSession {
-            player_pack_data: player_fspk.to_vec(),
-            dummy_pack_data: dummy_fspk.to_vec(),
+            player_pack_data,
+            dummy_pack_data,
             player_state,
             dummy_state,
             player_pos: (-100, 0), // Player starts on the left
@@ -245,23 +260,37 @@ impl TrainingSession {
     /// A FrameResult containing the new states and any hits that occurred.
     pub fn tick(
         &mut self,
-        player_input: u32,
+        player_input: f64,
         dummy_behavior: DummyState,
     ) -> Result<JsValue, JsError> {
-        // PackView::parse is zero-copy: it just validates the header and stores
-        // offsets into the existing byte slice. Re-parsing each frame is cheap
-        // (~100ns) and avoids lifetime complexity from caching the view.
-        let player_pack = PackView::parse(&self.player_pack_data)
-            .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
-        let dummy_pack = PackView::parse(&self.dummy_pack_data)
-            .map_err(|e| JsError::new(&format!("Invalid dummy FSPK: {:?}", e)))?;
+        // Immutable owned packs validate once at construction, not every tick.
+        let player_pack = self.player_pack_data.view();
+        let dummy_pack = self.dummy_pack_data.view();
 
-        // Build player input
+        if !player_input.is_finite()
+            || !(0.0..=f64::from(u16::MAX)).contains(&player_input)
+            || player_input.fract() != 0.0
+        {
+            return Err(JsError::new("Input state must be an integer in 0..=65535"));
+        }
+        let requested_state = if player_input == f64::from(u16::MAX) {
+            None
+        } else {
+            let index = player_input as u16;
+            if player_pack
+                .states()
+                .and_then(|states| states.get(index as usize))
+                .is_none()
+            {
+                return Err(JsError::new("Input state is out of range"));
+            }
+            Some(index)
+        };
         let player_frame_input = FrameInput {
-            requested_state: if player_input == 0xFFFF {
+            requested_state: if self.player_state.instance_duration != 0 {
                 None
             } else {
-                Some(player_input as u16)
+                requested_state
             },
         };
 
@@ -294,99 +323,6 @@ impl TrainingSession {
             &dummy_pack,
             self.dummy_pos,
         );
-
-        // Debug: Log hit detection info
-        #[cfg(debug_assertions)]
-        {
-            // Get move info for debugging
-            if let Some(moves) = player_pack.states() {
-                if let Some(mv) = moves.get(self.player_state.current_state as usize) {
-                    let hit_count = mv.hit_windows_len();
-                    if hit_count > 0 {
-                        // Get hit window details
-                        let mut hw_info = String::new();
-                        if let Some(hit_windows) = player_pack.hit_windows() {
-                            for i in 0..hit_count as usize {
-                                if let Some(hw) = hit_windows.get_at(mv.hit_windows_off(), i) {
-                                    hw_info.push_str(&format!(
-                                        " hw[{}]: frames={}-{}, damage={}, shapes_off={}, shapes_len={}",
-                                        i, hw.start_frame(), hw.end_frame(), hw.damage(),
-                                        hw.shapes_off(), hw.shapes_len()
-                                    ));
-
-                                    // Get shape details
-                                    if let Some(shapes) = player_pack.shapes() {
-                                        for j in 0..hw.shapes_len() as usize {
-                                            if let Some(shape) = shapes.get_at(hw.shapes_off(), j) {
-                                                hw_info.push_str(&format!(
-                                                    " shape[{}]: kind={}, x={}, y={}, w={}, h={}",
-                                                    j,
-                                                    shape.kind(),
-                                                    shape.x_px(),
-                                                    shape.y_px(),
-                                                    shape.width_px(),
-                                                    shape.height_px()
-                                                ));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Get dummy hurtbox info
-                        let mut hrt_info = String::new();
-                        if let Some(dummy_moves) = dummy_pack.states() {
-                            if let Some(dummy_mv) =
-                                dummy_moves.get(self.dummy_state.current_state as usize)
-                            {
-                                if let Some(hurt_windows) = dummy_pack.hurt_windows() {
-                                    for i in 0..dummy_mv.hurt_windows_len() as usize {
-                                        if let Some(hrt) =
-                                            hurt_windows.get_at(dummy_mv.hurt_windows_off(), i)
-                                        {
-                                            hrt_info.push_str(&format!(
-                                                " hrt[{}]: frames={}-{}, shapes_off={}, shapes_len={}",
-                                                i, hrt.start_frame(), hrt.end_frame(),
-                                                hrt.shapes_off(), hrt.shapes_len()
-                                            ));
-
-                                            if let Some(shapes) = dummy_pack.shapes() {
-                                                for j in 0..hrt.shapes_len() as usize {
-                                                    if let Some(shape) =
-                                                        shapes.get_at(hrt.shapes_off(), j)
-                                                    {
-                                                        hrt_info.push_str(&format!(
-                                                            " shape[{}]: x={}, y={}, w={}, h={}",
-                                                            j,
-                                                            shape.x_px(),
-                                                            shape.y_px(),
-                                                            shape.width_px(),
-                                                            shape.height_px()
-                                                        ));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        web_sys::console::log_1(&format!(
-                            "[WASM] state={}, frame={}, player_pos={:?}, dummy_pos={:?}, hits={}{}{}",
-                            self.player_state.current_state,
-                            self.player_state.frame,
-                            self.player_pos,
-                            self.dummy_pos,
-                            hits_result.len(),
-                            hw_info,
-                            hrt_info
-                        ).into());
-                    }
-                }
-            }
-        }
 
         // Store hits for later retrieval
         self.last_hits.clear();
@@ -485,8 +421,7 @@ impl TrainingSession {
     /// Get available cancel targets for the player's current state.
     pub fn available_cancels(&self) -> Result<JsValue, JsError> {
         // Zero-copy parse; see comment in tick() for rationale.
-        let player_pack = PackView::parse(&self.player_pack_data)
-            .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
+        let player_pack = self.player_pack_data.view();
 
         let cancels = available_cancels(&self.player_state, &player_pack);
         let cancels_u32: Vec<u32> = cancels.iter().map(|&c| c as u32).collect();
@@ -526,8 +461,22 @@ impl TrainingSession {
         let snapshot: TrainingSnapshot = serde_wasm_bindgen::from_value(snapshot)
             .map_err(|e| JsError::new(&format!("Snapshot deserialization error: {:?}", e)))?;
 
-        self.player_state = snapshot.player.to_runtime().map_err(|e| JsError::new(&e))?;
-        self.dummy_state = snapshot.dummy.to_runtime().map_err(|e| JsError::new(&e))?;
+        let player = snapshot.player.to_runtime().map_err(|e| JsError::new(&e))?;
+        let dummy = snapshot.dummy.to_runtime().map_err(|e| JsError::new(&e))?;
+        for (state, pack) in [
+            (player, self.player_pack_data.view()),
+            (dummy, self.dummy_pack_data.view()),
+        ] {
+            if pack
+                .states()
+                .and_then(|states| states.get(state.current_state as usize))
+                .is_none()
+            {
+                return Err(JsError::new("Snapshot state is out of range"));
+            }
+        }
+        self.player_state = player;
+        self.dummy_state = dummy;
         self.player_pos = (snapshot.player_x, snapshot.player_y);
         self.dummy_pos = (snapshot.dummy_x, snapshot.dummy_y);
         self.last_hits.clear();
@@ -538,10 +487,8 @@ impl TrainingSession {
     /// Reset the session to initial state.
     pub fn reset(&mut self) -> Result<(), JsError> {
         // Zero-copy parse; see comment in tick() for rationale.
-        let player_pack = PackView::parse(&self.player_pack_data)
-            .map_err(|e| JsError::new(&format!("Invalid player FSPK: {:?}", e)))?;
-        let dummy_pack = PackView::parse(&self.dummy_pack_data)
-            .map_err(|e| JsError::new(&format!("Invalid dummy FSPK: {:?}", e)))?;
+        let player_pack = self.player_pack_data.view();
+        let dummy_pack = self.dummy_pack_data.view();
 
         self.player_state = RtCharacterState::default();
         self.dummy_state = RtCharacterState::default();
@@ -571,22 +518,7 @@ impl TrainingSession {
     /// # Arguments
     /// * `name` - The property name (e.g., "health", "walk_speed")
     pub fn get_property(&self, name: &str) -> Option<f64> {
-        let pack = PackView::parse(&self.player_pack_data).ok()?;
-        let props = pack.character_props()?;
-
-        for i in 0..props.len() {
-            let prop = props.get(i)?;
-            let (off, len) = prop.name();
-            let prop_name = pack.string(off, len)?;
-            if prop_name == name {
-                // Only return numeric (Q24.8) properties
-                if prop.value_type() == PROP_TYPE_Q24_8 {
-                    return Some(from_q24_8(prop.as_q24_8()));
-                }
-                return None;
-            }
-        }
-        None
+        Self::numeric_property(&self.player_pack_data.view(), name)
     }
 
     /// Get a dummy character property by name.
@@ -598,26 +530,43 @@ impl TrainingSession {
     /// # Arguments
     /// * `name` - The property name (e.g., "health", "walk_speed")
     pub fn get_dummy_property(&self, name: &str) -> Option<f64> {
-        let pack = PackView::parse(&self.dummy_pack_data).ok()?;
-        let props = pack.character_props()?;
-
-        for i in 0..props.len() {
-            let prop = props.get(i)?;
-            let (off, len) = prop.name();
-            let prop_name = pack.string(off, len)?;
-            if prop_name == name {
-                // Only return numeric (Q24.8) properties
-                if prop.value_type() == PROP_TYPE_Q24_8 {
-                    return Some(from_q24_8(prop.as_q24_8()));
-                }
-                return None;
-            }
-        }
-        None
+        Self::numeric_property(&self.dummy_pack_data.view(), name)
     }
 }
 
 impl TrainingSession {
+    fn numeric_property(pack: &PackView, name: &str) -> Option<f64> {
+        if let Some(payload) = pack.payload() {
+            let value = payload
+                .root()
+                .get("character")?
+                .get("properties")?
+                .get(name)?;
+            return value
+                .as_f64()
+                .or_else(|| value.as_i64().map(|n| n as f64))
+                .or_else(|| value.as_u64().map(|n| n as f64));
+        }
+        if let Some(schema) = pack.schema() {
+            let props = pack.schema_character_props()?;
+            for prop in props.iter() {
+                if schema.char_prop_name(prop.schema_id()) == Some(name)
+                    && prop.value_type() == PROP_TYPE_Q24_8
+                {
+                    return Some(from_q24_8(prop.as_q24_8()));
+                }
+            }
+        } else {
+            for prop in pack.character_props()?.iter() {
+                let (off, len) = prop.name();
+                if pack.string(off, len) == Some(name) && prop.value_type() == PROP_TYPE_Q24_8 {
+                    return Some(from_q24_8(prop.as_q24_8()));
+                }
+            }
+        }
+        None
+    }
+
     fn dummy_is_blocking(behavior: DummyState) -> bool {
         matches!(
             behavior,
@@ -626,6 +575,9 @@ impl TrainingSession {
     }
 
     fn apply_dummy_behavior(state: &mut RtCharacterState, behavior: DummyState, pack: &PackView) {
+        if state.instance_duration != 0 {
+            return;
+        }
         if let Some(target) = Self::compute_dummy_state(behavior, pack) {
             if state.current_state != target {
                 state.current_state = target;
@@ -687,7 +639,7 @@ impl TrainingSession {
         if let Some(target) = Self::find_authored_state(pack, inputs, tags, &[]) {
             state.current_state = target;
             state.frame = 0;
-            state.instance_duration = duration.max(1);
+            state.instance_duration = u16::from(duration.max(1));
             state.hit_confirmed = false;
             state.block_confirmed = false;
         }

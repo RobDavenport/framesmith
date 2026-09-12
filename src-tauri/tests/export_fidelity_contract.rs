@@ -15,7 +15,11 @@ const HANDOFF_DOC: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../docs/production-handoff-decision.md"
 ));
-const FSPK_ROUNDTRIP_TEST_SOURCE: &str = include_str!("fspk_roundtrip.rs");
+const FSPK_ROUNDTRIP_TEST_SOURCE: &str = concat!(
+    include_str!("fspk_roundtrip.rs"),
+    "\n",
+    include_str!("runtime_contract.rs")
+);
 
 #[derive(Debug, Deserialize)]
 struct ExportContract {
@@ -57,7 +61,7 @@ fn contract_fields(fields: &BTreeMap<String, FieldContract>) -> BTreeSet<String>
 }
 
 fn fspk_roundtrip_coverage() -> BTreeMap<&'static str, Vec<&'static str>> {
-    BTreeMap::from([
+    let mut coverage = BTreeMap::from([
         (
             "character.id",
             vec!["fspk_mesh_keys_include_character_id_and_animation"],
@@ -170,13 +174,33 @@ fn fspk_roundtrip_coverage() -> BTreeMap<&'static str, Vec<&'static str>> {
         ),
         ("cancel_table.tag_rules", vec!["cancel_tag_rules_roundtrip"]),
         ("cancel_table.deny", vec!["cancel_denies_roundtrip"]),
-    ])
+    ]);
+    for key in [
+        "character.name",
+        "state.id",
+        "state.name",
+        "state.parent",
+        "state.total",
+        "state.hits",
+        "state.movement",
+        "state.super_freeze",
+        "state.advanced_hurtboxes",
+        "state.base",
+    ] {
+        coverage.entry(key).or_insert_with(|| {
+            vec![
+                "shipped_characters_have_full_fidelity_binary_payloads",
+                "variant_identity_nested_values_and_tag_only_schema_survive",
+            ]
+        });
+    }
+    coverage
 }
 
 #[test]
 fn export_fidelity_contract_covers_current_schema_direct_fields() {
     let contract = load_contract();
-    assert_eq!(contract.version, 1);
+    assert_eq!(contract.version, 2);
 
     let character_fields = schema_fields::<Character>();
     let state_fields = schema_fields::<State>();
@@ -284,22 +308,21 @@ fn export_fidelity_contract_documents_known_lossy_examples() {
 }
 
 #[test]
-fn production_handoff_decision_documents_json_blob_and_movement_policy() {
+fn production_handoff_decision_documents_binary_and_movement_policy() {
     for required in [
-        "# Production Handoff Decision",
-        "For the first production target, `json-blob` is the canonical source-of-truth",
-        "`fspk` v1 is a compact validated runtime pack",
-        "Movement is `json-blob` only for FSPK v1.",
-        "cargo run --bin framesmith-cli -- export --project .. --character test_char --adapter json-blob --pretty --out ../exports/test_char.json",
-        "cargo run --bin framesmith-cli -- export --project .. --character test_char --adapter fspk --out ../exports/test_char.fspk",
-        "Use FSPK as the canonical handoff only after FSPK v2 or later",
+        "`fspk` v2 is the canonical binary runtime handoff.",
+        "FSPK v2 preserves movement values.",
+        "Re-export the original authoring project",
+        "Old readers may ignore version",
+        "--adapter fspk --out exports/test_char.fspk",
+        "--adapter json-blob --pretty --out exports/test_char.json",
+        "--features builder --example engine_payloads",
     ] {
         assert!(
             HANDOFF_DOC.contains(required),
             "handoff decision should document: {required}"
         );
     }
-
     assert!(CONTRACT_DOC.contains("production-handoff-decision.md"));
 }
 

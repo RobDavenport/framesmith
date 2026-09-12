@@ -1,7 +1,7 @@
 use crate::state::{CharacterState, FrameInput, FrameResult};
 use framesmith_fspack::PackView;
 
-/// Advance frame counter by 1, saturating at u8::MAX.
+/// Advance frame counter by 1, saturating at u16::MAX.
 #[inline]
 fn advance_frame_counter(state: &CharacterState) -> CharacterState {
     CharacterState {
@@ -30,14 +30,16 @@ pub fn next_frame(state: &CharacterState, pack: &PackView, input: &FrameInput) -
             let mut new_state = *state;
             new_state.current_state = target;
             new_state.frame = 0;
+            new_state.instance_duration = 0;
             new_state.hit_confirmed = false;
             new_state.block_confirmed = false;
             // Apply resource costs for the target move
-            crate::resource::apply_resource_costs(&mut new_state, pack, target);
-            return FrameResult {
-                state: new_state,
-                move_ended: false,
-            };
+            if crate::resource::apply_resource_costs(&mut new_state, pack, target) {
+                return FrameResult {
+                    state: new_state,
+                    move_ended: false,
+                };
+            }
         }
     }
 
@@ -51,7 +53,7 @@ pub fn next_frame(state: &CharacterState, pack: &PackView, input: &FrameInput) -
             let effective_duration = if state.instance_duration > 0 {
                 state.instance_duration
             } else {
-                mv.total() as u8
+                mv.total()
             };
             new_state.frame >= effective_duration
         } else {
@@ -87,11 +89,11 @@ mod tests {
     #[test]
     fn frame_counter_saturates_at_max() {
         let state = CharacterState {
-            frame: 255,
+            frame: u16::MAX,
             ..Default::default()
         };
         let next = advance_frame_counter(&state);
-        assert_eq!(next.frame, 255);
+        assert_eq!(next.frame, u16::MAX);
     }
 
     #[test]

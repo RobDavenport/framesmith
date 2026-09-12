@@ -1,7 +1,13 @@
 # Framesmith
 
-Framesmith is an engine-agnostic fighting game character authoring tool.
-It manages portable character data on disk (JSON) and exports runtime-specific formats.
+Framesmith is a frame-based, binary-first fighting-game helper with engine-independent
+Rust crates and an optional character editor. JSON is editable authoring data;
+FSPK v2 is the full-fidelity runtime handoff, without a JSON sidecar.
+
+Start with [`framesmith-fspack`](crates/framesmith-fspack/README.md) for generic
+zero-copy payloads or [`framesmith-runtime`](crates/framesmith-runtime/README.md)
+for optional deterministic frame/cancel/resource/collision helpers. Neither
+requires Tauri or a game engine. See the [handoff/migration policy](docs/production-handoff-decision.md).
 
 ## Core capabilities
 
@@ -89,8 +95,8 @@ See `docs/cli.md` for full CLI reference.
 - `docs/mcp-server.md`: MCP server setup and tool list
 - `docs/global-states.md`: global state authoring and behavior
 - `docs/character-authoring-guide.md`: practical authoring workflow
-- `AGENTS.md`: contributor and code-map reference
-- `CLAUDE.md`: repo constraints and invariants
+- `AGENTS.md`: canonical agent workflow, invariants, code map, and targeted checks
+- `CLAUDE.md`: compatibility import of `AGENTS.md`
 
 ## Repo map
 

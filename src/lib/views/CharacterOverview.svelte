@@ -3,8 +3,8 @@
   import DeleteCharacterModal from "$lib/components/DeleteCharacterModal.svelte";
   import type { State, PropertyValue, CancelCondition } from "$lib/types";
 
-  let exportAdapter = $state("json-blob");
-  let exportPretty = $state(true);
+  let exportAdapter = $state("fspk");
+  let exportPretty = $state(false);
   let exportStatus = $state<string | null>(null);
   let showDeleteModal = $state(false);
 
@@ -130,7 +130,7 @@
     const outputPath = `exports/${filename}`;
 
     try {
-      await exportCharacter(exportAdapter, outputPath, exportPretty);
+      await exportCharacter(exportAdapter, outputPath, exportAdapter === "json-blob" && exportPretty);
       exportStatus = `Exported to ${outputPath}`;
       setTimeout(() => { exportStatus = null; }, 3000);
     } catch (e) {
@@ -215,9 +215,9 @@
     <div class="export-section">
       <h3>Export</h3>
       <div class="export-controls">
-        <select bind:value={exportAdapter}>
-          <option value="json-blob">JSON Blob</option>
+        <select aria-label="Export format" bind:value={exportAdapter}>
           <option value="fspk">FSPK (Binary)</option>
+          <option value="json-blob">JSON Blob (Debug)</option>
         </select>
         <label class="checkbox-label">
           <input

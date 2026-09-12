@@ -2,6 +2,9 @@
 
 use crate::bytes::{read_u16_le, read_u32_le};
 use crate::error::Error;
+use crate::payload::{
+    PayloadView, ValueView, NODE_SIZE, SECTION_PAYLOAD_NODES, SECTION_PAYLOAD_STRINGS, VERSION_2,
+};
 
 // Declare submodules
 mod cancel;
@@ -12,6 +15,7 @@ mod property;
 mod resource;
 mod schema;
 mod state;
+mod validate;
 
 // Re-export everything from submodules
 pub use cancel::*;
@@ -22,6 +26,49 @@ pub use property::*;
 pub use resource::*;
 pub use schema::*;
 pub use state::*;
+
+/// An immutable owned pack, validated once. Views borrow bytes without re-parsing.
+#[cfg(feature = "alloc")]
+pub struct OwnedPack {
+    data: alloc::vec::Vec<u8>,
+    sections: [SectionInfo; MAX_SECTIONS],
+    section_count: usize,
+    version: u32,
+}
+
+#[cfg(feature = "alloc")]
+impl OwnedPack {
+    pub fn new(data: alloc::vec::Vec<u8>) -> Result<Self, Error> {
+        let view = PackView::parse(&data)?;
+        let (sections, section_count, version) = (view.sections, view.section_count, view.version);
+        Ok(Self {
+            data,
+            sections,
+            section_count,
+            version,
+        })
+    }
+
+    pub fn view(&self) -> PackView<'_> {
+        let mut view = PackView {
+            data: &self.data,
+            sections: self.sections,
+            section_count: self.section_count,
+            version: self.version,
+            payload: None,
+        };
+        if self.version == VERSION_2 {
+            // Private immutable bytes and cached layout were validated in new().
+            if let (Some(nodes), Some(strings)) = (
+                view.get_section(SECTION_PAYLOAD_NODES),
+                view.get_section(SECTION_PAYLOAD_STRINGS),
+            ) {
+                view.payload = Some(PayloadView::from_validated(nodes, strings));
+            }
+        }
+        view
+    }
+}
 
 /// Magic bytes identifying an FSPK file.
 pub const MAGIC: [u8; 4] = [b'F', b'S', b'P', b'K'];
@@ -41,7 +88,7 @@ pub const HEADER_SECTION_COUNT_OFF: usize = 12;
 pub const SECTION_HEADER_SIZE: usize = 16;
 
 /// Maximum number of sections supported.
-pub const MAX_SECTIONS: usize = 24; // Increased for tag and cancel rule sections
+pub const MAX_SECTIONS: usize = 32;
 
 // =============================================================================
 // Section Kind Constants
@@ -131,8 +178,6 @@ struct SectionInfo {
     kind: u32,
     offset: u32,
     len: u32,
-    #[allow(dead_code)]
-    align: u32,
 }
 
 /// A zero-copy view into an FSPK binary pack.
@@ -143,6 +188,8 @@ pub struct PackView<'a> {
     data: &'a [u8],
     sections: [SectionInfo; MAX_SECTIONS],
     section_count: usize,
+    version: u32,
+    payload: Option<PayloadView<'a>>,
 }
 
 impl<'a> PackView<'a> {
@@ -168,8 +215,10 @@ impl<'a> PackView<'a> {
         }
 
         // Read header fields
-        // flags at offset 4 (u32) - currently unused
-        let _flags = read_u32_le(bytes, HEADER_FLAGS_OFF).ok_or(Error::TooShort)?;
+        let flags = read_u32_le(bytes, HEADER_FLAGS_OFF).ok_or(Error::TooShort)?;
+        if flags != 0 && flags != VERSION_2 {
+            return Err(Error::UnsupportedVersion);
+        }
 
         let total_len = read_u32_le(bytes, HEADER_TOTAL_LEN_OFF).ok_or(Error::TooShort)? as usize;
         let section_count =
@@ -220,20 +269,98 @@ impl<'a> PackView<'a> {
             if section_end > total_len {
                 return Err(Error::OutOfBounds);
             }
+            if (offset as usize) < section_table_end
+                || !align.is_power_of_two()
+                || offset % align != 0
+            {
+                return Err(Error::InvalidFormat);
+            }
 
-            *section = SectionInfo {
-                kind,
-                offset,
-                len,
-                align,
+            let stride = match kind {
+                SECTION_MESH_KEYS | SECTION_KEYFRAMES_KEYS | SECTION_STATE_TAGS => STRREF_SIZE,
+                SECTION_STATES => STATE_RECORD_SIZE,
+                SECTION_CANCELS_U16 => 2,
+                SECTION_HIT_WINDOWS => HIT_WINDOW_SIZE,
+                SECTION_HURT_WINDOWS => HURT_WINDOW_SIZE,
+                SECTION_PUSH_WINDOWS => PUSH_WINDOW_SIZE,
+                SECTION_SHAPES => SHAPE_SIZE,
+                SECTION_RESOURCE_DEFS => RESOURCE_DEF_SIZE,
+                SECTION_STATE_EXTRAS => STATE_EXTRAS_SIZE,
+                SECTION_EVENT_EMITS => EVENT_EMIT_SIZE,
+                SECTION_EVENT_ARGS => EVENT_ARG_SIZE,
+                SECTION_MOVE_NOTIFIES => MOVE_NOTIFY_SIZE,
+                SECTION_MOVE_RESOURCE_COSTS => MOVE_RESOURCE_COST_SIZE,
+                SECTION_MOVE_RESOURCE_PRECONDITIONS => MOVE_RESOURCE_PRECONDITION_SIZE,
+                SECTION_MOVE_RESOURCE_DELTAS => MOVE_RESOURCE_DELTA_SIZE,
+                SECTION_STATE_TAG_RANGES => cancel::STATE_TAG_RANGE_SIZE,
+                SECTION_CANCEL_TAG_RULES => cancel::CANCEL_TAG_RULE_SIZE,
+                SECTION_CANCEL_DENIES => cancel::CANCEL_DENY_SIZE,
+                SECTION_PAYLOAD_NODES => NODE_SIZE,
+                _ => 1,
             };
+            if !(len as usize).is_multiple_of(stride) {
+                return Err(Error::InvalidFormat);
+            }
+
+            *section = SectionInfo { kind, offset, len };
         }
 
-        Ok(Self {
-            data: bytes,
+        // ponytail: bounded quadratic layout check (MAX_SECTIONS), no allocation.
+        for (i, current) in sections[..section_count].iter().enumerate() {
+            for previous in &sections[..i] {
+                if current.kind == previous.kind
+                    || (current.len != 0
+                        && previous.len != 0
+                        && u64::from(current.offset)
+                            < u64::from(previous.offset) + u64::from(previous.len)
+                        && u64::from(previous.offset)
+                            < u64::from(current.offset) + u64::from(current.len))
+                {
+                    return Err(Error::InvalidFormat);
+                }
+            }
+        }
+
+        let mut view = Self {
+            data: &bytes[..total_len],
             sections,
             section_count,
-        })
+            version: if flags == 0 { 1 } else { flags },
+            payload: None,
+        };
+        match (
+            view.get_section(SECTION_PAYLOAD_NODES),
+            view.get_section(SECTION_PAYLOAD_STRINGS),
+        ) {
+            (Some(nodes), Some(strings)) if flags == VERSION_2 => {
+                view.payload = Some(PayloadView::parse(nodes, strings)?);
+            }
+            (None, None) if flags == 0 => {}
+            _ => return Err(Error::InvalidFormat),
+        }
+        view.validate_references()?;
+        Ok(view)
+    }
+
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    /// Full-fidelity v2 data; v1 packs return None rather than invented fields.
+    pub fn payload(&self) -> Option<PayloadView<'a>> {
+        self.payload
+    }
+
+    /// Canonical authored state data, in the same order as compiled state records.
+    pub fn state_data(&self, index: usize) -> Option<ValueView<'a>> {
+        self.payload()?.root().get("moves")?.at(index)
+    }
+
+    pub fn state_id(&self, index: usize) -> Option<&'a str> {
+        self.state_data(index)
+            .and_then(|state| state.get("id")?.as_str())
+            .filter(|id| !id.is_empty())
+            .or_else(|| self.state_input(index))
     }
 
     /// Get the data for a section with the given kind.
@@ -312,6 +439,12 @@ impl<'a> PackView<'a> {
     pub fn state_extras(&self) -> Option<StateExtrasView<'a>> {
         let data = self.get_section(SECTION_STATE_EXTRAS)?;
         Some(StateExtrasView::new(data))
+    }
+
+    /// Get the gameplay input for a state index.
+    pub fn state_input(&self, state_idx: usize) -> Option<&'a str> {
+        let (off, len) = self.state_extras()?.get(state_idx)?.input();
+        self.string(off, len)
     }
 
     /// Find a state by input notation (e.g., "5L", "236P").
@@ -429,8 +562,8 @@ impl<'a> PackView<'a> {
         let string_table = self.get_section(SECTION_STRING_TABLE)?;
 
         Some((0..count).filter_map(move |i| {
-            let tag_offset = (off as usize) + (i as usize) * STRREF_SIZE;
-            if tag_offset + STRREF_SIZE > tags_section.len() {
+            let tag_offset = (off as usize).checked_add((i as usize).checked_mul(STRREF_SIZE)?)?;
+            if tag_offset.checked_add(STRREF_SIZE)? > tags_section.len() {
                 return None;
             }
             let str_off = read_u32_le(tags_section, tag_offset)?;
@@ -483,6 +616,9 @@ impl<'a> PackView<'a> {
     ///
     /// Returns `None` if no CHARACTER_PROPS section exists.
     pub fn character_props(&self) -> Option<CharacterPropsView<'a>> {
+        if self.has_schema() {
+            return None;
+        }
         let data = self.get_section(SECTION_CHARACTER_PROPS)?;
         Some(CharacterPropsView::new(data))
     }
@@ -498,6 +634,10 @@ impl<'a> PackView<'a> {
     /// Each record: name_off(u32) + name_len(u16) + type(u8) + pad(u8) + value(4 bytes).
     /// Use the string pool to look up property names from (name_off, name_len).
     pub fn state_props_raw(&self, state_idx: usize) -> Option<&'a [u8]> {
+        let state_count = self.states()?.len();
+        if state_idx >= state_count {
+            return None;
+        }
         let section = self.get_section(SECTION_STATE_PROPS)?;
 
         // The section starts with an index: one entry per state
@@ -515,7 +655,15 @@ impl<'a> PackView<'a> {
 
         // Bounds check
         let end = off.checked_add(len)?;
-        if end > section.len() {
+        let record_size = if self.has_schema() {
+            8
+        } else {
+            CHARACTER_PROP_SIZE
+        };
+        if end > section.len()
+            || off < state_count.checked_mul(STATE_PROPS_INDEX_ENTRY_SIZE)?
+            || !len.is_multiple_of(record_size)
+        {
             return None;
         }
 

@@ -21,8 +21,9 @@ unresolved data-loss bug. The current safe behavior is:
 - Saving a resolved variant through the State Editor, MCP `update_move`, or
   backend `save_move` is rejected because the loaded value is a resolved
   snapshot, not the original overlay patch.
-- Exports continue to include resolved variants. `json-blob` is the canonical
-  first production handoff; `fspk` v1 is an optional compact runtime subset.
+- Exports include resolved variants. FSPK v2 is the canonical binary handoff;
+  typed state IDs distinguish variants sharing an input. JSON remains a debug
+  export; see the [handoff decision](production-handoff-decision.md).
 
 ## Supported Workflow
 

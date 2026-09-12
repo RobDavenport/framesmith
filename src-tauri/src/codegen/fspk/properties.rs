@@ -21,7 +21,9 @@ use super::utils::checked_u16;
 ///
 /// - `{"movement": {"distance": 80}}` becomes `{"movement.distance": 80}`
 /// - `{"effects": [1, 2]}` becomes `{"effects.0": 1, "effects.1": 2}`
-fn flatten_properties(props: &BTreeMap<String, PropertyValue>) -> BTreeMap<String, PropertyValue> {
+pub(super) fn flatten_properties(
+    props: &BTreeMap<String, PropertyValue>,
+) -> BTreeMap<String, PropertyValue> {
     let mut flat = BTreeMap::new();
     flatten_into("", props, &mut flat);
     flat

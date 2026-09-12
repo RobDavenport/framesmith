@@ -18,10 +18,10 @@ pub struct CharacterState {
     pub current_state: u16,
 
     /// Current frame within the state (0-indexed).
-    pub frame: u8,
+    pub frame: u16,
 
     /// Instance-specific duration override. 0 = use state's default total().
-    pub instance_duration: u8,
+    pub instance_duration: u16,
 
     /// State connected with a hit (opens on-hit cancel windows).
     pub hit_confirmed: bool,
@@ -34,12 +34,12 @@ pub struct CharacterState {
 }
 ```
 
-**Size:** 22 bytes
+**Size:** 24 bytes
 
 **Notes:**
 - `Copy` trait enables zero-cost state saving/restoration for rollback
 - `current_state` is an index into the character's state array
-- `frame` saturates at 255 if not transitioned
+- `frame` saturates at 65535 if not transitioned
 - When `instance_duration > 0`, it overrides the state's default duration
 
 ---
@@ -60,7 +60,7 @@ pub struct FrameInput {
 **Notes:**
 - Set to `None` to continue the current state
 - Set to `Some(state_id)` to request a cancel/transition
-- For action cancels, use `state_id = move_count + ACTION_*`
+- Only valid state indices may be requested. Query legacy action flags separately with `can_cancel_action`; action constants are not state indices.
 
 ---
 
@@ -282,10 +282,7 @@ pub const ACTION_JUMP: u16 = 3;
 **Usage:**
 
 ```rust
-let move_count = pack.states().map(|s| s.len()).unwrap_or(0) as u16;
-let jump_action = move_count + ACTION_JUMP;
-
-if can_cancel_to(&state, &pack, jump_action) {
+if can_cancel_action(&state, &pack, ACTION_JUMP)
     // Jump cancel is allowed
 }
 ```
@@ -348,17 +345,17 @@ pub fn can_cancel_to(
 **Arguments:**
 - `state` - Current character state
 - `pack` - Character data pack
-- `target` - Target state ID (or action ID if `>= move_count`)
+- `target` - Valid compiled state index; out-of-range indices return false
 
 **Returns:** `true` if the cancel is valid right now.
 
 **Evaluation order:**
-1. If `target >= move_count`: Check action cancel flags
+1. Reject an invalid current state or target index
 2. Check explicit denies (always blocks if present)
 3. Check tag-based cancel rules
 
 **Notes:**
-- Resource preconditions are checked for tag-rule targets
+- Resource preconditions and the ability to pay all costs are checked before accepting a transition
 - Frame range conditions are checked for tag rules
 - Hit/block conditions are checked for tag rules
 
@@ -656,7 +653,7 @@ pub fn apply_resource_costs(
 
 **Returns:** `true` if all costs were paid, `false` if any resource was insufficient.
 
-**Effect:** Deducts costs from state using `saturating_sub` (costs are still deducted even if insufficient).
+**Effect:** Pays all costs atomically. Unknown resources, malformed records and insufficient total balances return false without changing any resource; repeated costs accumulate.
 
 **Note:** Called automatically by `next_frame()` on successful transitions.
 

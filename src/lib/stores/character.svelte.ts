@@ -274,7 +274,8 @@ export async function exportCharacter(
     charactersDir,
     characterId: currentCharacter.character.id,
     adapter,
-    outputPath,
+    // Editor export paths are relative to the selected project, not process cwd.
+    outputPath: `${getProjectPath()}/${outputPath}`,
     pretty,
   });
 }

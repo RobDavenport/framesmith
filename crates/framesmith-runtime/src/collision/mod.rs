@@ -99,7 +99,9 @@ pub fn check_hits(
         };
 
         // Check if hit window is active this frame
-        if attacker_frame < hw.start_frame() || attacker_frame > hw.end_frame() {
+        if attacker_frame < u16::from(hw.start_frame())
+            || attacker_frame > u16::from(hw.end_frame())
+        {
             continue;
         }
 
@@ -111,7 +113,9 @@ pub fn check_hits(
             };
 
             // Check if hurt window is active this frame
-            if defender_frame < hrt.start_frame() || defender_frame > hrt.end_frame() {
+            if defender_frame < u16::from(hrt.start_frame())
+                || defender_frame > u16::from(hrt.end_frame())
+            {
                 continue;
             }
 
@@ -249,33 +253,31 @@ pub fn calculate_pushbox_separation(p1_aabb: &Aabb, p2_aabb: &Aabb) -> Option<Pu
     }
 
     // Calculate overlap amount on X axis
-    let p1_right = p1_aabb.x.saturating_add(p1_aabb.w as i32);
-    let p2_right = p2_aabb.x.saturating_add(p2_aabb.w as i32);
+    let p1_right = i64::from(p1_aabb.x) + i64::from(p1_aabb.w);
+    let p2_right = i64::from(p2_aabb.x) + i64::from(p2_aabb.w);
 
     // Determine which side to push to (based on center positions)
-    let p1_center = p1_aabb.x.saturating_add((p1_aabb.w / 2) as i32);
-    let p2_center = p2_aabb.x.saturating_add((p2_aabb.w / 2) as i32);
+    let p1_center = i64::from(p1_aabb.x) * 2 + i64::from(p1_aabb.w);
+    let p2_center = i64::from(p2_aabb.x) * 2 + i64::from(p2_aabb.w);
 
     // Calculate horizontal overlap
     let overlap_x = if p1_center <= p2_center {
         // P1 is to the left of P2
         // Overlap is how far P1's right edge extends past P2's left edge
-        p1_right.saturating_sub(p2_aabb.x)
+        p1_right - i64::from(p2_aabb.x)
     } else {
         // P1 is to the right of P2
         // Overlap is how far P2's right edge extends past P1's left edge (negative to push P1 right)
-        -(p2_right.saturating_sub(p1_aabb.x))
+        -(p2_right - i64::from(p1_aabb.x))
     };
 
     // Split the overlap between both characters (half each)
     // P1 gets pushed left (negative) if they're overlapping from the left
     // P2 gets pushed right (positive) if they're overlapping from the left
-    let half_overlap = overlap_x / 2;
-    let remainder = overlap_x % 2;
-
+    let half_overlap = overlap_x.div_euclid(2);
     Some(PushboxResult {
-        p1_dx: -(half_overlap + remainder), // P1 moves opposite to overlap direction
-        p2_dx: half_overlap,                // P2 moves in overlap direction
+        p1_dx: i32::try_from(half_overlap - overlap_x).ok()?,
+        p2_dx: i32::try_from(half_overlap).ok()?,
     })
 }
 
@@ -293,7 +295,7 @@ fn find_active_push_window<'a>(
     // Iterate through push windows for this state and find one active this frame
     for idx in 0..move_state.push_windows_len() as usize {
         let pw = push_windows.get_at(move_state.push_windows_off(), idx)?;
-        if frame >= pw.start_frame() && frame <= pw.end_frame() {
+        if frame >= u16::from(pw.start_frame()) && frame <= u16::from(pw.end_frame()) {
             return Some(pw);
         }
     }

@@ -12,9 +12,9 @@ pub struct CharacterState {
     /// Current state index (0 = idle by convention).
     pub current_state: u16,
     /// Current frame within the state (0-indexed).
-    pub frame: u8,
+    pub frame: u16,
     /// Instance-specific duration override. 0 = use state's default total().
-    pub instance_duration: u8,
+    pub instance_duration: u16,
     /// State connected with a hit (opens on-hit cancel windows).
     pub hit_confirmed: bool,
     /// State was blocked (opens on-block cancel windows).
@@ -74,8 +74,8 @@ mod tests {
     #[test]
     fn character_state_size_is_small() {
         // Exact size verification for rollback netcode efficiency
-        // Still 22 bytes - instance_duration fills existing padding after frame
-        assert_eq!(core::mem::size_of::<CharacterState>(), 22);
+        // Counters cover the full u16 duration encoded in FSPK.
+        assert_eq!(core::mem::size_of::<CharacterState>(), 24);
     }
 
     #[test]

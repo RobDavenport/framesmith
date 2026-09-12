@@ -91,7 +91,7 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 | `list_characters` | List all characters with IDs, names, and state counts |
 | `get_character` | Get complete character data (properties, states, cancel table) |
 | `list_states` | List states with basic stats |
-| `get_state` | Get a single state's complete JSON |
+| `get_state` | Get a single state's complete JSON by input or resolved ID (for example, `5H~level1`) |
 | `create_state` | Create a state by writing a full state object (validates before save) |
 | `update_state` | Update a state by overwriting with a full state object (validates before save) |
 | `delete_state` | Delete a state file |

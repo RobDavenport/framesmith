@@ -153,4 +153,14 @@ fn readme_and_format_docs_cli_examples_match_the_tested_export_command() {
     assert!(AGENTS_DOC.contains(tested_command));
     assert!(ZX_FSPACK_DOC.contains(tested_single_command));
     assert!(!AGENTS_DOC.contains("cargo run --bin framesmith -- export"));
+
+    for doc in [
+        include_str!("../../claude-plugin/skills/fspk-export/SKILL.md"),
+        include_str!(
+            "../../claude-plugin/skills/framesmith-development/references/cli-reference.md"
+        ),
+    ] {
+        assert!(doc.contains(tested_single_command));
+        assert!(!doc.contains("cargo run --bin framesmith -- export"));
+    }
 }

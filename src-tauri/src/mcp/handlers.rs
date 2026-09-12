@@ -367,7 +367,7 @@ impl FramesmithMcp {
         let mv = data
             .moves
             .iter()
-            .find(|m| m.input == params.state_input)
+            .find(|m| m.id.as_deref().unwrap_or(&m.input) == params.state_input)
             .ok_or_else(|| McpError {
                 code: rmcp::model::ErrorCode::INVALID_PARAMS,
                 message: Cow::from(format!(
@@ -1086,4 +1086,28 @@ fn find_character_dir_names(characters_dir: &str) -> Result<Vec<String>, String>
     ids.sort();
     ids.dedup();
     Ok(ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn mcp_selector_uses_resolved_identity() {
+        let characters = Path::new(env!("CARGO_MANIFEST_DIR")).join("../characters");
+        let server = FramesmithMcp::new(characters.to_string_lossy().into_owned());
+        for selector in ["5H", "5H~level1"] {
+            let result = server
+                .get_state(rmcp::handler::server::wrapper::Parameters(StateIdParam {
+                    character_id: "test_char".into(),
+                    state_input: selector.into(),
+                }))
+                .await
+                .unwrap();
+            let result = serde_json::to_value(result).unwrap();
+            let state: serde_json::Value =
+                serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(state["id"], selector);
+        }
+    }
 }

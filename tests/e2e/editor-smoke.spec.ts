@@ -300,10 +300,15 @@ test('loads the sample project and exercises core editor workflows', async ({ pa
 
   await page.getByRole('button', { name: 'Overview' }).click();
   await page.getByRole('button', { name: 'Export Character' }).click();
+  await expect(page.getByText('Exported to exports/test_char.fspk')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__framesmithLastExport))
+    .toMatchObject({ adapter: 'fspk', pretty: false });
+  await page.getByLabel('Export format').selectOption('json-blob');
+  await page.getByLabel('Pretty print').check();
+  await page.getByRole('button', { name: 'Export Character' }).click();
   await expect(page.getByText('Exported to exports/test_char.json')).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__framesmithLastExport?.adapter))
-    .toBe('json-blob');
+  await expect.poll(() => page.evaluate(() => (window as any).__framesmithLastExport))
+    .toMatchObject({ adapter: 'json-blob', pretty: true });
 });
 
 test('selects resolved variants by id and keeps them read-only in the editor', async ({ page }) => {
@@ -357,4 +362,51 @@ test('loads detached training mode through BroadcastChannel sync', async ({ page
   await expect(page.getByText('Frame:')).toBeVisible();
 
   await mainPage.close();
+});
+
+
+test('real WASM rejects invalid input and restores atomically while preserving stun', async ({ page }) => {
+  const fixture = ensureExportFixtures();
+  await page.goto('/');
+  const result = await page.evaluate(async ({ fspkBase64, characterData }) => {
+    const modulePath = '/src/lib/wasm/framesmith_runtime_wasm.js';
+    const wasm: typeof import('../../src/lib/wasm/framesmith_runtime_wasm.js') = await import(modulePath);
+    await wasm.default();
+    const bytes = Uint8Array.from(atob(fspkBase64), ch => ch.charCodeAt(0));
+    const session = new wasm.TrainingSession(bytes, bytes);
+    try {
+      const before = session.snapshot();
+      const invalid = structuredClone(before);
+      invalid.player.frame = 19;
+      invalid.dummy.frame = 65536;
+      let restoreRejected = false;
+      try { session.restore(invalid); } catch { restoreRejected = true; }
+      const unchanged = JSON.stringify(before) === JSON.stringify(session.snapshot());
+      let inputsRejected = 0;
+      const invalidInputs = [65536, characterData.moves.length, -1, 1.5, NaN, Infinity, -Infinity];
+      for (const index of invalidInputs) {
+        try { session.tick(index, wasm.DummyState.Stand); } catch { inputsRejected++; }
+      }
+      const hitstun = characterData.moves.findIndex(move => move.input === 'hitstun');
+      if (hitstun < 0) throw new Error('fixture needs authored hitstun');
+      const reaction = structuredClone(before);
+      reaction.dummy.current_state = hitstun;
+      reaction.dummy.instance_duration = 17;
+      session.restore(reaction);
+      const tick = session.tick(65535, wasm.DummyState.Stand);
+      session.restore(reaction);
+      const replay = session.tick(65535, wasm.DummyState.Stand);
+      return { restoreRejected, unchanged, inputsRejected, expectedInputRejections: invalidInputs.length, hitstun,
+        state: tick.dummy.current_state, frame: tick.dummy.frame,
+        replayed: JSON.stringify(tick) === JSON.stringify(replay),
+        health: session.get_property('health'), expectedHealth: Number(characterData.character.properties.health) };
+    } finally { session.free(); }
+  }, fixture);
+  expect(result.restoreRejected).toBe(true);
+  expect(result.unchanged).toBe(true);
+  expect(result.inputsRejected).toBe(result.expectedInputRejections);
+  expect(result.state).toBe(result.hitstun);
+  expect(result.frame).toBe(1);
+  expect(result.replayed).toBe(true);
+  expect(result.health).toBe(result.expectedHealth);
 });

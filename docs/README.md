@@ -7,8 +7,8 @@ Last reviewed: 2026-05-23
 
 | Topic | Location |
 |-------|----------|
-| Repo constraints and invariants | [`../CLAUDE.md`](../CLAUDE.md) |
-| Contributor and code-map reference | [`../AGENTS.md`](../AGENTS.md) |
+| Agent workflow, invariants, code map and checks | [`../AGENTS.md`](../AGENTS.md) |
+| Claude compatibility import | [`../CLAUDE.md`](../CLAUDE.md) |
 | Project overview and quick start | [`../README.md`](../README.md) |
 | Data formats (on-disk JSON) | [`data-formats.md`](data-formats.md) |
 | Rules semantics (SSOT) | [`rules-spec.md`](rules-spec.md) |
@@ -38,11 +38,15 @@ Last reviewed: 2026-05-23
 
 ## Reading order
 
+Read the sections relevant to the task, not this entire document set.
+
 - New to Framesmith: start with [`../README.md`](../README.md)
 - Editing schema or files on disk: read [`data-formats.md`](data-formats.md)
 - Changing validation/rules behavior: read [`rules-spec.md`](rules-spec.md)
 - Integrating external tools/LLMs: read [`mcp-server.md`](mcp-server.md)
-- Implementing export/runtime work: read [`production-handoff-decision.md`](production-handoff-decision.md), [`variant-editing-decision.md`](variant-editing-decision.md), [`combat-coverage.md`](combat-coverage.md), [`training-scenario-contract.md`](training-scenario-contract.md), [`export-fidelity-contract.md`](export-fidelity-contract.md), [`zx-fspack.md`](zx-fspack.md), and [`runtime-guide.md`](runtime-guide.md)
+- Choosing an export handoff: [`production-handoff-decision.md`](production-handoff-decision.md) and [`export-fidelity-contract.md`](export-fidelity-contract.md)
+- Changing FSPK bytes: [`zx-fspack.md`](zx-fspack.md); integrating runtime behavior: [`runtime-guide.md`](runtime-guide.md) and [`combat-coverage.md`](combat-coverage.md)
+- Editing variants: [`variant-editing-decision.md`](variant-editing-decision.md); changing training behavior: [`training-scenario-contract.md`](training-scenario-contract.md)
 - Understanding the system architecture: read [`architecture.md`](architecture.md)
 - Debugging issues: read [`troubleshooting.md`](troubleshooting.md)
 - Tracking release blockers: read [`production-readiness-plan.md`](production-readiness-plan.md), [`production-gap-backlog.md`](production-gap-backlog.md), [`release-runbook.md`](release-runbook.md), and [`branch-protection-setup.md`](branch-protection-setup.md)

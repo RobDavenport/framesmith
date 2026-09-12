@@ -18,15 +18,18 @@ cannot drift silently as the Rust schema changes.
 
 ## Adapter Policy
 
-- `json-blob` is the canonical production handoff for the first production
-  target. It serializes `CharacterData` directly and is the safest handoff when
-  a game needs every authored field.
-- `fspk` is a compact runtime pack. It preserves the current runtime-critical
-  subset and intentionally derives or omits editor-facing and unresolved
-  gameplay fields.
+- `fspk` v2 is the canonical runtime handoff. Fixed-width typed payload records
+  preserve every resolved `CharacterData` field, including empty/nested values,
+  resolved IDs, advanced mechanics and precise numbers. Runtime views need no
+  JSON parser or sidecar. The older compact tables remain optional helper data.
+- `json-blob` remains a full-data authoring/debug export.
+- `engine-owned` describes behavior, not permission to drop payload data.
+  Full binary roundtrips and malformed-reference checks live in
+  `src-tauri/tests/runtime_contract.rs`; the codec's scalar/tree checks live in
+  `crates/framesmith-fspack/src/payload.rs`.
 
 See [`production-handoff-decision.md`](production-handoff-decision.md) for the
-formal handoff decision and FSPK v1 movement policy.
+formal handoff decision and the non-destructive v1-to-v2 migration policy.
 
 ## Known FSPK V1 Limits
 
@@ -41,9 +44,11 @@ formal handoff decision and FSPK v1 movement policy.
 
 ## FSPK V1 Lossy Examples
 
-These examples are intentional v1 behavior. A production game that needs these
-fields at runtime should use `json-blob` as the complete handoff or fund the
-corresponding FSPK v2/runtime work.
+These are historical v1 examples, not limits of the v2 typed payload. Re-export
+from authoring sources to v2 to recover these fields; a v1 binary alone cannot
+reconstruct them. Legacy convenience tables still have their documented
+quantization/coverage limits. The v2 machine-readable contract describes the
+canonical typed payload, not those caches.
 
 ### Resolved Variant Identity
 

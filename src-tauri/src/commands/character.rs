@@ -216,7 +216,7 @@ pub fn load_character(
     }
 
     // Canonicalize move ordering so indices are deterministic and match exporter/runtime.
-    resolved_moves.sort_by(|a, b| a.input.cmp(&b.input));
+    resolved_moves.sort_by(|a, b| (&a.input, &a.id).cmp(&(&b.input, &b.id)));
 
     Ok(CharacterData {
         character,

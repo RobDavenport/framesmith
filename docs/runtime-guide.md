@@ -10,7 +10,7 @@
 ### Design Philosophy
 
 1. **Stateless**: Functions are pure - pass in state, get new state back
-2. **Copy-friendly**: `CharacterState` is 22 bytes, `Copy`, and deterministic
+2. **Copy-friendly**: `CharacterState` is 24 bytes, `Copy`, and deterministic
 3. **`no_std` compatible**: No heap allocations (unless `alloc` feature is enabled)
 4. **Rollback-ready**: Cheap state cloning enables efficient rollback netcode
 
@@ -27,60 +27,39 @@ presentation.
 | Resource costs | Resource costs and resource preconditions for exported resource records. | Applying resource deltas from hits, blocks, whiffs, events, round rules, and scripted game logic. |
 | Hit detection | Active hit window vs hurt window overlap plus `HitResult` data. | Whether contact is hit/block/whiff, guard rules, damage application, health, hitstop/blockstop scheduling, combo rules, proration, and defender state transitions. |
 | Pushboxes | `check_pushbox()` returns deterministic horizontal separation for overlapping exported pushboxes. | Applying separation to world positions, corner rules, stage bounds, collision priority, and vertical/platform behavior. |
-| Movement | Authored movement fields are available in `json-blob` and editor data. | Applying movement curves/velocity, gravity, floor/wall collision, air state, and stage constraints. FSPK v1 does not serialize movement values. |
-| Projectiles/entities | Authoring fields can describe spawn intent in JSON. | Entity lifecycle, collision, ownership, rollback state, and rendering. FSPK v1 does not serialize spawned entity behavior. |
+| Movement | Typed v2 payloads preserve authored movement values. | Applying movement curves/velocity, gravity, floor/wall collision, air state, and stage constraints. FSPK v1 does not serialize movement values. |
+| Projectiles/entities | Typed v2 payloads preserve authored spawn intent and custom data. | Entity lifecycle, collision, ownership, rollback state, and rendering. FSPK v1 does not serialize spawned entity behavior. |
 | Effects/events | FSPK stores event emits and primitive args for supported event locations. | Dispatching events to VFX/SFX/gameplay systems and deciding when one-shot effects become authoritative in rollback. |
 
 For field-by-field export coverage, see
 [`export-fidelity-contract.md`](export-fidelity-contract.md). For the canonical
-production handoff and FSPK v1 movement policy, see
+binary handoff and v1 migration policy, see
 [`production-handoff-decision.md`](production-handoff-decision.md).
 
 ## Engine Consumption Examples
 
-### Applying Authored Movement From `json-blob`
+### Reading Authored Movement From Binary
 
-FSPK v1 does not serialize movement values. Engines that need authored movement
-should read it from the canonical `json-blob` handoff and include any mutable
-velocity/accumulator values in engine rollback state.
+FSPK v2 preserves movement and custom engine values in typed records. Use
+`pack.state_data(index).and_then(|state| state.get("movement"))` to obtain the
+authored object without a JSON sidecar. The engine applies direction, velocity,
+acceleration, easing and stage constraints and snapshots its own mutable state.
+Re-export authoring sources to recover data omitted by v1.
 
-```typescript
-type Facing = 1 | -1;
-type Vec2 = { x: number; y: number };
+Runnable examples from the repository root:
 
-function applyAuthoredMovement(
-  state: State,
-  frame: number,
-  position: Vec2,
-  velocity: Vec2,
-  facing: Facing
-) {
-  const movement = state.movement;
-  if (!movement) return;
-
-  const total = state.total ?? state.startup + state.active + state.recovery;
-  const [start, end] = movement.frames ?? [0, total - 1];
-  if (frame < start || frame > end) return;
-
-  if (movement.distance !== undefined && movement.direction) {
-    const frames = Math.max(1, end - start + 1);
-    const sign = movement.direction === "backward" ? -1 : 1;
-    position.x += (movement.distance / frames) * sign * facing;
-    return;
-  }
-
-  if (movement.velocity) {
-    position.x += velocity.x * facing;
-    position.y += velocity.y;
-    velocity.x += movement.acceleration?.x ?? 0;
-    velocity.y += movement.acceleration?.y ?? 0;
-  }
-}
+```bash
+cargo run --manifest-path crates/framesmith-runtime/Cargo.toml --example headless -- exports/test_char.fspk
+cargo run --manifest-path crates/framesmith-fspack/Cargo.toml --features builder --example engine_payloads
 ```
+
+The second reads fractional movement and runs charge/reload policies without
+the editor or a combat schema. These policies belong to the example, not the
+binary reader.
 
 ### Applying FSPK Resource Deltas In The Engine
 
-FSPK v1 stores resource deltas, but the core runtime does not decide when to
+The compiled tables store resource deltas, but the core runtime does not decide when to
 apply every delta. Engines should apply the records when their authoritative
 gameplay event occurs: on use, on hit, or on block.
 `resource_index_for_name()` below is engine-owned because resource lookup policy
@@ -116,7 +95,7 @@ fn apply_resource_deltas_for_trigger(
         let Some(resource_index) = resource_index_for_name(name) else { continue };
 
         let current = resource(state, resource_index);
-        let next = (current as i32 + delta.delta()).clamp(0, u16::MAX as i32) as u16;
+        let next = (i64::from(current) + i64::from(delta.delta())).clamp(0, i64::from(u16::MAX)) as u16;
         set_resource(state, resource_index, next);
     }
 }
@@ -180,8 +159,8 @@ A character's state is fully contained in `CharacterState`:
 ```rust
 pub struct CharacterState {
     pub current_state: u16,       // Active state index (0 = idle by convention)
-    pub frame: u8,                // Current frame within state
-    pub instance_duration: u8,    // Override duration (0 = use state default)
+    pub frame: u16,                // Current frame within state
+    pub instance_duration: u16,    // Override duration (0 = use state default)
     pub hit_confirmed: bool,      // Hit connected (opens on-hit cancels)
     pub block_confirmed: bool,    // Attack was blocked (opens on-block cancels)
     pub resources: [u16; 8],      // Resource pools (meter, heat, etc.)
@@ -242,20 +221,17 @@ let count = available_cancels_buf(&state, &pack, &mut buf);
 
 ### Action Cancels
 
-Actions are special cancel targets with IDs at or above the state count. They represent game-defined actions like jumping:
+Action flags are queried separately; never add them to the state count or
+pass them as requested state indices. Only authored state indices may enter the
+state machine. The legacy flag query is:
 
 ```rust
-use framesmith_runtime::{ACTION_CHAIN, ACTION_SPECIAL, ACTION_SUPER, ACTION_JUMP};
-
-let move_count = pack.states().map(|s| s.len()).unwrap_or(0) as u16;
-
-// Request a jump cancel
-let input = FrameInput {
-    requested_state: Some(move_count + ACTION_JUMP),
-};
+use framesmith_runtime::{can_cancel_action, ACTION_JUMP};
+let jump_allowed = can_cancel_action(&state, &pack, ACTION_JUMP);
 ```
 
-The runtime checks the current state's cancel flags to allow/deny action cancels.
+The game decides how an allowed action maps to an authored state or other
+behavior. Newly authored rules normally use explicit state/input/id/tag targets.
 
 ## Hit Detection
 
@@ -424,7 +400,7 @@ fn game_tick(game: &mut GameState) {
 `CharacterState` is designed for rollback:
 
 ```rust
-// Save state (22 bytes, Copy, no heap)
+// Save state (24 bytes, Copy, no heap)
 let saved_state = game.p1_state;
 
 // ... frames pass, prediction was wrong ...

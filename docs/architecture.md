@@ -94,7 +94,7 @@ The export pipeline reads JSON files, applies rule defaults, runs the shared val
 
 ### Runtime layer
 
-`framesmith-fspack` is a `no_std` crate that provides zero-copy views over `.fspk` binary data. `framesmith-runtime` builds on it to implement the core simulation: frame-by-frame state advancement, cancel validation (tag-based rules plus deny lists), hit detection (AABB hitbox/hurtbox overlap), and resource management. The runtime is stateless and deterministic -- `CharacterState` is 22 bytes, `Copy`, and designed for rollback netcode.
+`framesmith-fspack` is a `no_std` crate that provides zero-copy views over `.fspk` binary data. `framesmith-runtime` builds on it to implement the core simulation: frame-by-frame state advancement, cancel validation (tag-based rules plus deny lists), hit detection (AABB hitbox/hurtbox overlap), and resource management. The runtime is stateless and deterministic -- `CharacterState` is 24 bytes, `Copy`, and designed for rollback netcode.
 
 ### WASM layer
 
