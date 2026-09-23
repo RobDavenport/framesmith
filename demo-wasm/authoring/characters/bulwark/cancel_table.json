@@ -1,0 +1,30 @@
+{
+  "tag_rules": [
+    {
+      "from": "neutral",
+      "to": "attack",
+      "on": "always"
+    },
+    {
+      "from": "neutral",
+      "to": "neutral",
+      "on": "always"
+    },
+    {
+      "from": "light",
+      "to": "heavy",
+      "on": "hit"
+    },
+    {
+      "from": "light",
+      "to": "burst",
+      "on": "hit"
+    },
+    {
+      "from": "heavy",
+      "to": "burst",
+      "on": "hit"
+    }
+  ],
+  "deny": {}
+}

@@ -1,0 +1,17 @@
+{
+  "id": "relay",
+  "name": "Relay",
+  "properties": {
+    "health": 600,
+    "walk_speed": 3.25,
+    "color": "#63edcf",
+    "counter_bonus": 10
+  },
+  "resources": [
+    {
+      "name": "meter",
+      "start": 50,
+      "max": 100
+    }
+  ]
+}

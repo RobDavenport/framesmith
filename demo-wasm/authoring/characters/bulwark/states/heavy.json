@@ -1,0 +1,101 @@
+{
+  "input": "heavy",
+  "name": "Heavy drive",
+  "type": "normal",
+  "tags": [
+    "attack",
+    "heavy"
+  ],
+  "startup": 24,
+  "active": 4,
+  "recovery": 30,
+  "total": 58,
+  "damage": 90,
+  "hitstun": 25,
+  "blockstun": 14,
+  "hitstop": 7,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        24,
+        27
+      ],
+      "box": {
+        "x": 8,
+        "y": -68,
+        "w": 94,
+        "h": 30
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        57
+      ],
+      "box": {
+        "x": -18,
+        "y": -86,
+        "w": 36,
+        "h": 86
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        57
+      ],
+      "box": {
+        "x": -20,
+        "y": -84,
+        "w": 40,
+        "h": 84
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 10,
+    "block": 8
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "heavy",
+  "properties": {
+    "lunge_px": 0
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 18
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 4
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 24,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "heavy"
+          }
+        }
+      ]
+    }
+  ]
+}

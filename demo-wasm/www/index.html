@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'">
+  <meta name="description" content="Play FrameSmith Arena: a tiny fighting game running real binary character packs through Rust and WebAssembly.">
+  <title>FrameSmith Arena — playable Rust/WASM validation</title>
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="./style.css">
+  <script type="module" src="./main.js"></script>
+</head>
+<body>
+<main>
+  <header><div><span class="eyebrow">THE BINARY PROVING GROUND</span><h1>FRAME<span>SMITH</span> <small>ARENA</small></h1></div><span class="badge" id="runtime">LOADING WASM</span></header>
+  <section class="scoreboard" aria-label="Match status">
+    <div class="fighter player"><div class="name"><strong id="p1-name">PLAYER</strong><span id="p1-hp">—</span></div><progress id="p1-health" aria-label="Your health" max="1" value="0"></progress><div class="charge"><progress id="p1-meter" aria-label="Your burst meter" max="100" value="0"></progress><span id="p1-charge">—</span></div></div>
+    <div class="clock"><strong id="clock">60</strong><span>SECONDS</span></div>
+    <div class="fighter enemy"><div class="name"><strong id="p2-name">OPPONENT</strong><span id="p2-hp">—</span></div><progress id="p2-health" aria-label="Opponent health" max="1" value="0"></progress><div class="charge"><progress id="p2-meter" aria-label="Opponent burst meter" max="100" value="0"></progress><span id="p2-charge">—</span></div></div>
+  </section>
+  <section class="stage" aria-label="Arena">
+    <canvas id="arena" width="960" height="400" tabindex="0" aria-label="Fighting arena. Move with A and D or arrow keys. J jab, K heavy, L burst, Space guard. P pauses. Use the buttons below on touchscreens.">Your browser needs Canvas and WebAssembly to play.</canvas>
+    <div class="stage-label"><span>01 / SPARRING FLOOR</span><span id="bout-state">INITIALIZING</span></div>
+    <div class="overlay" id="overlay"><span class="eyebrow" id="overlay-label">REAL PACKS. REAL RUNTIME.</span><h2 id="overlay-title">Preparing the arena</h2><p id="overlay-text">Loading compiled Rust and two binary fighters.</p><button id="play" disabled>Enter arena</button></div>
+    <div id="impact" aria-hidden="true"></div>
+    <details id="diagnostics"><summary>Runtime lab</summary><div class="lab"><p id="debug">Waiting for the runtime.</p><div class="lab-actions"><button id="step" disabled>Step 1 frame</button><button id="save" disabled>Checkpoint</button><button id="restore" disabled>Restore</button><button id="verify" disabled>Verify replay</button></div><p id="replay" role="status">Replay compares complete Rust state on every recorded tick.</p><p id="provenance"></p></div></details>
+  </section>
+  <div class="tip" id="tip">Close the gap. <b>J → K</b> on a hit. <b>L</b> spends 50 meter. Read yellow windups; punish recovery.</div>
+  <section class="controls" aria-label="Game controls"><div class="movement"><button data-input="1" aria-label="Move left, A or left arrow">←<small>A</small></button><button data-input="2" aria-label="Move right, D or right arrow">→<small>D</small></button></div><div class="attacks"><button data-input="4" aria-label="Jab, J">JAB<small>J</small></button><button data-input="8" aria-label="Heavy, K">HEAVY<small>K</small></button><button data-input="16" aria-label="Burst, L, costs 50 meter" class="burst">BURST<small>L / 50</small></button><button data-input="32" aria-label="Hold guard, Space">GUARD<small>SPACE</small></button></div></section>
+  <nav class="toolbar" aria-label="Match options"><button id="pause" disabled>Pause · P</button><button id="reset" disabled>New bout · R</button><label class="mode-label">Opponent <select id="mode" disabled><option value="0">Duel · seeded bot</option><option value="1">Lab · stationary</option><option value="2">Lab · guarding</option></select></label><label class="toggle"><input type="checkbox" id="boxes"> Collision</label><label class="toggle"><input type="checkbox" id="sound"> Sound</label></nav>
+  <footer><span id="status" role="status">Loading…</span><a id="source" href="https://github.com/RobDavenport/framesmith/tree/codex-production-readiness-plan/demo-wasm" target="_blank" rel="noopener">Source &amp; build</a></footer>
+  <p id="error" role="alert" hidden></p>
+</main>
+<noscript>This game needs JavaScript to load WebAssembly.</noscript>
+</body>
+</html>

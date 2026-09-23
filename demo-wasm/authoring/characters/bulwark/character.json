@@ -1,0 +1,17 @@
+{
+  "id": "bulwark",
+  "name": "Bulwark",
+  "properties": {
+    "health": 720,
+    "walk_speed": 2.125,
+    "color": "#ffad73",
+    "counter_bonus": 14
+  },
+  "resources": [
+    {
+      "name": "meter",
+      "start": 0,
+      "max": 100
+    }
+  ]
+}

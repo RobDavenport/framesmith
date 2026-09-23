@@ -1,0 +1,72 @@
+name: FrameSmith Arena Pages
+
+on:
+  push:
+    # The binary-first consumer currently lives on the audit branch. No main merge is implied.
+    branches: [main, codex-production-readiness-plan]
+    paths:
+      - 'demo-wasm/**'
+      - 'crates/framesmith-runtime/**'
+      - 'crates/framesmith-fspack/**'
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: framesmith-arena-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.10.3
+      - name: Install existing test dependencies
+        run: npm ci
+      - name: Build real authored packs and test Rust/WASM game
+        run: python demo-wasm/build.py
+      - name: Formatting and lint
+        run: |
+          cargo fmt --check --manifest-path demo-wasm/Cargo.toml
+          cargo clippy --manifest-path demo-wasm/Cargo.toml --all-targets --locked -- -D warnings
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Exercise static game at Pages subpath
+        run: npx playwright test --config demo-wasm/playwright.config.ts
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo-wasm/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v5
+        id: deployment

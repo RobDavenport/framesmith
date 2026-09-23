@@ -1,0 +1,115 @@
+{
+  "input": "burst",
+  "name": "Meter burst",
+  "type": "special",
+  "tags": [
+    "attack",
+    "burst"
+  ],
+  "startup": 11,
+  "active": 4,
+  "recovery": 27,
+  "total": 42,
+  "damage": 120,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 9,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        11,
+        14
+      ],
+      "box": {
+        "x": 8,
+        "y": -68,
+        "w": 110,
+        "h": 30
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        41
+      ],
+      "box": {
+        "x": -18,
+        "y": -86,
+        "w": 36,
+        "h": 86
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        41
+      ],
+      "box": {
+        "x": -20,
+        "y": -84,
+        "w": 40,
+        "h": 84
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 24,
+    "block": 8
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "burst",
+  "properties": {
+    "lunge_px": 12
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 3
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 4
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 11,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "burst"
+          }
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "amount": 50
+    }
+  ],
+  "preconditions": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "min": 50
+    }
+  ]
+}
