@@ -31,7 +31,7 @@ def main():
     (site / 'packs').mkdir(parents=True, exist_ok=True)
     run('cargo', 'build', '--manifest-path', ROOT / 'src-tauri/Cargo.toml', '--bin', 'framesmith-cli', '--locked')
     cli = ROOT / 'src-tauri/target/debug' / ('framesmith-cli.exe' if os.name == 'nt' else 'framesmith-cli')
-    for character in ('relay', 'bulwark'):
+    for character in ('relay', 'bulwark', 'sable', 'zip'):
         run(cli, 'export', '--project', HERE / 'authoring', '--character', character,
             '--adapter', 'fspk', '--out', site / 'packs' / f'{character}.fspk')
         assert (site / 'packs' / f'{character}.fspk').read_bytes()[:4] == b'FSPK'

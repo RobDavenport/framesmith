@@ -1,45 +1,45 @@
 {
+  "id": "burst",
+  "name": "Fission Cannon",
+  "type": "normal",
   "input": "burst",
-  "name": "Meter burst",
-  "type": "special",
   "tags": [
     "attack",
-    "burst"
+    "super"
   ],
-  "startup": 11,
-  "active": 4,
-  "recovery": 27,
-  "total": 42,
-  "damage": 120,
+  "startup": 8,
+  "active": 10,
+  "recovery": 32,
+  "damage": 170,
   "hitstun": 32,
   "blockstun": 18,
-  "hitstop": 9,
+  "hitstop": 8,
   "guard": "mid",
   "hitboxes": [
     {
       "frames": [
-        11,
-        14
+        8,
+        17
       ],
       "box": {
-        "x": 8,
-        "y": -68,
-        "w": 110,
-        "h": 30
+        "x": 35,
+        "y": -100,
+        "w": 76,
+        "h": 85
       }
     }
   ],
   "hurtboxes": [
     {
       "frames": [
-        0,
-        41
+        8,
+        49
       ],
       "box": {
         "x": -18,
-        "y": -86,
+        "y": -88,
         "w": 36,
-        "h": 86
+        "h": 88
       }
     }
   ],
@@ -47,33 +47,39 @@
     {
       "frames": [
         0,
-        41
+        49
       ],
       "box": {
-        "x": -20,
-        "y": -84,
-        "w": 40,
-        "h": 84
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
       }
     }
   ],
   "pushback": {
-    "hit": 24,
-    "block": 8
+    "hit": 12,
+    "block": 10
   },
-  "meter_gain": {
+  "frame_advantage": {
+    "block": 0,
     "hit": 0,
     "whiff": 0
   },
   "animation": "burst",
   "properties": {
-    "lunge_px": 12
+    "invuln": 8,
+    "launch": -9,
+    "knockdown": 1,
+    "projectile": 1,
+    "projectile_speed": 8,
+    "chip": 8
   },
   "on_hit": {
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 3
+        "delta": 0
       }
     ]
   },
@@ -81,16 +87,16 @@
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 4
+        "delta": 0
       }
     ]
   },
   "notifies": [
     {
-      "frame": 11,
+      "frame": 8,
       "events": [
         {
-          "id": "strike",
+          "id": "projectile",
           "args": {
             "move": "burst"
           }

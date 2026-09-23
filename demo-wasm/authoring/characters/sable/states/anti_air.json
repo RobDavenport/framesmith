@@ -1,0 +1,105 @@
+{
+  "id": "anti_air",
+  "name": "Sky Snare",
+  "type": "normal",
+  "input": "anti_air",
+  "tags": [
+    "attack",
+    "special"
+  ],
+  "startup": 5,
+  "active": 12,
+  "recovery": 26,
+  "damage": 86,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        5,
+        16
+      ],
+      "box": {
+        "x": 28,
+        "y": -85,
+        "w": 34,
+        "h": 34
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        42
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        42
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "anti_air",
+  "properties": {
+    "projectile": 1,
+    "projectile_speed": 2,
+    "projectile_y": -5,
+    "launch": -8
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 5,
+      "events": [
+        {
+          "id": "projectile",
+          "args": {
+            "move": "anti_air"
+          }
+        }
+      ]
+    }
+  ]
+}

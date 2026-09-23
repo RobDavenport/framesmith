@@ -1,45 +1,45 @@
 {
+  "id": "burst",
+  "name": "Seismic Driver",
+  "type": "normal",
   "input": "burst",
-  "name": "Meter burst",
-  "type": "special",
   "tags": [
     "attack",
-    "burst"
+    "super"
   ],
-  "startup": 28,
-  "active": 5,
-  "recovery": 36,
-  "total": 69,
-  "damage": 150,
+  "startup": 3,
+  "active": 10,
+  "recovery": 32,
+  "damage": 230,
   "hitstun": 32,
   "blockstun": 18,
-  "hitstop": 9,
-  "guard": "mid",
+  "hitstop": 8,
+  "guard": "unblockable",
   "hitboxes": [
     {
       "frames": [
-        28,
-        32
+        3,
+        12
       ],
       "box": {
         "x": 8,
-        "y": -68,
-        "w": 125,
-        "h": 30
+        "y": -100,
+        "w": 65,
+        "h": 100
       }
     }
   ],
   "hurtboxes": [
     {
       "frames": [
-        0,
-        68
+        8,
+        44
       ],
       "box": {
-        "x": -18,
-        "y": -86,
-        "w": 36,
-        "h": 86
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
       }
     }
   ],
@@ -47,33 +47,37 @@
     {
       "frames": [
         0,
-        68
+        44
       ],
       "box": {
-        "x": -20,
-        "y": -84,
-        "w": 40,
-        "h": 84
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
       }
     }
   ],
   "pushback": {
-    "hit": 24,
-    "block": 8
+    "hit": 12,
+    "block": 10
   },
-  "meter_gain": {
+  "frame_advantage": {
+    "block": 0,
     "hit": 0,
     "whiff": 0
   },
   "animation": "burst",
   "properties": {
-    "lunge_px": 12
+    "invuln": 8,
+    "launch": -9,
+    "knockdown": 1,
+    "grab": 1
   },
   "on_hit": {
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 3
+        "delta": 0
       }
     ]
   },
@@ -81,13 +85,13 @@
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 4
+        "delta": 0
       }
     ]
   },
   "notifies": [
     {
-      "frame": 28,
+      "frame": 3,
       "events": [
         {
           "id": "strike",

@@ -1,16 +1,18 @@
 {
-  "input": "stun",
-  "name": "Stagger",
+  "id": "stun",
+  "name": "Stun",
   "type": "system",
-  "tags": [],
+  "input": "stun",
+  "tags": [
+    "stun"
+  ],
   "startup": 1,
   "active": 254,
   "recovery": 0,
-  "total": 255,
   "damage": 0,
-  "hitstun": 0,
-  "blockstun": 0,
-  "hitstop": 0,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
   "guard": "mid",
   "hitboxes": [],
   "hurtboxes": [
@@ -20,10 +22,10 @@
         254
       ],
       "box": {
-        "x": -18,
-        "y": -86,
-        "w": 36,
-        "h": 86
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
       }
     }
   ],
@@ -34,23 +36,22 @@
         254
       ],
       "box": {
-        "x": -20,
-        "y": -84,
-        "w": 40,
-        "h": 84
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
       }
     }
   ],
   "pushback": {
-    "hit": 0,
-    "block": 0
+    "hit": 12,
+    "block": 10
   },
-  "meter_gain": {
+  "frame_advantage": {
+    "block": 0,
     "hit": 0,
     "whiff": 0
   },
   "animation": "stun",
-  "properties": {
-    "lunge_px": 0
-  }
+  "properties": {}
 }

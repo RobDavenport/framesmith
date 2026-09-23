@@ -1,0 +1,101 @@
+{
+  "id": "air_heavy",
+  "name": "Meteor Kick",
+  "type": "normal",
+  "input": "air_heavy",
+  "tags": [
+    "attack",
+    "air_attack",
+    "air_2"
+  ],
+  "startup": 8,
+  "active": 5,
+  "recovery": 18,
+  "damage": 62,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "high",
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        12
+      ],
+      "box": {
+        "x": 8,
+        "y": -64,
+        "w": 94,
+        "h": 72
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        30
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        30
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "air_heavy",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "air_heavy"
+          }
+        }
+      ]
+    }
+  ]
+}

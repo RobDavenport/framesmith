@@ -1,0 +1,104 @@
+{
+  "id": "special",
+  "name": "Rail Pulse",
+  "type": "normal",
+  "input": "special",
+  "tags": [
+    "attack",
+    "special"
+  ],
+  "startup": 16,
+  "active": 2,
+  "recovery": 24,
+  "damage": 62,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        16,
+        17
+      ],
+      "box": {
+        "x": 38,
+        "y": -62,
+        "w": 28,
+        "h": 26
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        41
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        41
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "special",
+  "properties": {
+    "projectile": 1,
+    "projectile_speed": 6,
+    "chip": 3
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 16,
+      "events": [
+        {
+          "id": "projectile",
+          "args": {
+            "move": "special"
+          }
+        }
+      ]
+    }
+  ]
+}

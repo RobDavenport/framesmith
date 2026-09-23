@@ -2,15 +2,20 @@
   "id": "bulwark",
   "name": "Bulwark",
   "properties": {
-    "health": 720,
-    "walk_speed": 2.125,
-    "color": "#ffad73",
-    "counter_bonus": 14
+    "style": "grappler",
+    "color": "#ffb46c",
+    "health": 940,
+    "walk_speed": 2.25,
+    "jump_speed": 11,
+    "gravity": 0.625,
+    "width": 48,
+    "height": 100,
+    "counter_bonus": 10
   },
   "resources": [
     {
       "name": "meter",
-      "start": 0,
+      "start": 50,
       "max": 100
     }
   ]

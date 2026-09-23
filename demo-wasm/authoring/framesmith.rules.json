@@ -14,6 +14,16 @@
             "type": "string"
           }
         }
+      },
+      "projectile": {
+        "contexts": [
+          "notify"
+        ],
+        "args": {
+          "move": {
+            "type": "string"
+          }
+        }
       }
     }
   }

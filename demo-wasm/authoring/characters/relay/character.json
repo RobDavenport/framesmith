@@ -2,9 +2,14 @@
   "id": "relay",
   "name": "Relay",
   "properties": {
-    "health": 600,
-    "walk_speed": 3.25,
+    "style": "shoto",
     "color": "#63edcf",
+    "health": 720,
+    "walk_speed": 3.25,
+    "jump_speed": 11,
+    "gravity": 0.5,
+    "width": 36,
+    "height": 88,
     "counter_bonus": 10
   },
   "resources": [

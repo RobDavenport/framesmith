@@ -1,31 +1,31 @@
 {
-  "input": "light",
-  "name": "Quick jab",
+  "id": "light",
+  "name": "Quick Jab",
   "type": "normal",
+  "input": "light",
   "tags": [
     "attack",
-    "light"
+    "chain_0"
   ],
-  "startup": 6,
+  "startup": 5,
   "active": 3,
   "recovery": 12,
-  "total": 21,
-  "damage": 35,
-  "hitstun": 17,
-  "blockstun": 9,
+  "damage": 32,
+  "hitstun": 24,
+  "blockstun": 13,
   "hitstop": 5,
   "guard": "mid",
   "hitboxes": [
     {
       "frames": [
-        6,
-        8
+        5,
+        7
       ],
       "box": {
         "x": 8,
-        "y": -68,
-        "w": 52,
-        "h": 30
+        "y": -72,
+        "w": 58,
+        "h": 44
       }
     }
   ],
@@ -33,13 +33,13 @@
     {
       "frames": [
         0,
-        20
+        19
       ],
       "box": {
         "x": -18,
-        "y": -86,
+        "y": -88,
         "w": 36,
-        "h": 86
+        "h": 88
       }
     }
   ],
@@ -47,28 +47,27 @@
     {
       "frames": [
         0,
-        20
+        19
       ],
       "box": {
-        "x": -20,
-        "y": -84,
-        "w": 40,
-        "h": 84
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
       }
     }
   ],
   "pushback": {
-    "hit": 5,
-    "block": 8
+    "hit": 7,
+    "block": 5
   },
-  "meter_gain": {
+  "frame_advantage": {
+    "block": 0,
     "hit": 0,
     "whiff": 0
   },
   "animation": "light",
-  "properties": {
-    "lunge_px": 0
-  },
+  "properties": {},
   "on_hit": {
     "resource_deltas": [
       {
@@ -81,13 +80,13 @@
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 4
+        "delta": 6
       }
     ]
   },
   "notifies": [
     {
-      "frame": 6,
+      "frame": 5,
       "events": [
         {
           "id": "strike",

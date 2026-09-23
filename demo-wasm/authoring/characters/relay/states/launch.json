@@ -1,0 +1,104 @@
+{
+  "id": "launch",
+  "name": "Sky Launcher",
+  "type": "normal",
+  "input": "launch",
+  "tags": [
+    "attack",
+    "chain_2",
+    "launcher"
+  ],
+  "startup": 10,
+  "active": 5,
+  "recovery": 24,
+  "damage": 58,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        10,
+        14
+      ],
+      "box": {
+        "x": 8,
+        "y": -142,
+        "w": 76,
+        "h": 130
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        38
+      ],
+      "box": {
+        "x": -18,
+        "y": -52,
+        "w": 36,
+        "h": 52
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        38
+      ],
+      "box": {
+        "x": -18,
+        "y": -52,
+        "w": 36,
+        "h": 52
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "launch",
+  "properties": {
+    "launch": -12,
+    "knockdown": 1
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 10,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "launch"
+          }
+        }
+      ]
+    }
+  ]
+}

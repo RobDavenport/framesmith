@@ -1,0 +1,100 @@
+{
+  "id": "low",
+  "name": "Low Check",
+  "type": "normal",
+  "input": "low",
+  "tags": [
+    "attack",
+    "chain_0"
+  ],
+  "startup": 8,
+  "active": 4,
+  "recovery": 15,
+  "damage": 46,
+  "hitstun": 24,
+  "blockstun": 13,
+  "hitstop": 5,
+  "guard": "low",
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        11
+      ],
+      "box": {
+        "x": 8,
+        "y": -26,
+        "w": 76,
+        "h": 24
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        26
+      ],
+      "box": {
+        "x": -24,
+        "y": -52,
+        "w": 48,
+        "h": 52
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        26
+      ],
+      "box": {
+        "x": -24,
+        "y": -52,
+        "w": 48,
+        "h": 52
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 7,
+    "block": 5
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "low",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "low"
+          }
+        }
+      ]
+    }
+  ]
+}

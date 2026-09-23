@@ -1,31 +1,31 @@
 {
-  "input": "heavy",
-  "name": "Heavy drive",
+  "id": "heavy",
+  "name": "Power Blow",
   "type": "normal",
+  "input": "heavy",
   "tags": [
     "attack",
-    "heavy"
+    "chain_2"
   ],
-  "startup": 13,
-  "active": 4,
-  "recovery": 21,
-  "total": 38,
-  "damage": 70,
-  "hitstun": 25,
-  "blockstun": 14,
-  "hitstop": 7,
+  "startup": 12,
+  "active": 5,
+  "recovery": 24,
+  "damage": 76,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 8,
   "guard": "mid",
   "hitboxes": [
     {
       "frames": [
-        13,
+        12,
         16
       ],
       "box": {
         "x": 8,
-        "y": -68,
-        "w": 80,
-        "h": 30
+        "y": -72,
+        "w": 110,
+        "h": 44
       }
     }
   ],
@@ -33,13 +33,13 @@
     {
       "frames": [
         0,
-        37
+        40
       ],
       "box": {
         "x": -18,
-        "y": -86,
+        "y": -88,
         "w": 36,
-        "h": 86
+        "h": 88
       }
     }
   ],
@@ -47,33 +47,32 @@
     {
       "frames": [
         0,
-        37
+        40
       ],
       "box": {
-        "x": -20,
-        "y": -84,
-        "w": 40,
-        "h": 84
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
       }
     }
   ],
   "pushback": {
-    "hit": 10,
-    "block": 8
+    "hit": 12,
+    "block": 10
   },
-  "meter_gain": {
+  "frame_advantage": {
+    "block": 0,
     "hit": 0,
     "whiff": 0
   },
   "animation": "heavy",
-  "properties": {
-    "lunge_px": 0
-  },
+  "properties": {},
   "on_hit": {
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 18
+        "delta": 12
       }
     ]
   },
@@ -81,13 +80,13 @@
     "resource_deltas": [
       {
         "name": "meter",
-        "delta": 4
+        "delta": 6
       }
     ]
   },
   "notifies": [
     {
-      "frame": 13,
+      "frame": 12,
       "events": [
         {
           "id": "strike",
