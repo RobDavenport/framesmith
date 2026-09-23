@@ -94,7 +94,10 @@ test('keyboard combo reaches KO, spends meter, cancels and replays; checkpoint a
   await expect(page.locator('#replay')).toContainText(`PASS · ${s.recorded} frames replayed`);
   await page.locator('#reset').click();
   const reset = await snapshot(page);
-  expect(reset.tick).toBe(0);
+  expect(reset.tick).toBeLessThan(60); // A running rematch can advance during Playwright's click.
+  expect(reset.round).toBe(1);
+  expect(reset.wins).toEqual([0, 0]);
+  expect(reset.recorded).toBe(reset.tick);
   expect(reset.actors.every((a: any) => a.hp === a.max_hp)).toBe(true);
   expect(reset.stats.cancels).toEqual([0, 0]);
 });
