@@ -1,18 +1,18 @@
 //! A small game consumer. Combat policy stays here, not in the helper crates.
 use framesmith_fspack::{payload::ValueView, OwnedPack};
 use framesmith_runtime::{
-    aabb_overlap, check_hits, check_pushbox, init_resources, next_frame, report_block, report_hit,
-    Aabb, CharacterState, FrameInput, HitResult,
+    aabb_overlap, check_hits, init_resources, next_frame, report_hit, Aabb, CharacterState,
+    FrameInput, HitResult,
 };
 use serde::Serialize;
 const LEFT: u8 = 1;
 const RIGHT: u8 = 2;
-const LIGHT: u8 = 4;
-const MEDIUM: u8 = 8;
-const HEAVY: u8 = 16;
-const SPECIAL: u8 = 32;
-const UP: u8 = 64;
-const DOWN: u8 = 128;
+const UP: u8 = 4;
+const DOWN: u8 = 8;
+const JUMP_BUTTON: u8 = 16;
+const NORMAL: u8 = 32;
+const SPECIAL: u8 = 64;
+const INPUT_BITS: u16 = 127;
 const IDLE: usize = 0;
 const BLOCK: usize = 1;
 const CROUCH: usize = 2;
@@ -31,7 +31,8 @@ const SUPER: usize = 14;
 const STUN: usize = 15;
 const LAND: usize = 16;
 const AIR_S: usize = 17;
-const IDS: [&str; 18] = [
+const AIR_UP: usize = 18;
+const IDS: [&str; 19] = [
     "idle",
     "guard",
     "crouch",
@@ -50,16 +51,44 @@ const IDS: [&str; 18] = [
     "stun",
     "landing",
     "air_special",
+    "air_up",
 ];
 const HZ: u32 = 60; // Demo policy, not a FrameSmith clock requirement.
-const ROUND_FRAMES: u32 = HZ * 60;
-const MATCH_FRAMES: u32 = ROUND_FRAMES * 3 + 180;
+const MATCH_FRAMES: u32 = HZ * 180;
 const SCALE: i32 = 256;
-const WALL_L: i32 = 72 * SCALE;
-const WALL_R: i32 = 928 * SCALE;
 const PROJECTILES: usize = 8;
+const STOCKS: u8 = 3;
+const BLAST: [i32; 4] = [0, -470, 800, 210]; // Left, top, right, bottom; feet coordinates.
+#[derive(Clone, Copy, Debug, Serialize)]
+struct Platform {
+    left: i32,
+    right: i32,
+    top: i32,
+}
+const PLATFORMS: [Platform; 4] = [
+    Platform {
+        left: 120,
+        right: 680,
+        top: 0,
+    },
+    Platform {
+        left: 190,
+        right: 320,
+        top: -95,
+    },
+    Platform {
+        left: 480,
+        right: 610,
+        top: -95,
+    },
+    Platform {
+        left: 335,
+        right: 465,
+        top: -190,
+    },
+];
 fn attacking(role: usize) -> bool {
-    (JAB..=SUPER).contains(&role) || role == AIR_S
+    (JAB..=SUPER).contains(&role) || matches!(role, AIR_S | AIR_UP)
 }
 fn number(value: ValueView<'_>) -> Option<f64> {
     value
@@ -85,19 +114,18 @@ struct MoveRule {
     projectile: bool,
     projectile_speed: i32,
     projectile_y: i32,
-    chip: u16,
     grab: bool,
     knockdown: bool,
     projectile_invuln: bool,
 }
 struct Definition {
     pack: OwnedPack,
-    ids: [u16; 18],
-    rules: [MoveRule; 18],
+    ids: [u16; IDS.len()],
+    rules: [MoveRule; IDS.len()],
     name: String,
     color: String,
     style: String,
-    health: i32,
+    weight: i32,
     speed: i32,
     jump: i32,
     gravity: i32,
@@ -138,7 +166,7 @@ impl Definition {
         {
             return Err("Invalid color".into());
         }
-        let health = required_number(props, "health", 1., 60000.)? as i32;
+        let weight = required_number(props, "weight", 40., 200.)? as i32;
         let speed = (required_number(props, "walk_speed", 0.25, 8.)? * SCALE as f64) as i32;
         let jump = (required_number(props, "jump_speed", 4., 14.)? * SCALE as f64) as i32;
         let gravity = (required_number(props, "gravity", 0.25, 1.)? * SCALE as f64) as i32;
@@ -146,8 +174,8 @@ impl Definition {
         let height = required_number(props, "height", 60., 120.)? as i32;
         let counter_bonus = required_number(props, "counter_bonus", 0., 100.)? as i32;
         let states = view.states().ok_or("Missing compiled states")?;
-        let mut ids = [0; 18];
-        let mut rules = [MoveRule::default(); 18];
+        let mut ids = [0; IDS.len()];
+        let mut rules = [MoveRule::default(); IDS.len()];
         for (role, name) in IDS.iter().enumerate() {
             ids[role] = (0..states.len())
                 .find(|&i| view.state_id(i) == Some(*name))
@@ -171,7 +199,6 @@ impl Definition {
                 projectile: n("projectile", 0., 1.)? == 1.,
                 projectile_speed: (n("projectile_speed", 0., 12.)? * SCALE as f64) as i32,
                 projectile_y: (n("projectile_y", -8., 8.)? * SCALE as f64) as i32,
-                chip: n("chip", 0., 100.)? as u16,
                 grab: n("grab", 0., 1.)? == 1.,
                 knockdown: n("knockdown", 0., 1.)? == 1.,
                 projectile_invuln: n("projectile_invuln", 0., 1.)? == 1.,
@@ -213,7 +240,7 @@ impl Definition {
             name,
             color,
             style,
-            health,
+            weight,
             speed,
             jump,
             gravity,
@@ -240,8 +267,9 @@ impl Definition {
         Actor {
             state,
             x: x * SCALE,
-            health: self.health,
             facing,
+            stocks: STOCKS,
+            platform: 0,
             ..Default::default()
         }
     }
@@ -254,24 +282,27 @@ struct Actor {
     vx: i32,
     vy: i32,
     facing: i32,
-    health: i32,
+    damage: i32,
+    stocks: u8,
+    platform: i8,
+    jumps: u8,
+    recovery_used: bool,
+    drop_timer: u8,
+    respawn: u8,
+    invulnerable: u8,
     previous_input: u8,
     control: u8,
     buffer: u8,
     buffer_age: u8,
     connected: bool,
-    blocked_stun: bool,
     serial: u32,
     combo: u8,
     combo_damage: i32,
-    juggles: u8,
     throw_immune: u8,
-    knockdown: bool,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 struct Stats {
     hits: [u32; 2],
-    blocks: [u32; 2],
     cancels: [u32; 2],
     spent: [u32; 2],
     signals: [u32; 2],
@@ -279,6 +310,7 @@ struct Stats {
     throws: [u32; 2],
     air_hits: [u32; 2],
     max_combo: [u8; 2],
+    kos: [u32; 2],
     clashes: u32,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -286,7 +318,6 @@ struct Contact {
     tick: u32,
     who: usize,
     damage: i32,
-    blocked: bool,
     counter: bool,
     serial: u32,
     x: i32,
@@ -323,19 +354,15 @@ struct World {
     actors: [Actor; 2],
     projectiles: [Projectile; PROJECTILES],
     tick: u32,
-    round_tick: u32,
-    round: u8,
-    wins: [u8; 2],
-    round_winner: u8,
-    next_round: u8,
     rng: u32,
     mode: u8,
     ai_wait: u16,
-    ai_guard: u8,
     hitstop: u8,
     winner: u8,
     super_tick: u32,
     super_who: usize,
+    ko_tick: u32,
+    ko_who: usize,
     stats: Stats,
     contact: Contact,
 }
@@ -343,112 +370,81 @@ fn rng(w: &mut World) -> u32 {
     w.rng = w.rng.wrapping_mul(1664525).wrapping_add(1013904223);
     w.rng
 }
-fn axis(control: u8) -> i32 {
-    i32::from(control & RIGHT != 0) - i32::from(control & LEFT != 0)
+fn axis(c: u8) -> i32 {
+    i32::from(c & RIGHT != 0) - i32::from(c & LEFT != 0)
 }
-fn toward(a: &Actor) -> u8 {
-    if a.facing == 1 {
+fn direction(from: i32, to: i32) -> u8 {
+    if to >= from {
         RIGHT
     } else {
         LEFT
-    }
-}
-fn away(a: &Actor) -> u8 {
-    if a.facing == 1 {
-        LEFT
-    } else {
-        RIGHT
     }
 }
 fn bot(w: &mut World, d: &[Definition; 2]) -> u8 {
     let a = w.actors[1];
-    let p = w.actors[0];
+    let b = w.actors[0];
     let role = d[1].role(&a.state);
-    let dist = (a.x - p.x).abs() / SCALE;
-    if w.mode == 1 {
+    if w.mode == 1 || a.respawn > 0 {
         return 0;
     }
-    if w.mode >= 2 {
-        return away(&a) | if w.mode == 3 { DOWN } else { 0 };
+    let inward = direction(a.x, 400 * SCALE);
+    if role == STUN {
+        return inward;
     }
-    if w.ai_guard > 0 {
-        w.ai_guard -= 1;
-        return away(&a) | if p.control & DOWN != 0 { DOWN } else { 0 };
+    let forward = direction(a.x, b.x);
+    let dist = (a.x - b.x).abs() / SCALE;
+    // Recover before choosing attacks: no suicidal pursuit beyond the main deck.
+    if a.platform < 0 && (a.x < 145 * SCALE || a.x > 655 * SCALE || a.y > 10 * SCALE) {
+        if a.vy >= 0 && a.jumps < 2 && a.previous_input & JUMP_BUTTON == 0 {
+            return inward | JUMP_BUTTON;
+        }
+        if a.jumps >= 2 && !a.recovery_used && a.vy >= 0 {
+            return inward | UP | SPECIAL;
+        }
+        return inward;
     }
-    if a.state.hit_confirmed || a.state.block_confirmed {
-        return match role {
-            JAB | LOW | AIR_L => MEDIUM,
-            MID | AIR_M => HEAVY,
-            DRIVE | AIR_H => SPECIAL,
-            LAUNCH => UP,
-            _ => 0,
-        };
-    }
-    if role == JUMP {
-        return if dist < 120 && a.y > -110 * SCALE {
-            HEAVY
+    if attacking(role) {
+        return if a.state.hit_confirmed && matches!(role, JAB | MID | AIR_L | AIR_M) {
+            NORMAL
         } else {
             0
         };
     }
-    if role > CROUCH {
-        return 0;
+    if a.platform == 0 && (a.x < 155 * SCALE || a.x > 645 * SCALE) {
+        return inward;
+    }
+    if a.platform > 0 && b.y > a.y + 60 * SCALE && dist < 140 && a.previous_input & JUMP_BUTTON == 0
+    {
+        return DOWN | JUMP_BUTTON;
     }
     w.ai_wait = w.ai_wait.saturating_sub(1);
-    let danger = w
-        .projectiles
-        .iter()
-        .any(|q| q.live && q.owner == 0 && (q.x - a.x).abs() < 190 * SCALE);
-    if (danger || attacking(d[0].role(&p.state)) && dist < 150)
-        && w.tick.is_multiple_of(9)
-        && !rng(w).is_multiple_of(3)
-    {
-        if danger && d[1].style != "zoner" && rng(w).is_multiple_of(3) {
-            return toward(&a) | UP;
-        }
-        w.ai_guard = 12;
-        return away(&a) | if p.control & DOWN != 0 { DOWN } else { 0 };
-    }
-    if p.y < -30 * SCALE && dist < 130 && w.ai_wait == 0 {
-        w.ai_wait = 20;
-        return DOWN | SPECIAL;
-    }
     if w.ai_wait == 0 {
         let choice = rng(w);
-        w.ai_wait = 12 + (choice % 16) as u16;
-        if (150..320).contains(&dist) && d[1].style != "zoner" && choice.is_multiple_of(4) {
-            return toward(&a) | UP;
+        w.ai_wait = 10 + (choice % 14) as u16;
+        if a.platform >= 0 && (b.y < a.y - 45 * SCALE || dist > 145 && choice.is_multiple_of(4)) {
+            return forward | JUMP_BUTTON;
         }
         if a.state.resources[d[1].meter] >= 50
-            && dist < if d[1].style == "grappler" { 70 } else { 280 }
+            && dist < if d[1].style == "grappler" { 70 } else { 190 }
             && choice.is_multiple_of(5)
         {
-            return HEAVY | SPECIAL;
+            return forward | DOWN | SPECIAL;
         }
-        match d[1].style.as_str() {
-            "grappler" if dist < 72 && p.y == 0 && d[0].role(&p.state) != STUN => return SPECIAL,
-            "zoner" if dist > 185 => return SPECIAL,
-            "shoto" if dist > 170 && choice.is_multiple_of(2) => return SPECIAL,
-            "rushdown" if dist > 105 && dist < 260 => return SPECIAL,
-            _ => {}
+        if (a.y - b.y).abs() < 75 * SCALE {
+            match d[1].style.as_str() {
+                "grappler" if dist < 75 => return forward | SPECIAL,
+                "zoner" if dist > 115 => return forward | SPECIAL,
+                "shoto" if dist > 150 => return forward | SPECIAL,
+                "rushdown" if (95..240).contains(&dist) => return forward | SPECIAL,
+                _ => {}
+            }
         }
-        if dist < 90 {
-            return if choice.is_multiple_of(4) {
-                DOWN | LIGHT
-            } else {
-                LIGHT
-            };
-        }
-        if dist < 150 {
-            return MEDIUM;
+        if dist < 100 {
+            return forward | NORMAL | if b.y < a.y - 50 * SCALE { UP } else { 0 };
         }
     }
-    if d[1].style == "zoner" && dist < 210 && a.x > WALL_L + 30 * SCALE && a.x < WALL_R - 30 * SCALE
-    {
-        return away(&a);
-    }
-    if dist > 65 {
-        toward(&a)
+    if dist > 58 {
+        forward
     } else {
         0
     }
@@ -482,65 +478,77 @@ fn reward(actor: &mut Actor, def: &Definition, state_id: u16, trigger: u8) {
     }
 }
 
-fn requested(a: &Actor, pressed: u8) -> Option<usize> {
-    if pressed & (HEAVY | SPECIAL) != 0
-        && a.control & (HEAVY | SPECIAL) == HEAVY | SPECIAL
-        && a.y == 0
-    {
-        return Some(SUPER);
-    }
+fn requested(a: &Actor, d: &Definition, pressed: u8) -> Option<usize> {
     if pressed & SPECIAL != 0 {
-        return Some(if a.y < 0 {
-            AIR_S
-        } else if a.control & DOWN != 0 {
+        return Some(if a.control & UP != 0 {
             ANTI
+        } else if a.control & DOWN != 0 {
+            SUPER
+        } else if a.platform < 0 {
+            AIR_S
         } else {
             SKILL
         });
     }
-    if pressed & HEAVY != 0 {
-        return Some(if a.y < 0 {
-            AIR_H
-        } else if a.control & DOWN != 0 {
+    if pressed & NORMAL != 0 {
+        let role = d.role(&a.state);
+        return Some(if a.platform < 0 {
+            if a.control & UP != 0 {
+                AIR_UP
+            } else if a.control & DOWN != 0 {
+                AIR_H
+            } else if role == AIR_L && a.state.hit_confirmed {
+                AIR_M
+            } else if role == AIR_M && a.state.hit_confirmed {
+                AIR_H
+            } else if axis(a.control) != 0 {
+                AIR_M
+            } else {
+                AIR_L
+            }
+        } else if a.control & UP != 0 {
             LAUNCH
-        } else {
-            DRIVE
-        });
-    }
-    if pressed & MEDIUM != 0 {
-        return Some(if a.y < 0 { AIR_M } else { MID });
-    }
-    if pressed & LIGHT != 0 {
-        return Some(if a.y < 0 {
-            AIR_L
         } else if a.control & DOWN != 0 {
             LOW
+        } else if role == JAB && a.state.hit_confirmed {
+            MID
+        } else if role == MID && a.state.hit_confirmed || axis(a.control) != 0 {
+            DRIVE
         } else {
             JAB
         });
     }
-    if pressed & UP != 0 && a.control & DOWN == 0 && a.y == 0 {
+    if pressed & JUMP_BUTTON != 0 {
         return Some(JUMP);
     }
     None
 }
 fn neutral(a: &Actor) -> usize {
-    if a.y < 0 {
+    if a.platform < 0 {
         JUMP
     } else if a.control & DOWN != 0 {
         CROUCH
-    } else if axis(a.control) == -a.facing {
-        BLOCK
     } else {
         IDLE
     }
 }
-fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize, stationary: bool) -> bool {
+fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize) -> bool {
+    if a.respawn > 0 {
+        a.respawn -= 1;
+        return false;
+    }
+    a.invulnerable = a.invulnerable.saturating_sub(1);
     let role = d.role(&a.state);
+    if role != STUN && !attacking(role) && axis(a.control) != 0 {
+        a.facing = axis(a.control);
+    }
+    let buffered = a.buffer as usize;
+    let allowed = !(buffered == JUMP && a.platform < 0 && a.jumps >= 2
+        || buffered == ANTI && a.recovery_used);
     let request = if role == STUN {
         None
-    } else if a.buffer_age > 0 {
-        Some(d.ids[a.buffer as usize])
+    } else if a.buffer_age > 0 && allowed {
+        Some(d.ids[buffered])
     } else if role <= CROUCH {
         let n = neutral(a);
         (role != n).then_some(d.ids[n])
@@ -556,11 +564,11 @@ fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize, stationar
         },
     );
     a.state = result.state;
+    let started = request == Some(a.state.current_state) && a.state.frame == 0;
     let mut super_started = false;
-    if a.state.current_state != before.current_state {
+    if started {
         let next = d.role(&a.state);
         a.connected = false;
-        a.blocked_stun = false;
         if attacking(next) || next == JUMP {
             if attacking(role) {
                 stats.cancels[i] += 1;
@@ -570,37 +578,48 @@ fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize, stationar
             stats.spent[i] +=
                 u32::from(before.resources[d.meter].saturating_sub(a.state.resources[d.meter]));
             reward(a, d, a.state.current_state, 0);
-            let lift = if next == JUMP {
-                d.jump
-            } else {
-                d.rules[next].lift
-            };
-            if lift > 0 && a.y == 0 {
-                a.vy = -lift;
-                a.y = -1;
-                a.vx = axis(a.control) * d.speed;
+            if next == JUMP {
+                if a.platform > 0 && a.control & DOWN != 0 {
+                    a.drop_timer = 12;
+                    a.y += SCALE;
+                    a.vy = 2 * SCALE;
+                    a.jumps = 1;
+                } else {
+                    a.vy = -d.jump;
+                    a.jumps += 1;
+                }
+                a.platform = -1;
+            } else if next == ANTI {
+                a.vy = -d.rules[next].lift;
+                a.platform = -1;
+                a.recovery_used = true;
+                a.jumps = a.jumps.max(1);
             }
             super_started = next == SUPER;
         }
     }
     if result.move_ended {
-        if role == STUN && a.y < 0 {
-            enter(a, d.ids[STUN], 2);
-        } else {
-            if role == STUN {
-                a.throw_immune = 8;
-                a.knockdown = false;
-                a.combo = 0;
-                a.combo_damage = 0;
-                a.juggles = 0;
-            }
-            enter(a, d.ids[neutral(a)], 0);
-            a.blocked_stun = false;
+        if role == STUN {
+            a.throw_immune = 8;
+            a.combo = 0;
+            a.combo_damage = 0;
         }
+        enter(a, d.ids[neutral(a)], 0);
     }
     a.buffer_age = a.buffer_age.saturating_sub(1);
     a.throw_immune = a.throw_immune.saturating_sub(1);
+    a.drop_timer = a.drop_timer.saturating_sub(1);
     let role = d.role(&a.state);
+    if role != STUN {
+        // Direct horizontal control; no opponent attraction, side locks or air body walls.
+        a.vx = axis(a.control) * d.speed;
+        if a.platform >= 0 && attacking(role) {
+            a.vx = 0;
+        }
+    } else if a.platform >= 0 {
+        a.vx = a.vx * 7 / 8;
+    }
+    a.x += a.vx;
     let mv = d
         .pack
         .view()
@@ -608,27 +627,48 @@ fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize, stationar
         .unwrap()
         .get(a.state.current_state as usize)
         .unwrap();
-    if a.y < 0 {
-        a.x += a.vx;
-        a.y += a.vy;
-        a.vy += d.gravity;
-        if a.y >= 0 {
-            a.y = 0;
-            a.vy = 0;
-            a.vx = 0;
-            if role == STUN {
-                enter(a, d.ids[STUN], if a.knockdown { 16 } else { 6 });
-            } else {
-                enter(a, d.ids[LAND], 0);
-            }
-        }
-    } else if role < CROUCH && !stationary {
-        a.x += axis(a.control) * d.speed;
-    }
     if attacking(role) && a.state.frame < u16::from(mv.startup()) + u16::from(mv.active()) {
         a.x += d.rules[role].travel * a.facing;
     }
-    a.x = a.x.clamp(WALL_L, WALL_R);
+    if a.platform >= 0 {
+        let p = PLATFORMS[a.platform as usize];
+        if a.x < p.left * SCALE || a.x > p.right * SCALE {
+            a.platform = -1;
+            a.jumps = a.jumps.max(1);
+        }
+    }
+    if a.platform < 0 {
+        let old_y = a.y;
+        a.y += a.vy;
+        a.vy = (a.vy
+            + d.gravity
+            + if a.control & DOWN != 0 && a.vy > 0 && role != STUN {
+                d.gravity
+            } else {
+                0
+            })
+        .min(24 * SCALE);
+        if a.vy >= 0 {
+            for k in (0..PLATFORMS.len()).rev() {
+                let p = PLATFORMS[k];
+                let top = p.top * SCALE;
+                if k > 0 && a.drop_timer > 0 {
+                    continue;
+                }
+                if old_y <= top && a.y >= top && a.x >= p.left * SCALE && a.x <= p.right * SCALE {
+                    a.y = top;
+                    a.vy = 0;
+                    a.platform = k as i8;
+                    a.jumps = 0;
+                    a.recovery_used = false;
+                    if role != STUN {
+                        enter(a, d.ids[LAND], 0);
+                    }
+                    break;
+                }
+            }
+        }
+    }
     super_started
 }
 fn spawn_notes(w: &mut World, defs: &[Definition; 2], i: usize) {
@@ -691,26 +731,12 @@ fn spawn_notes(w: &mut World, defs: &[Definition; 2], i: usize) {
         }
     }
 }
-fn can_block(a: &Actor, d: &Definition, guard: u8) -> bool {
-    let role = d.role(&a.state);
-    a.y == 0
-        && (role <= CROUCH || role == STUN && a.blocked_stun)
-        && axis(a.control) == -a.facing
-        && match guard {
-            0 => a.control & DOWN == 0,
-            1 => true,
-            2 => a.control & DOWN != 0,
-            _ => false,
-        }
-}
-#[derive(Clone, Copy)]
 struct ContactHit {
     hit: HitResult,
     owner: usize,
     serial: u32,
     role: usize,
     facing: i32,
-    blocked: bool,
     counter: bool,
     kind: u8,
 }
@@ -719,92 +745,60 @@ fn strike(w: &mut World, defs: &[Definition; 2], c: ContactHit) {
     let j = 1 - i;
     let rule = defs[i].rules[c.role];
     let hit = c.hit;
-    let airborne = w.actors[j].y < 0;
-    let combo = if c.blocked {
-        0
-    } else if defs[j].role(&w.actors[j].state) == STUN && !w.actors[j].blocked_stun {
+    if w.actors[j].invulnerable > 0 || w.actors[j].respawn > 0 {
+        return;
+    }
+    let airborne = w.actors[j].platform < 0;
+    let combo = if defs[j].role(&w.actors[j].state) == STUN {
         w.actors[j].combo.saturating_add(1)
     } else {
         1
     };
     let raw = i32::from(hit.damage) + if c.counter { defs[i].counter_bonus } else { 0 };
-    let damage = if c.blocked {
-        i32::from(hit.chip_damage.max(rule.chip))
-    } else {
-        raw * (100 - i32::from(combo.saturating_sub(1)) * 12).max(35) / 100
-    };
+    let damage = (raw * (100 - i32::from(combo.saturating_sub(1)) * 12).max(35) / 400).max(1);
     if w.actors[i].serial == c.serial && w.actors[i].state.current_state == hit.attacker_move {
-        if c.blocked {
-            report_block(&mut w.actors[i].state);
-        } else {
-            report_hit(&mut w.actors[i].state);
-        }
+        report_hit(&mut w.actors[i].state);
     }
-    if c.blocked {
-        w.stats.blocks[j] += 1;
-    } else {
-        w.stats.hits[i] += 1;
-        w.stats.max_combo[i] = w.stats.max_combo[i].max(combo);
-        if airborne {
-            w.stats.air_hits[i] += 1;
-        }
-        if rule.grab {
-            w.stats.throws[i] += 1;
-        }
+    w.stats.hits[i] += 1;
+    w.stats.max_combo[i] = w.stats.max_combo[i].max(combo);
+    if airborne {
+        w.stats.air_hits[i] += 1;
     }
-    reward(
-        &mut w.actors[i],
-        &defs[i],
-        hit.attacker_move,
-        if c.blocked { 2 } else { 1 },
-    );
+    if rule.grab {
+        w.stats.throws[i] += 1;
+    }
+    reward(&mut w.actors[i], &defs[i], hit.attacker_move, 1);
     let b = &mut w.actors[j];
-    b.health = (b.health - damage).max(0);
+    b.damage = (b.damage + damage).min(999);
     b.combo = combo;
     b.combo_damage = if combo > 1 {
         b.combo_damage + damage
     } else {
         damage
     };
+    let power = ((3 * SCALE
+        + raw * SCALE / 24
+        + b.damage * SCALE / 16
+        + if rule.knockdown { SCALE } else { 0 })
+        * 100
+        / defs[j].weight)
+        .min(28 * SCALE);
+    b.vx = power * c.facing;
+    b.vy = -(power * 2 / 3 + (-rule.launch).max(0) / 3 + SCALE);
+    b.platform = -1;
+    b.jumps = b.jumps.max(1);
+    b.y -= 1;
     enter(
         b,
         defs[j].ids[STUN],
-        u16::from(if c.blocked {
-            hit.blockstun
-        } else {
-            hit.hitstun
-        })
-        .max(1),
+        (u16::from(hit.hitstun) / 2 + b.damage as u16 / 12).clamp(8, 42),
     );
-    b.blocked_stun = c.blocked;
-    b.x = (b.x
-        + if c.blocked {
-            hit.block_pushback
-        } else {
-            hit.hit_pushback
-        } * SCALE
-            * c.facing)
-        .clamp(WALL_L, WALL_R);
-    if !c.blocked && (rule.launch < 0 || airborne) {
-        b.juggles = b.juggles.saturating_add(1);
-        b.y = b.y.min(-1);
-        b.vy = if b.juggles >= 5 {
-            3 * SCALE
-        } else if rule.launch < 0 {
-            rule.launch
-        } else {
-            -4 * SCALE
-        };
-        b.vx = 2 * SCALE * c.facing;
-    }
-    b.knockdown = !c.blocked && (rule.knockdown || airborne);
-    w.hitstop = w.hitstop.max(hit.hitstop);
+    w.hitstop = w.hitstop.max(hit.hitstop.min(8));
     w.contact = Contact {
         tick: w.tick,
         who: i,
         damage,
-        blocked: c.blocked,
-        counter: c.counter && !c.blocked,
+        counter: c.counter,
         serial: w.contact.serial + 1,
         x: b.x / SCALE,
         y: b.y / SCALE - 50,
@@ -817,10 +811,10 @@ fn contacts(w: &mut World, defs: &[Definition; 2]) {
         let b = w.actors[1 - i];
         let role = defs[i].role(&a.state);
         let rule = defs[i].rules[role];
-        if a.connected || rule.projectile || b.juggles >= 5 && b.y < 0 {
+        if a.connected || rule.projectile || a.respawn > 0 || b.respawn > 0 || b.invulnerable > 0 {
             return None;
         }
-        if rule.grab && (b.y < 0 || b.throw_immune > 0 || defs[1 - i].role(&b.state) == STUN) {
+        if rule.grab && (b.throw_immune > 0 || defs[1 - i].role(&b.state) == STUN) {
             return None;
         }
         let hit = check_hits(
@@ -839,7 +833,6 @@ fn contacts(w: &mut World, defs: &[Definition; 2]) {
             serial: a.serial,
             role,
             facing: a.facing,
-            blocked: can_block(&b, &defs[1 - i], hit.guard),
             counter: attacking(defs[1 - i].role(&b.state)),
             kind: if rule.grab { 2 } else { 0 },
         })
@@ -859,7 +852,12 @@ fn contacts(w: &mut World, defs: &[Definition; 2]) {
         q.x += q.vx;
         q.y += q.vy;
         q.life = q.life.saturating_sub(1);
-        if q.life == 0 || q.x < 0 || q.x > 1000 * SCALE || q.y < -400 * SCALE {
+        if q.life == 0
+            || q.x < BLAST[0] * SCALE
+            || q.x > BLAST[2] * SCALE
+            || q.y < BLAST[1] * SCALE
+            || q.y > BLAST[3] * SCALE
+        {
             q.live = false;
             continue;
         }
@@ -881,7 +879,7 @@ fn contacts(w: &mut World, defs: &[Definition; 2]) {
         let j = 1 - q.owner;
         let b = w.actors[j];
         let role = defs[j].role(&b.state);
-        if b.juggles >= 5 && b.y < 0 || defs[j].rules[role].projectile_invuln {
+        if b.invulnerable > 0 || b.respawn > 0 || defs[j].rules[role].projectile_invuln {
             continue;
         }
         let p = defs[j].pack.view();
@@ -942,39 +940,10 @@ fn contacts(w: &mut World, defs: &[Definition; 2]) {
                     serial: q.serial,
                     role: q.role,
                     facing: q.facing,
-                    blocked: can_block(&b, &defs[j], hit.guard),
                     counter: attacking(role),
                     kind: 1,
                 },
             );
-        }
-    }
-}
-fn separate(w: &mut World, defs: &[Definition; 2]) {
-    if let Some(push) = check_pushbox(
-        &w.actors[0].state,
-        &defs[0].pack.view(),
-        (w.actors[0].x / SCALE, w.actors[0].y / SCALE),
-        &w.actors[1].state,
-        &defs[1].pack.view(),
-        (w.actors[1].x / SCALE, w.actors[1].y / SCALE),
-    ) {
-        w.actors[0].x += push.p1_dx * SCALE;
-        w.actors[1].x += push.p2_dx * SCALE;
-        for i in 0..2 {
-            let spill = w.actors[i].x - w.actors[i].x.clamp(WALL_L, WALL_R);
-            w.actors[i].x -= spill;
-            w.actors[1 - i].x -= spill;
-        }
-    }
-    for (i, def) in defs.iter().enumerate() {
-        w.actors[i].x = w.actors[i].x.clamp(WALL_L, WALL_R);
-        if w.actors[i].y == 0 && !attacking(def.role(&w.actors[i].state)) {
-            w.actors[i].facing = if w.actors[i].x <= w.actors[1 - i].x {
-                1
-            } else {
-                -1
-            };
         }
     }
 }
@@ -983,76 +952,70 @@ fn step_world(w: &mut World, defs: &[Definition; 2], input: u8) {
         return;
     }
     w.tick += 1;
-    if w.next_round > 0 {
-        w.next_round -= 1;
-        if w.next_round == 0 {
-            w.actors = [defs[0].actor(330, 1), defs[1].actor(670, -1)];
-            w.projectiles = [Projectile::default(); PROJECTILES];
-            w.round += 1;
-            w.round_tick = 0;
-            w.round_winner = 0;
-            w.ai_wait = 25;
-            w.ai_guard = 0;
-            w.hitstop = 0;
-        }
-        return;
-    }
     let cpu = if w.hitstop == 0 {
         bot(w, defs)
     } else {
         w.actors[1].control
     };
-    for (a, control) in w.actors.iter_mut().zip([input, cpu]) {
+    for (i, control) in [input, cpu].into_iter().enumerate() {
+        let a = &mut w.actors[i];
         let pressed = control & !a.previous_input;
         a.control = control;
-        if let Some(role) = requested(a, pressed) {
-            a.buffer = role as u8;
-            a.buffer_age = 8;
+        if a.respawn == 0 {
+            if let Some(role) = requested(a, &defs[i], pressed) {
+                a.buffer = role as u8;
+                a.buffer_age = 8;
+            }
         }
         a.previous_input = control;
     }
-    w.round_tick += 1;
     if w.hitstop > 0 {
         w.hitstop -= 1;
     } else {
         for (i, d) in defs.iter().enumerate() {
-            if advance(&mut w.actors[i], d, &mut w.stats, i, i == 1 && w.mode > 0) {
-                w.hitstop = 12;
+            if advance(&mut w.actors[i], d, &mut w.stats, i) {
+                w.hitstop = 10;
                 w.super_tick = w.tick;
                 w.super_who = i;
             }
-            spawn_notes(w, defs, i);
+            if w.actors[i].respawn == 0 {
+                spawn_notes(w, defs, i);
+            }
         }
-        separate(w, defs);
         contacts(w, defs);
     }
-    if w.actors.iter().any(|a| a.health == 0) || w.round_tick >= ROUND_FRAMES {
-        let p = i64::from(w.actors[0].health) * i64::from(defs[1].health);
-        let c = i64::from(w.actors[1].health) * i64::from(defs[0].health);
-        w.round_winner = if p > c {
+    for (i, d) in defs.iter().enumerate() {
+        let a = w.actors[i];
+        if a.respawn == 0
+            && (a.x < BLAST[0] * SCALE
+                || a.x > BLAST[2] * SCALE
+                || a.y < BLAST[1] * SCALE
+                || a.y > BLAST[3] * SCALE)
+        {
+            w.stats.kos[1 - i] += 1;
+            w.ko_tick = w.tick;
+            w.ko_who = i;
+            let stocks = a.stocks.saturating_sub(1);
+            w.actors[i] = d.actor(if i == 0 { 260 } else { 540 }, if i == 0 { 1 } else { -1 });
+            w.actors[i].stocks = stocks;
+            w.actors[i].respawn = 60;
+            w.actors[i].invulnerable = 90;
+            for q in &mut w.projectiles {
+                if q.owner == i {
+                    q.live = false;
+                }
+            }
+        }
+    }
+    if w.actors[0].stocks == 0 || w.actors[1].stocks == 0 || w.tick >= MATCH_FRAMES {
+        let score = |a: Actor| i32::from(a.stocks) * 1000 - a.damage;
+        w.winner = if score(w.actors[0]) > score(w.actors[1]) {
             1
-        } else if c > p {
+        } else if score(w.actors[1]) > score(w.actors[0]) {
             2
         } else {
             3
         };
-        if w.round_winner != 2 {
-            w.wins[0] += 1;
-        }
-        if w.round_winner != 1 {
-            w.wins[1] += 1;
-        }
-        if w.wins[0] >= 2 || w.wins[1] >= 2 {
-            w.winner = if w.wins[0] == w.wins[1] {
-                3
-            } else if w.wins[0] > w.wins[1] {
-                1
-            } else {
-                2
-            };
-        } else {
-            w.next_round = 90;
-        }
     }
 }
 #[derive(Serialize)]
@@ -1087,8 +1050,15 @@ pub struct FighterView<'a> {
     combo_damage: i32,
     color: &'a str,
     x: f64,
-    hp: i32,
-    max_hp: i32,
+    damage: i32,
+    stocks: u8,
+    platform: i8,
+    jumps_remaining: u8,
+    recovery_ready: bool,
+    respawn: u8,
+    invulnerable: u8,
+    vx: f64,
+    vy: f64,
     meter: u16,
     max_meter: u16,
     id: &'a str,
@@ -1099,7 +1069,6 @@ pub struct FighterView<'a> {
     active: u8,
     phase: &'static str,
     confirmed: bool,
-    blocking: bool,
     hitboxes: Vec<Rect>,
     hurtboxes: Vec<Rect>,
     reach: i32,
@@ -1108,10 +1077,10 @@ pub struct FighterView<'a> {
 pub struct View<'a> {
     tick: u32,
     remaining: u32,
-    round: u8,
-    wins: [u8; 2],
-    round_winner: u8,
-    next_round: u8,
+    platforms: [Platform; 4],
+    blast: [i32; 4],
+    ko_tick: u32,
+    ko_who: usize,
     super_tick: u32,
     super_who: usize,
     projectiles: Vec<ShotView>,
@@ -1213,8 +1182,15 @@ fn fighter_view<'a>(a: &Actor, def: &'a Definition, facing: i32) -> FighterView<
         combo_damage: a.combo_damage,
         color: &def.color,
         x: f64::from(a.x) / f64::from(SCALE),
-        hp: a.health,
-        max_hp: def.health,
+        damage: a.damage,
+        stocks: a.stocks,
+        platform: a.platform,
+        jumps_remaining: 2 - a.jumps,
+        recovery_ready: !a.recovery_used,
+        respawn: a.respawn,
+        invulnerable: a.invulnerable,
+        vx: f64::from(a.vx) / f64::from(SCALE),
+        vy: f64::from(a.vy) / f64::from(SCALE),
         meter: a.state.resources[def.meter],
         max_meter: def.meter_max,
         id: pack.state_id(a.state.current_state as usize).unwrap(),
@@ -1229,7 +1205,6 @@ fn fighter_view<'a>(a: &Actor, def: &'a Definition, facing: i32) -> FighterView<
         active: mv.active(),
         phase,
         confirmed: a.state.hit_confirmed,
-        blocking: role == BLOCK || role == STUN && a.blocked_stun,
         hitboxes,
         hurtboxes,
         reach,
@@ -1249,30 +1224,26 @@ pub struct Game {
     defs: [Definition; 2],
     world: World,
     base: World,
-    // ponytail: exact per-frame states, bounded by three one-minute rounds; stream traces for longer games.
+    // ponytail: exact per-frame states, bounded by a three-minute match; stream traces for longer games.
     tape: Vec<(u8, World)>,
 }
 impl Game {
     pub fn new(player: &[u8], opponent: &[u8], seed: u32, mode: u8) -> Result<Self, String> {
-        if mode > 3 {
+        if mode > 1 {
             return Err("Unknown opponent mode".into());
         }
         let defs = [Definition::new(player)?, Definition::new(opponent)?];
         let world = World {
-            actors: [defs[0].actor(330, 1), defs[1].actor(670, -1)],
+            actors: [defs[0].actor(260, 1), defs[1].actor(540, -1)],
             projectiles: [Projectile::default(); PROJECTILES],
-            round_tick: 0,
-            round: 1,
-            wins: [0; 2],
-            round_winner: 0,
-            next_round: 0,
+            ko_tick: 0,
+            ko_who: 0,
             super_tick: 0,
             super_who: 0,
             tick: 0,
             rng: seed,
             mode,
             ai_wait: 25,
-            ai_guard: 0,
             hitstop: 0,
             winner: 0,
             stats: Stats::default(),
@@ -1286,7 +1257,7 @@ impl Game {
         })
     }
     pub fn step(&mut self, input: u16) -> Result<(), String> {
-        if input > 255 {
+        if input > INPUT_BITS {
             return Err("Unknown input bits".into());
         }
         if self.world.winner == 0 {
@@ -1298,11 +1269,11 @@ impl Game {
     pub fn view(&self) -> View<'_> {
         View {
             tick: self.world.tick,
-            remaining: ROUND_FRAMES.saturating_sub(self.world.round_tick),
-            round: self.world.round,
-            wins: self.world.wins,
-            round_winner: self.world.round_winner,
-            next_round: self.world.next_round,
+            remaining: MATCH_FRAMES.saturating_sub(self.world.tick),
+            platforms: PLATFORMS,
+            blast: BLAST,
+            ko_tick: self.world.ko_tick,
+            ko_who: self.world.ko_who,
             super_tick: self.world.super_tick,
             super_who: self.world.super_who,
             projectiles: self
@@ -1404,14 +1375,14 @@ mod wasm {
                 player,
                 opponent,
                 integer(seed, u32::MAX)?,
-                integer(mode, 3)? as u8,
+                integer(mode, 1)? as u8,
             )
             .map_err(|e| JsValue::from_str(&e))?;
             Ok(Self { game })
         }
         pub fn step(&mut self, input: f64) -> Result<JsValue, JsValue> {
             self.game
-                .step(integer(input, 255)? as u16)
+                .step(integer(input, u32::from(INPUT_BITS))? as u16)
                 .map_err(|e| JsValue::from_str(&e))?;
             js(&self.game.view())
         }
@@ -1452,261 +1423,183 @@ mod tests {
             g.step(u16::from(input)).unwrap();
         }
     }
-    fn close(g: &mut Game) {
-        for _ in 0..200 {
-            if (g.world.actors[1].x - g.world.actors[0].x).abs()
-                <= ((g.defs[0].width + g.defs[1].width) / 2 + 2) * SCALE
-            {
+    fn approach(g: &mut Game, gap: i32) {
+        for _ in 0..120 {
+            if g.world.actors[1].x - g.world.actors[0].x <= gap * SCALE {
                 break;
             }
             tick(g, RIGHT, 1);
         }
         tick(g, 0, 1);
     }
-    fn policy(g: &Game) -> u8 {
-        let a = g.world.actors[0];
-        let b = g.world.actors[1];
-        let role = g.defs[0].role(&a.state);
-        if a.state.hit_confirmed || a.state.block_confirmed {
-            return match role {
-                JAB | LOW | AIR_L => MEDIUM,
-                MID | AIR_M => HEAVY,
-                DRIVE => {
-                    if a.state.resources[g.defs[0].meter] >= 50 {
-                        HEAVY | SPECIAL
-                    } else {
-                        SPECIAL
-                    }
-                }
-                _ => 0,
-            };
-        }
-        if (a.x - b.x).abs() > 58 * SCALE {
-            toward(&a)
-        } else if role <= CROUCH {
-            LIGHT
-        } else {
-            0
-        }
-    }
-    #[test]
-    fn four_binary_archetypes_and_all_matchups_replay() {
-        for a in ["relay", "bulwark", "sable", "zip"] {
-            for b in ["relay", "bulwark", "sable", "zip"] {
-                let mut g = game(a, b, 0);
-                assert_eq!(g.pack_info()[0].2, 18);
-                for _ in 0..1200 {
-                    let p = policy(&g);
-                    tick(&mut g, p, 1);
-                    for a in g.world.actors {
-                        assert!((WALL_L..=WALL_R).contains(&a.x));
-                        assert!(a.y <= 0);
-                        assert!(a.health >= 0);
-                    }
-                }
-                assert!(g.world.stats.hits.iter().sum::<u32>() > 0, "{a}/{b}");
-                assert_eq!(g.verify_replay().unwrap(), g.tape.len());
+    fn settle(g: &mut Game) {
+        for _ in 0..100 {
+            if g.world.actors[0].platform >= 0 {
+                break;
             }
+            tick(g, 0, 1);
         }
     }
     #[test]
-    fn light_medium_heavy_special_chain_and_first_to_two() {
+    fn free_movement_crossovers_double_jump_and_platforms() {
+        for name in ["relay", "bulwark", "sable", "zip"] {
+            let mut g = game(name, "bulwark", 1);
+            let x = g.world.actors[0].x;
+            let other = g.world.actors[1].x;
+            tick(&mut g, LEFT, 10);
+            assert!(g.world.actors[0].x < x);
+            assert_eq!(g.world.actors[1].x, other);
+            let x = g.world.actors[0].x;
+            tick(&mut g, 0, 10);
+            assert_eq!(g.world.actors[0].x, x);
+            tick(&mut g, RIGHT, 95);
+            assert!(g.world.actors[0].x > other, "{name}");
+            assert_eq!(g.world.actors[1].x, other);
+            assert!(g.verify_replay().is_ok());
+            let mut g = game(name, "relay", 1);
+            tick(&mut g, JUMP_BUTTON, 1);
+            tick(&mut g, 0, 8);
+            tick(&mut g, JUMP_BUTTON, 1);
+            assert_eq!(g.world.actors[0].jumps, 2);
+            assert!(g.world.actors[0].vy < 0);
+            tick(&mut g, 0, 1);
+            let vy = g.world.actors[0].vy;
+            tick(&mut g, JUMP_BUTTON, 1);
+            assert!(g.world.actors[0].vy > vy, "no third jump");
+            settle(&mut g);
+            assert_eq!(g.world.actors[0].platform, 1, "{name}");
+            assert_eq!(g.world.actors[0].jumps, 0);
+            tick(&mut g, 0, 5);
+            tick(&mut g, DOWN | JUMP_BUTTON, 1);
+            assert_eq!(g.world.actors[0].platform, -1);
+            settle(&mut g);
+            assert_eq!(g.world.actors[0].platform, 0);
+            assert!(g.verify_replay().is_ok());
+        }
         let mut g = game("relay", "bulwark", 1);
-        for _ in 0..MATCH_FRAMES {
-            let p = policy(&g);
-            tick(&mut g, p, 1);
-            if g.world.winner != 0 {
+        for expected in [1, 3, 2] {
+            tick(&mut g, JUMP_BUTTON, 1);
+            if expected != 1 {
+                let target = if expected == 3 {
+                    400 * SCALE
+                } else {
+                    540 * SCALE
+                };
+                for _ in 0..70 {
+                    if g.world.actors[0].x >= target {
+                        break;
+                    }
+                    tick(&mut g, RIGHT, 1);
+                }
+            }
+            settle(&mut g);
+            assert_eq!(g.world.actors[0].platform, expected, "{:?}", g.world);
+            tick(&mut g, 0, 5);
+        }
+    }
+    #[test]
+    fn percentage_knockback_and_three_stocks() {
+        let mut g = game("relay", "bulwark", 1);
+        approach(&mut g, 55);
+        tick(&mut g, NORMAL, 1);
+        tick(&mut g, 0, 12);
+        assert!(g.world.actors[1].damage > 0);
+        assert!(g.world.actors[1].vx > 0);
+        assert_eq!(g.world.actors[1].stocks, 3);
+        let mut falls = game("relay", "bulwark", 1);
+        for _ in 0..900 {
+            tick(&mut falls, LEFT, 1);
+            if falls.world.winner != 0 {
                 break;
             }
         }
-        assert_eq!(g.world.winner, 1, "{:?}", g.world);
-        assert_eq!(g.world.wins[0], 2);
-        assert!(g.world.stats.cancels[0] > 0);
-        assert!(g.world.stats.spent[0] >= 50);
-        assert!(g.world.stats.max_combo[0] >= 3);
-        assert!(g.verify_replay().is_ok());
-        let terminal = g.world;
-        tick(&mut g, 255, 1);
-        assert_eq!(g.world, terminal);
+        assert_eq!(falls.world.actors[0].stocks, 0);
+        assert_eq!(falls.world.winner, 2);
+        assert_eq!(falls.world.stats.kos[1], 3);
+        assert!(falls.verify_replay().is_ok());
+        let end = falls.world;
+        tick(&mut falls, NORMAL, 1);
+        assert_eq!(falls.world, end);
     }
     #[test]
-    fn back_block_low_block_and_grab_counterplay() {
-        let mut g = game("relay", "bulwark", 2);
-        close(&mut g);
-        tick(&mut g, LIGHT, 1);
-        tick(&mut g, 0, 14);
-        assert!(g.world.stats.blocks[1] > 0);
-        assert_eq!(g.world.actors[1].health, g.defs[1].health);
-        tick(&mut g, 0, 30);
-        tick(&mut g, DOWN | LIGHT, 1);
-        tick(&mut g, 0, 20);
-        assert!(g.world.actors[1].health < g.defs[1].health);
-        let mut low = game("relay", "bulwark", 3);
-        close(&mut low);
-        tick(&mut low, DOWN | LIGHT, 1);
-        tick(&mut low, 0, 20);
-        assert_eq!(low.world.actors[1].health, low.defs[1].health);
-        assert!(low.world.stats.blocks[1] > 0);
-        let mut grab = game("bulwark", "relay", 2);
-        close(&mut grab);
-        tick(&mut grab, SPECIAL, 1);
-        tick(&mut grab, 0, 30);
-        assert_eq!(grab.world.stats.throws[0], 1);
-        assert!(grab.world.actors[1].health < grab.defs[1].health);
-        assert!(grab.verify_replay().is_ok());
-    }
-    #[test]
-    fn projectiles_are_real_traveling_entities_and_snapshot_in_flight() {
+    fn projectile_checkpoint_recovery_and_invalid_inputs() {
         let mut g = game("sable", "relay", 1);
         tick(&mut g, SPECIAL, 1);
         tick(&mut g, 0, 18);
         assert!(g.world.projectiles.iter().any(|p| p.live));
-        assert_eq!(g.world.stats.hits[0], 0);
         g.checkpoint();
         let saved = g.world;
         tick(&mut g, 0, 90);
-        assert!(g.world.stats.hits[0] > 0);
         let end = g.world;
+        assert!(g.world.stats.hits[0] > 0);
         assert!(g.verify_replay().is_ok());
         g.restore();
         assert_eq!(g.world, saved);
         tick(&mut g, 0, 90);
         assert_eq!(g.world, end);
-    }
-    #[test]
-    fn launch_jump_cancel_air_chain_and_cross_up() {
-        let mut g = game("zip", "bulwark", 1);
-        close(&mut g);
-        tick(&mut g, DOWN | HEAVY, 1);
-        for _ in 0..30 {
-            if g.world.actors[0].state.hit_confirmed {
-                break;
-            }
+        let before = g.world;
+        assert!(g.step(128).is_err());
+        assert_eq!(g.world, before);
+        for name in ["relay", "bulwark", "sable", "zip"] {
+            let mut g = game(name, "relay", 1);
+            tick(&mut g, LEFT, 45);
             tick(&mut g, 0, 1);
+            tick(&mut g, UP | SPECIAL, 1);
+            assert!(g.world.actors[0].recovery_used, "{name}");
+            assert!(g.world.actors[0].vy < 0);
+            let count = g.world.actors[0].serial;
+            tick(&mut g, 0, 50);
+            tick(&mut g, UP | SPECIAL, 1);
+            assert_eq!(
+                g.world.actors[0].serial, count,
+                "recovery cannot loop: {name}"
+            );
         }
-        assert!(g.world.actors[1].y < 0);
-        tick(&mut g, UP | RIGHT, 1);
-        tick(&mut g, RIGHT, 9); // Jump-cancel is buffered through impact hitstop.
-        assert!(g.world.actors[0].y < 0);
-        for n in 0..90 {
-            let role = g.defs[0].role(&g.world.actors[0].state);
-            let input = match role {
-                JUMP => LIGHT,
-                AIR_L if g.world.actors[0].state.hit_confirmed => MEDIUM,
-                AIR_M if g.world.actors[0].state.hit_confirmed => HEAVY,
-                _ => 0,
-            };
-            tick(&mut g, if n == 0 { 0 } else { input }, 1);
-        }
-        assert!(g.world.stats.air_hits[0] >= 2, "{:?}", g.world);
-        assert!(g.verify_replay().is_ok());
-        let mut x = game("zip", "relay", 1);
-        close(&mut x);
-        tick(&mut x, UP | RIGHT, 1);
-        tick(&mut x, RIGHT, 55);
-        assert!(
-            x.world.actors[0].x > x.world.actors[1].x,
-            "cross-up positions {:?}",
-            x.world.actors
-        );
-        assert_eq!(x.world.actors[0].facing, -1);
-        assert!(x.verify_replay().is_ok());
     }
     #[test]
-    fn jumping_clears_a_real_cpu_projectile() {
-        let mut g = game("relay", "sable", 0);
-        let mut jumped = false;
-        let mut cleared = false;
-        let mut serial = 0;
-        for _ in 0..900 {
-            let shot = g
-                .world
-                .projectiles
-                .iter()
-                .find(|p| p.live && p.owner == 1 && (serial == 0 || p.serial == serial));
-            let go =
-                shot.is_some_and(|p| !jumped && (p.x - g.world.actors[0].x).abs() < 130 * SCALE);
-            if go {
-                serial = shot.unwrap().serial;
-                jumped = true;
-            }
-            if jumped && shot.is_some_and(|p| p.x < g.world.actors[0].x) {
-                cleared = true;
-                break;
-            }
-            g.step(if go { u16::from(UP) } else { 0 }).unwrap();
-        }
-        assert!(
-            cleared && g.world.actors[0].health == g.defs[0].health,
-            "{:?}",
-            g.world
-        );
-        let mut grounded = game("relay", "sable", 0);
-        tick(&mut grounded, 0, g.world.tick as usize + 4);
-        assert!(grounded.world.actors[0].health < grounded.defs[0].health);
-        assert!(g.verify_replay().is_ok());
-    }
-    #[test]
-    fn anti_air_catches_an_approaching_cpu_jump() {
-        let mut g = game("zip", "relay", 0);
-        let mut caught = false;
-        for _ in 0..2400 {
-            let a = g.world.actors[0];
-            let b = g.world.actors[1];
-            let distance = (a.x - b.x).abs() / SCALE;
-            let toward = if a.x < b.x { RIGHT } else { LEFT };
-            let input = if a.y == 0 && distance < 200 {
-                toward | UP
-            } else {
-                toward
-            };
-            let hp = a.health;
-            g.step(input.into()).unwrap();
-            if g.defs[1].role(&g.world.actors[1].state) == ANTI && g.world.actors[0].health < hp {
-                caught = true;
-                break;
+    fn all_matchups_use_real_binary_moves_and_replay() {
+        let mut count = 0;
+        for name in ["relay", "bulwark", "sable", "zip"] {
+            for rival in ["relay", "bulwark", "sable", "zip"] {
+                let mut g = game(name, rival, 0);
+                assert_eq!(g.pack_info()[0].2, 19);
+                for n in 0..1800 {
+                    let a = g.world.actors[0];
+                    let b = g.world.actors[1];
+                    let dir = direction(a.x, b.x);
+                    let input = if a.platform < 0 && (a.x < 150 * SCALE || a.x > 650 * SCALE) {
+                        direction(a.x, 400 * SCALE)
+                            | if a.jumps < 2 && n % 18 == 0 {
+                                JUMP_BUTTON
+                            } else if !a.recovery_used && a.vy > 0 {
+                                UP | SPECIAL
+                            } else {
+                                0
+                            }
+                    } else if n % 24 == 0 {
+                        dir | SPECIAL
+                    } else if n % 12 == 0 {
+                        dir | NORMAL
+                    } else if (a.x - b.x).abs() > 65 * SCALE {
+                        dir
+                    } else {
+                        0
+                    };
+                    tick(&mut g, input, 1);
+                    if g.world.winner != 0 {
+                        break;
+                    }
+                }
+                assert!(g.world.stats.hits.iter().sum::<u32>() > 0, "{name}/{rival}");
+                assert!(g
+                    .world
+                    .actors
+                    .iter()
+                    .all(|a| a.damage >= 0 && a.stocks <= STOCKS));
+                assert!(g.verify_replay().is_ok());
+                count += 1;
             }
         }
-        assert!(caught, "{:?}", g.world);
-        assert!(g.verify_replay().is_ok());
-    }
-
-    #[test]
-    fn cpu_can_win_and_invalid_input_is_atomic() {
-        let mut g = game("relay", "bulwark", 0);
-        let saved = g.world;
-        assert!(g.step(256).is_err());
-        assert_eq!(g.world, saved);
-        for _ in 0..MATCH_FRAMES {
-            tick(&mut g, 0, 1);
-            if g.world.winner != 0 {
-                break;
-            }
-        }
-        assert_eq!(g.world.winner, 2);
-        assert!(g.verify_replay().is_ok());
-        assert!(Game::new(&[0; 16], &[0; 16], 0, 0).is_err());
-        let p = pack("relay");
-        assert!(Game::new(&p[..p.len() - 1], &p, 0, 0).is_err());
-        assert!(Game::new(&p, &p, 0, 4).is_err());
-    }
-    #[test]
-    fn whiff_cancels_are_denied_and_both_walls_separate() {
-        let mut g = game("relay", "bulwark", 1);
-        tick(&mut g, LIGHT, 1);
-        tick(&mut g, 0, 6);
-        tick(&mut g, MEDIUM, 1);
-        assert_eq!(g.defs[0].role(&g.world.actors[0].state), JAB);
-        assert_eq!(g.world.stats.cancels[0], 0);
-        tick(&mut g, RIGHT, 500);
-        let a = g.world.actors;
-        assert!(
-            (a[0].x - a[1].x).abs() >= 40 * SCALE,
-            "positions {:?}, views {:?}/{:?}",
-            (a[0].x, a[1].x),
-            g.defs[0].width,
-            g.defs[1].width
-        );
-        assert!(g.verify_replay().is_ok());
+        assert_eq!(count, 16);
     }
 }

@@ -4,13 +4,13 @@
   "properties": {
     "style": "shoto",
     "color": "#63edcf",
-    "health": 720,
-    "walk_speed": 3.25,
+    "walk_speed": 4.75,
     "jump_speed": 11,
     "gravity": 0.5,
     "width": 36,
     "height": 88,
-    "counter_bonus": 10
+    "counter_bonus": 10,
+    "weight": 100
   },
   "resources": [
     {

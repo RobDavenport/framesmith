@@ -71,7 +71,8 @@
     "projectile": 1,
     "projectile_speed": 2,
     "projectile_y": -5,
-    "launch": -8
+    "launch": -10,
+    "lift": 12
   },
   "on_hit": {
     "resource_deltas": [

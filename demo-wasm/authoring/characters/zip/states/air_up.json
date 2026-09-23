@@ -1,39 +1,40 @@
 {
-  "id": "anti_air",
-  "name": "Rising Kick",
+  "id": "air_medium",
+  "name": "Skyward Strike",
   "type": "normal",
-  "input": "anti_air",
+  "input": "air_up",
   "tags": [
     "attack",
-    "special"
+    "air_attack",
+    "air_chain_1"
   ],
-  "startup": 5,
-  "active": 12,
-  "recovery": 26,
-  "damage": 86,
+  "startup": 6,
+  "active": 5,
+  "recovery": 15,
+  "damage": 45,
   "hitstun": 24,
   "blockstun": 18,
   "hitstop": 8,
-  "guard": "mid",
+  "guard": "high",
   "hitboxes": [
     {
       "frames": [
-        5,
-        16
+        6,
+        10
       ],
       "box": {
-        "x": 8,
-        "y": -145,
-        "w": 76,
-        "h": 135
+        "x": -20,
+        "y": -140,
+        "w": 70,
+        "h": 72
       }
     }
   ],
   "hurtboxes": [
     {
       "frames": [
-        5,
-        42
+        0,
+        25
       ],
       "box": {
         "x": -15,
@@ -47,7 +48,7 @@
     {
       "frames": [
         0,
-        42
+        25
       ],
       "box": {
         "x": -15,
@@ -66,12 +67,9 @@
     "hit": 0,
     "whiff": 0
   },
-  "animation": "anti_air",
+  "animation": "air_up",
   "properties": {
-    "lift": 14,
-    "launch": -10,
-    "knockdown": 1,
-    "invuln": 5
+    "launch": -12
   },
   "on_hit": {
     "resource_deltas": [
@@ -91,12 +89,12 @@
   },
   "notifies": [
     {
-      "frame": 5,
+      "frame": 6,
       "events": [
         {
           "id": "strike",
           "args": {
-            "move": "anti_air"
+            "move": "air_medium"
           }
         }
       ]

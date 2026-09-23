@@ -69,8 +69,9 @@
   "animation": "anti_air",
   "properties": {
     "projectile_invuln": 1,
-    "launch": -7,
-    "knockdown": 1
+    "launch": -10,
+    "knockdown": 1,
+    "lift": 13
   },
   "on_hit": {
     "resource_deltas": [

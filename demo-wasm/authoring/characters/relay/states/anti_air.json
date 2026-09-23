@@ -68,7 +68,7 @@
   },
   "animation": "anti_air",
   "properties": {
-    "lift": 9,
+    "lift": 13,
     "launch": -10,
     "knockdown": 1,
     "invuln": 5

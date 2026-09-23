@@ -4,13 +4,13 @@
   "properties": {
     "style": "grappler",
     "color": "#ffb46c",
-    "health": 940,
-    "walk_speed": 2.25,
+    "walk_speed": 3.75,
     "jump_speed": 11,
     "gravity": 0.625,
     "width": 48,
     "height": 100,
-    "counter_bonus": 10
+    "counter_bonus": 10,
+    "weight": 135
   },
   "resources": [
     {

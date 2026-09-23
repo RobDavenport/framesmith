@@ -4,13 +4,13 @@
   "properties": {
     "style": "zoner",
     "color": "#b59aff",
-    "health": 640,
-    "walk_speed": 2.5,
+    "walk_speed": 4.25,
     "jump_speed": 10,
     "gravity": 0.4375,
     "width": 32,
     "height": 92,
-    "counter_bonus": 10
+    "counter_bonus": 10,
+    "weight": 90
   },
   "resources": [
     {
