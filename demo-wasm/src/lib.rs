@@ -622,7 +622,7 @@ fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize, stationar
                 enter(a, d.ids[LAND], 0);
             }
         }
-    } else if role <= CROUCH && role != CROUCH && !stationary {
+    } else if role < CROUCH && !stationary {
         a.x += axis(a.control) * d.speed;
     }
     if attacking(role) && a.state.frame < u16::from(mv.startup()) + u16::from(mv.active()) {
