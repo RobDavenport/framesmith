@@ -1,0 +1,158 @@
+{
+  "input": "multi",
+  "name": "Twin Pulse",
+  "type": "special",
+  "tags": [
+    "special",
+    "attack"
+  ],
+  "startup": 6,
+  "active": 10,
+  "recovery": 18,
+  "damage": 15,
+  "hitstun": 18,
+  "blockstun": 9,
+  "hitstop": 3,
+  "guard": "mid",
+  "animation": "multi",
+  "hitboxes": [
+    {
+      "frames": [
+        6,
+        7
+      ],
+      "box": {
+        "x": 10,
+        "y": -70,
+        "w": 95,
+        "h": 45
+      }
+    },
+    {
+      "frames": [
+        14,
+        15
+      ],
+      "box": {
+        "x": 10,
+        "y": -70,
+        "w": 95,
+        "h": 45
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 6,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ],
+  "hits": [
+    {
+      "frames": [
+        6,
+        7
+      ],
+      "damage": 15,
+      "chip_damage": 2,
+      "hitstun": 18,
+      "blockstun": 9,
+      "hitstop": 3,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 10,
+          "y": -70,
+          "w": 95,
+          "h": 45
+        }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [
+        14,
+        15
+      ],
+      "damage": 25,
+      "chip_damage": 3,
+      "hitstun": 24,
+      "blockstun": 12,
+      "hitstop": 4,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 10,
+          "y": -70,
+          "w": 95,
+          "h": 45
+        }
+      ],
+      "cancels": []
+    }
+  ]
+}

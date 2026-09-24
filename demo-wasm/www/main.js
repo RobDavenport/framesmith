@@ -1,279 +1,213 @@
-import init, { Arena } from './pkg/framesmith_arena.js';
-
-const $ = (id) => document.getElementById(id);
-const canvas = $('arena');
-const ctx = canvas.getContext('2d');
-const keys = new Map([
-  ['KeyA', 1], ['ArrowLeft', 1], ['KeyD', 2], ['ArrowRight', 2],
-  ['KeyJ', 32], ['KeyZ', 32], ['KeyK', 64], ['KeyX', 64],
-  ['KeyW', 4], ['ArrowUp', 4], ['Space', 16], ['KeyS', 8], ['ArrowDown', 8],
-]);
-const down = new Set();
-const pointers = new Map();
-const seed = 0xf5a17;
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let game, packs, state, build, audio;
-let queued = 0, queuedDirection = 0;
-let paused = true, started = false, accumulator = 0, previous = 0, lastContact = 0;
-
-function fail(error) {
-  paused = true;
-  $('error').hidden = false;
-  $('error').textContent = `Arena could not run: ${error?.message || error}. Reload to retry; details are in the browser console.`;
-  $('status').textContent = 'Runtime error — no simulated fallback.';
-  console.error(error);
+import init, { Lab } from './pkg/framesmith_arena.js';
+const $ = id => document.getElementById(id), canvas=$('arena'), ctx=canvas.getContext('2d');
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const names=['','Jab','Follow-up','Arc','Finisher','Twin Pulse','Charged Arc','Reload'];
+const phases=['ready','startup','active','recovery','hitstun','blockstun'];
+const colors=['#55e1ca','#f1cb76','#ff8e94','#76a8df','#c4a6ff','#dfb176'];
+const lessons=[
+ {title:'Make this combo work.',text:'The dummy guards the first gap. Run it, then shorten Jab recovery until the follow-up links.',copy:'A link waits for recovery to finish. No cancel rule is involved.',fields:['recovery','follow_startup']},
+ {title:'Cut the recovery short.',text:'Hit-confirm into Arc instead of waiting. Try a different condition or close the cancel window.',copy:'A cancel leaves a move early. These controls edit the actual tag rule.',fields:['cancel','condition','window_start','window_end']},
+ {title:'Earn it. Then spend it.',text:'Normal hits build energy. Arc and the finisher spend ammo; the finisher also needs energy.',copy:'Named pools, caps, requirements and atomic costs. A denied move spends nothing.',fields:['energy','gain','cost','ammo']},
+ {title:'One group rule. Many moves.',text:'Remove the chainable tag or add a deny. Watch the available route change.',copy:'Move types carry category tags too. “chainable” is a custom tag, shared by the two normals.',fields:['tagged','deny']},
+ {title:'A missed hit is not a bad cancel.',text:'Change spacing, guard policy or Jab reach. Actual collision queries decide the contact.',copy:'Red = active hitbox. Blue = hurtbox. The dummy only guards when it can act.',fields:['distance','dummy','reach']},
+ {title:'Data asks. The game responds.',text:'Move the notify; change spark size. See event markers, hitstop, and an optional sound.',copy:'The pack supplies typed events and properties. This host draws the spark and applies resource gains.',fields:['notify_frame','spark_size'],demo:4},
+ {title:'Author once. Reuse the result.',text:'Try two distinct hits, an inherited charged move, or an on-use ammo refill. Inspect the real source.',copy:'Shared idle comes from globals with a character override. Charged Arc inherits Arc; Twin Pulse has per-hit stats.',fields:[],variants:true},
+ {title:'Take the rules into your game.',text:'Download the current project and binary. Reload the pack: the same data produces the same behavior.',copy:'Every successful edit ran the shared Rust validator and exporter. Invalid drafts leave the current build intact.',fields:[],exports:true}
+];
+const fields={
+ recovery:['Jab recovery',0,30],follow_startup:['Follow startup',2,20],cancel:['Enable cancel','check'],
+ condition:['Condition','select',[['hit','On hit'],['block','On block'],['whiff','On whiff'],['always','Always']]],
+ window_start:['Window opens',0,60],window_end:['Window closes','number',0,255],energy:['Start energy',0,100],gain:['Energy per hit',0,50],cost:['Finisher cost',0,100],ammo:['Start ammo',0,3],tagged:['Chainable tags','check'],deny:['Deny Follow → Arc','check'],distance:['Dummy distance',20,220],
+ dummy:['Guard policy','select',[[0,'Never guard'],[1,'Guard high'],[2,'Guard low'],[3,'Guard after first hit']]],reach:['Jab reach',20,140],notify_frame:['Notify frame',0,30],spark_size:['Spark size',4,48]
+};
+let lab, workshop, basePack, build, state, meta, mode='guided', lesson=0, trial=0, paused=true, demonstrating=false;
+let geometryProbe=null;
+let queue=[],previous=0,accumulator=0,lastHeard=0,audio,files={},clears=new Set();
+const setText=(id,value)=>{if($(id).textContent!==String(value))$(id).textContent=value;};
+function safe(fn){if(!lab)return;try{return fn();}catch(e){paused=true;setText('edit-message',e.message||String(e));sync();}}
+function pause(value=!paused){paused=value;accumulator=0;queue=[];sync();}
+function refreshMetadata(){meta=lab.metadata();try{files=JSON.parse(lab.export_project());}catch{files={};}state=lab.view();renderKnobs();updateInspector();if($('data-dialog').open)renderData();}
+function cleanPlayback(){geometryProbe=null;$('geometry').value='0';queue=[];accumulator=0;lastHeard=0;demonstrating=false;paused=true;setText('replay','Records the entire consumer state, not just move IDs.');setText('edit-message','');}
+function retry(){state=lab.reset();cleanPlayback();sync();}
+function changeMode(next){
+ if(next===mode)return;
+ cleanPlayback();
+ if(next==='trials'){workshop=lab;lab=new Lab(basePack);state=lab.trial(trial);$('speed').value='0.25';}
+ else if(mode==='trials'){lab.free();lab=workshop;workshop=null;}
+ mode=next;refreshMetadata();renderExperiment();sync();
 }
-function input() {
-  let bits = 0;
-  for (const code of down) bits |= keys.get(code) || 0;
-  for (const bit of pointers.values()) bits |= bit;
-  return bits;
+function selectExperiment(index){cleanPlayback();if(mode==='trials'){trial=index;state=lab.trial(trial);}else{lesson=index;state=lab.reset();if(lesson>0&&state.editable&&meta.settings.recovery===12)lab.edit('recovery','4');if(lesson===4)$('boxes').checked=true;}refreshMetadata();renderExperiment();sync();}
+function renderExperiment(){
+ const options=mode==='trials'?meta.trials.map((t,i)=>`${clears.has(i)?'✓ ':''}${i+1}. ${t.name}`):lessons.map((l,i)=>`${i+1}. ${l.title}`);
+ $('experiment').replaceChildren(...options.map((x,i)=>new Option(x,i)));$('experiment').value=mode==='trials'?trial:lesson;
+ setText('experiment-label',mode==='trials'?'TRIAL':'EXPERIMENT');
+ setText('mission-title',mode==='trials'?meta.trials[trial].name:mode==='sandbox'?'Your data. Your experiment.':lessons[lesson].title);
+ setText('mission-text',mode==='trials'?'Watch once, then land the route yourself. Try ¼ speed; the dummy guards every gap.':mode==='sandbox'?'Press 1–4 or tap a move. Experiment settings stay editable; nothing runs a second JS combat model.':lessons[lesson].text);
+ for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));
+ $('trial-help').hidden=mode!=='trials';$('variant-tools').hidden=mode==='trials'||!lessons[lesson].variants;$('export-tools').hidden=mode==='trials'||!lessons[lesson].exports;$('geometry-tools').hidden=mode==='trials'||lesson!==4;
+ setText('inspector-title',mode==='trials'?'FROZEN RULES. YOUR EXECUTION.':'ONE CHANGE. REAL DATA.');
+ setText('inspector-copy',mode==='trials'?'Clear means real uninterrupted hits, using the specified link or cancel.':lessons[lesson].copy);
+ setText('run',mode==='trials'?'▶ Watch demo':lessons[lesson].variants?'▶ Run example':'▶ Run sequence');
+ $('next').disabled=mode==='trials'?trial===3:lesson===7;
+ renderKnobs();updateInspector();
 }
-function queuePress(bit) {
-  if (bit & 112) { queued |= bit; queuedDirection = input() & 15; }
+function renderKnobs(){
+ $('knobs').replaceChildren();if(!meta||mode==='trials')return;
+ for(const key of lessons[lesson].fields.filter(k=>state.editable||['distance','dummy'].includes(k))){
+  const spec=fields[key],row=document.createElement('div');row.className='knob';
+  const label=document.createElement('label');label.htmlFor=`edit-${key}`;label.textContent=spec[0];
+  const input=document.createElement(spec[1]==='select'?'select':'input');input.id=`edit-${key}`;input.dataset.field=key;
+  if(spec[1]==='select'){for(const [val,name] of spec[2])input.add(new Option(name,val));}
+  else if(spec[1]==='check')input.type='checkbox';
+  else {input.type=spec[1]==='number'?'number':'range';input.min=spec[1]==='number'?spec[2]:spec[1];input.max=spec[1]==='number'?spec[3]:spec[2];input.step='1';}
+  const value=key==='distance'?state.distance:key==='dummy'?state.dummy:meta.settings[key];
+  if(input.type==='checkbox')input.checked=value;else input.value=value;
+  input.disabled=state.trial>=0||(!state.editable&&!['distance','dummy'].includes(key));
+  row.append(label,input);
+  if(input.type==='range'){const output=document.createElement('output');output.htmlFor=input.id;output.textContent=value;row.append(output);input.addEventListener('input',()=>output.textContent=input.value);}
+  input.addEventListener('change',()=>safe(()=>{
+   paused=true;queue=[];
+   const value=input.type==='checkbox'?input.checked:key==='condition'?input.value:Number(input.value);
+   try{if(key==='distance'||key==='dummy'){state=lab.dummy(key==='dummy'?value:state.dummy,key==='distance'?value:state.distance);}else{lab.edit(key,JSON.stringify(value));}}
+   finally{refreshMetadata();sync();}
+   lastHeard=0;demonstrating=false;if(Number($('geometry').value)){geometryProbe=lab.geometry(Number($('geometry').value),state.distance);sync();}setText('edit-message',['distance','dummy'].includes(key)?'Consumer setting changed; attempt reset.':`Compiled ${meta.pack_bytes.toLocaleString()} bytes of FSPK in WASM. Attempt reset; data is live.`);
+  }));
+  $('knobs').append(row);
+ }
 }
-function consumeInput() {
-  // A quick directional attack must keep the modifier even if released before RAF.
-  const mask = queued ? (input() & 112) | queued | queuedDirection : input();
-  queued = queuedDirection = 0;
-  return mask;
+function updateInspector(){
+ if(!meta)return;
+ const jab=meta.moves.find(m=>m.input==='jab'),follow=meta.moves.find(m=>m.input==='follow');
+ setText('mini-stats',`Jab ${jab.startup}/${jab.active}/${jab.recovery} · on hit ${signed(jab.on_hit)}f · Follow ${follow.startup}f startup`);
+ setText('edit-state',state.editable?'LIVE FSPK COMPILER':state.trial>=0?'TRIAL LOCK':'IMPORTED BINARY');
+ $('reset-edits').disabled=mode==='trials';$('download-project').disabled=!state.editable;
+ setText('build-state',`${meta.moves.length} STATES · FSPK v2`);
+ $('moves').querySelector('[data-command="4"] small').textContent=meta.moves.find(m=>m.input==='finisher').resolved.costs.map(c=>`${c.amount} ${c.name.toUpperCase()}`).join(' + ');
 }
-function clearInput() { down.clear(); pointers.clear(); queued = queuedDirection = 0; showHeld(); }
-function showHeld() {
-  const mask = input();
-  document.querySelectorAll('[data-input]').forEach(b => b.setAttribute('aria-pressed', String(!!(mask & Number(b.dataset.input)))));
+function signed(n){return n==null?'—':n>=0?`+${n}`:String(n);}
+function sync(){
+ if(!state)return;
+ setText('pause',paused?'▶ Play':'Ⅱ Pause');
+ setText('energy',`ENERGY ${state.energy} / ${meta.resources.find(r=>r.name==='energy')?.max??100}`);$('meter').value=state.energy;
+ setText('ammo',`AMMO ${'●'.repeat(state.ammo)}${'○'.repeat(Math.max(0,3-state.ammo))}`);
+ setText('combo',state.max_combo);setText('damage',`${state.damage} damage · ${state.links} links / ${state.cancels} cancels`);
+ setText('dummy-caption',['NEVER GUARD','GUARD HIGH','GUARD LOW','GUARD AFTER FIRST HIT'][state.dummy]);
+ const p=state.actors[0],d=state.actors[1];setText('dummy-state',d.stun_remaining?`${phases[d.phase].toUpperCase()} ${d.stun_remaining}f`:phases[d.phase].toUpperCase());
+ setText('phase',`${p.move_name.toUpperCase()} · ${phases[p.phase].toUpperCase()} ${p.frame}${state.freeze?' · HITSTOP':''}`);setText('frame',`f ${state.tick}`);
+ let reason=state.reason;
+ if(state.trial<0&&state.blocks>0&&state.dummy===3&&state.links===0)reason='The follow-up got blocked. The dummy recovered first: shorten Jab recovery.';
+ if(state.trial<0&&state.hits===0&&state.notices.some(n=>n.kind===meta.trace_kinds.whiff))reason='Whiff: the active boxes never reached the dummy. Try less distance or more reach.';
+ if(geometryProbe){reason=`GEOMETRY QUERY: ${geometryProbe.overlap?'OVERLAP':'SEPARATE'}. These are helper inputs, not an attack. Run returns to combat.`;setText('phase','GEOMETRY HELPER · NO COMBAT TICK');}setText('reason',reason);
+ const route=mode==='trials'?meta.trials[trial].route:lessons[lesson].variants?[Number($('variant').value)===1?5:Number($('variant').value)===2?6:Number($('variant').value)===3?7:1]:[1,2,3,4];
+ const next=mode==='trials'&&!state.trial_failed&&!state.trial_clear?route[state.trial_progress]:0;
+ const ready=next?state.available.find(a=>a.command===next):null;
+ setText('hint',mode==='trials'?(state.manual?(state.trial_clear?'Clear earned. Retry, or take the next trial.':state.trial_failed?'Retry to start a fresh attempt.':`${ready?.allowed?'NOW':'WAIT'} → ${next} · ${names[next]}. ${ready?.reason||''}`):'DEMONSTRATION ONLY · press Retry or a move to begin your manual attempt.'):`${state.events} authored events · ${state.blocks} blocked contacts · ${paused?'Paused — step or run':'Live'} · no timer-based combo credit`);
+ for(const b of $('moves').children){const command=Number(b.dataset.command),a=state.available.find(a=>a.command===command);b.classList.toggle('can',a.allowed);b.classList.toggle('next',command===next);b.title=`${names[command]}: ${a.reason}`;}
+ const routeKey=JSON.stringify([route,state.trial_progress,state.trial_clear,mode]);
+ if($('route').dataset.key!==routeKey){$('route').dataset.key=routeKey;$('route').replaceChildren();route.forEach((cmd,i)=>{if(i){const e=document.createElement('span');e.className='edge';e.textContent=route[i-1]===1&&cmd===2?'→ LINK →':'⇢ CANCEL ⇢';$('route').append(e);}const n=document.createElement('span');n.className='node'+(mode==='trials'&&i<state.trial_progress?' done':'')+(cmd===next?' expected':'');n.textContent=`${cmd>4?'':cmd+' · '}${names[cmd]}`;$('route').append(n);});}
+ if(state.trial_clear){clears.add(trial);setText('clear-count',`${clears.size}/4`);}
+ $('trial-call').hidden=mode!=='trials'||(!state.trial_clear&&!state.trial_failed);$('trial-call').classList.toggle('failed',state.trial_failed);setText('trial-call',state.trial_clear?'TRIAL CLEAR ✓':'TRY AGAIN · R / RETRY');
+ $('next-trial').hidden=!state.trial_clear||trial===3;
+ setText('inputs','Inputs: '+(state.notices.filter(n=>n.kind===meta.trace_kinds.input).slice(-10).map(n=>`${names[n.command]} @${n.tick}`).join(' · ')||'—'));
+ draw();drawTimeline();
 }
-function overlay(title, text, label, action) {
-  $('overlay').hidden = false;
-  $('overlay-title').textContent = title;
-  $('overlay-text').textContent = text;
-  $('overlay-label').textContent = label;
-  $('play').textContent = action;
+function startDemo(){cleanPlayback();state=lab.demonstrate(mode==='trials'?0:lessons[lesson].variants?Number($('variant').value):lessons[lesson].demo??0);demonstrating=true;paused=false;enableSound();sync();canvas.focus({preventScroll:true});}
+function attack(command){geometryProbe=null;$('geometry').value='0';if(!state.manual){state=lab.reset();lastHeard=0;}demonstrating=false;queue.push(command);if(queue.length>8)queue.shift();paused=false;enableSound();sync();}
+function tick(){state=lab.step(queue.shift()??0);playEvents();if(state.trial_clear||state.trial_failed){paused=true;queue=[];}if(demonstrating&&!state.auto&&state.actors.every(a=>a.phase===0)){paused=true;demonstrating=false;}if(state.recorded>=state.limit){paused=true;setText('edit-message','60-second recording limit reached. Retry starts a fresh buffer.');}}
+function loop(now){const dt=previous?Math.min(100,now-previous):0;previous=now;if(lab&&!paused){try{accumulator+=dt*Number($('speed').value);while(accumulator>=1000/60&&!paused){tick();accumulator-=1000/60;}sync();}catch(e){paused=true;queue=[];setText('error',e.message||String(e));$('error').hidden=false;}}requestAnimationFrame(loop);}
+// The original demo's procedural mannequin; pose follows authoritative phase/frame.
+function line(x1,y1,x2,y2,color,width){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+function disk(x,y,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
+function robot(a,index){
+ const phase=phases[a.phase],attack=a.command>0&&a.command!==7,ext=!attack?0:phase==='startup'?-.15:phase==='active'?1:Math.max(0,1-(a.frame-a.startup-a.active)/9);
+ const boxes=a.hitboxes,reach=boxes.length?Math.max(...boxes.map(b=>b.x+b.w)):a.command===3||a.command===6?115:76;
+ const color=a.color,hurt=a.phase===4,guard=a.phase===5||index&&state.dummy>0&&a.phase===0&&state.hits>0;
+ ctx.save();ctx.translate(a.x,a.y);ctx.scale(a.facing,1);if(hurt)ctx.rotate(-.09);
+ line(-8,-32,-16,-6,'#43546f',9);line(8,-30,18,-6,'#7991ab',10);line(-23,-3,-9,-3,color,7);line(13,-3,29,-3,color,7);
+ ctx.fillStyle=index?'#67513f':'#d8e6df';ctx.fillRect(-17,-65,34,35);line(-15,-62,7,-37,color,6);line(15,-62,-7,-37,'#324e5b',6);line(-20,-32,20,-32,color,5);
+ ctx.fillStyle='#b6c1c7';ctx.fillRect(-6,-73,12,10);ctx.fillStyle='#273c55';ctx.fillRect(-13,-88,27,20);ctx.fillStyle=color;ctx.fillRect(-15,-90,30,6);ctx.fillStyle='#f9f5d6';ctx.fillRect(1,-80,14,4);line(-14,-84,-32,-77,color,4);line(-31,-77,-39,-81,color,3);
+ let hx=guard?23:26+ext*Math.max(15,reach-33),hy=guard?-73:-53;
+ line(-14,-59,-24,-37,'#59718c',8);disk(-24,-35,8,color);line(14,-59,(hx+14)/2,hy+10,'#7f99b1',9);line((hx+14)/2,hy+10,hx,hy,color,10);disk(hx,hy,8,color);
+ if(attack&&phase==='startup'){ctx.strokeStyle='#f1cb76';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hx,hy,14,-.7,4.4);ctx.stroke();}
+ if(attack&&phase==='active'){ctx.strokeStyle=a.command===4?'#ffdf99':color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(hx-10,hy,26,-1.1,1.1);ctx.stroke();if([3,4,5,6].includes(a.command)){line(hx,hy,reach,hy,color+'66',18);disk(reach-10,hy,13,color+'88');}}
+ if(guard){ctx.strokeStyle='#eeb98b99';ctx.lineWidth=2;ctx.beginPath();ctx.arc(10,-49,42,-1.2,1.2);ctx.stroke();}
+ ctx.restore();
 }
-function newMatch(run = false) {
-  clearInput();
-  game?.free();
-  game = new Arena(packs[$('fighter').value], packs[$('rival').value], seed, Number($('mode').value));
-  state = game.view();
-  paused = !run; started = run; accumulator = 0; lastContact = 0;
-  $('replay').textContent = 'Ready to compare the complete recorded match, one Rust state at a time.';
-  if (run) $('overlay').hidden = true;
-  else overlay(`${state.actors[0].name} vs ${state.actors[1].name}`, `${state.actors[0].style.toUpperCase()} — ${styleTip(state.actors[0].style)} Three stocks. Build damage, then knock your rival out.`, 'CHOOSE ABOVE. SETTLE IT BELOW.', 'FIGHT');
-  const a = state.actors[0];
-  $('tip').textContent = `K: ${a.special} · ↑+K: recover · ↓+K: ${a.super_name} (50 energy)`;
-  $('status').textContent = 'Build % to launch farther · Space twice: double jump · ↓+Space: drop through';
-  update();
+function sizeCanvas(element){const r=element.getBoundingClientRect(),ratio=Math.min(devicePixelRatio||1,2);if(!r.width||!r.height)return null;const w=Math.round(r.width*ratio),h=Math.round(r.height*ratio);if(element.width!==w||element.height!==h){element.width=w;element.height=h;}const c=element.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);return[c,r.width,r.height];}
+function draw(){
+ const sized=sizeCanvas(canvas);if(!sized)return;const[,W,H]=sized;const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#132235');bg.addColorStop(1,'#263954');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+ for(let x=0;x<W;x+=36)line(x,70,x,H,'#b1d4e507',1);for(let y=82;y<H;y+=30)line(0,y,W,y,'#b1d4e507',1);
+ if(!state)return;
+ const unit=Math.min((W-24)/310,(H-90)/112),originX=W*.31,originY=H-27;
+ ctx.save();ctx.translate(originX,originY);ctx.scale(unit,unit);
+ line(-150,3,310,3,'#769fb866',2);for(let x=-120;x<300;x+=30)line(x,3,x,8,'#769fb84d',1);
+ for(const a of state.actors){ctx.fillStyle='#07132166';ctx.beginPath();ctx.ellipse(a.x,4,28,6,0,0,Math.PI*2);ctx.fill();}robot(state.actors[0],0);robot(state.actors[1],1);
+ const spark=state.notices.slice().reverse().find(n=>n.kind===meta.trace_kinds.event&&n.aux===meta.event_kinds.spark),age=spark?state.tick-spark.tick:999;
+ if(spark&&age<11){const r=Math.max(4,spark.value)*Math.max(4,Math.min(48,Number(meta.character.properties.spark_size)||18))/18+(reduced?0:age),x=state.actors[1].x-18,y=-51;for(let i=0;i<8;i++){const a=i*Math.PI/4;line(x+Math.cos(a)*r*.35,y+Math.sin(a)*r*.35,x+Math.cos(a)*r,y+Math.sin(a)*r,'#ffe5ae',2);}}
+ if($('boxes').checked)for(const a of state.actors)for(const[kind,boxes]of [['hurt',a.hurtboxes],['hit',a.hitboxes],['push',a.pushboxes]])for(const b of boxes){ctx.fillStyle=kind==='hit'?'#ff67732a':kind==='push'?'#ffd27d08':'#75d7ff16';ctx.strokeStyle=kind==='hit'?'#ff929e':kind==='push'?'#ffd27d':'#80d5ff';ctx.lineWidth=1;ctx.setLineDash(kind==='push'?[3,3]:[]);ctx.fillRect(a.x+b.x,a.y+b.y,b.w,b.h);ctx.strokeRect(a.x+b.x,a.y+b.y,b.w,b.h);}ctx.setLineDash([]);
+ if(geometryProbe)for(const [i,b]of geometryProbe.shapes.entries()){const color=i?'#ffa76b':'#55e1ca';ctx.strokeStyle=color;ctx.fillStyle=color+'33';ctx.lineWidth=2;if(b.kind==='circle'){ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();ctx.stroke();}else if(b.kind==='aabb'){ctx.fillRect(b.x,b.y,b.w,b.h);ctx.strokeRect(b.x,b.y,b.w,b.h);}else{line(b.x1,b.y1,b.x2,b.y2,color+'66',b.r*2);line(b.x1,b.y1,b.x2,b.y2,color,2);}}
+ ctx.restore();
 }
-function pause(value = !paused) {
-  if (!game || state.winner) return;
-  paused = value; accumulator = 0; clearInput();
-  if (paused) overlay('Paused', 'The simulation clock is stopped. Open Runtime lab to step, checkpoint or verify.', 'TIME TO THINK', 'Resume bout');
-  else { started = true; $('overlay').hidden = true; canvas.focus({ preventScroll: true }); }
-  update();
+function drawTimeline(){
+ const sized=sizeCanvas($('timeline'));if(!sized||!state)return;const[c,W,H]=sized;c.fillStyle='#0b1720';c.fillRect(0,0,W,H);const left=42,rows=[6,H/2+2],height=H/2-5,samples=state.samples,width=(W-left-3)/Math.max(80,samples.length);
+ c.font='9px ui-monospace,monospace';c.fillStyle='#b9c9d4';c.fillText('RELAY',1,rows[0]+height-2);c.fillText('DUMMY',1,rows[1]+height-2);
+ samples.forEach((s,i)=>{for(const[row,phase]of [[0,s.player],[1,s.dummy]]){c.fillStyle=colors[phase];c.globalAlpha=s.freeze?.38:.85;c.fillRect(left+i*width,rows[row],Math.max(1,width-.5),height);}c.globalAlpha=1;if(s.contact){c.fillStyle='#fff4ce';c.fillRect(left+i*width,0,Math.max(1,width),3);}});
+ c.globalAlpha=1;c.strokeStyle='#ffffff88';c.beginPath();c.moveTo(left+samples.length*width,0);c.lineTo(left+samples.length*width,H);c.stroke();
 }
-function sound(contact) {
-  if (!$('sound').checked || !audio || audio.state !== 'running') return;
-  const oscillator = audio.createOscillator(), gain = audio.createGain();
-  oscillator.type = 'triangle';
-  oscillator.frequency.setValueAtTime(160, audio.currentTime);
-  oscillator.frequency.exponentialRampToValueAtTime(42, audio.currentTime + .09);
-  gain.gain.setValueAtTime(.035, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(.0001, audio.currentTime + .11);
-  oscillator.connect(gain); gain.connect(audio.destination);
-  oscillator.start(); oscillator.stop(audio.currentTime + .12);
+async function enableSound(){try{if($('sound').checked){audio ||= new AudioContext();await audio.resume();}}catch{$('sound').checked=false;}}
+function playEvents(){for(const n of state.notices){if(n.seq<=lastHeard)continue;lastHeard=n.seq;if(n.kind!==meta.trace_kinds.event||!audio||!$('sound').checked)continue;const o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime;o.type='triangle';o.frequency.setValueAtTime(n.aux===meta.event_kinds.spark?680:n.aux===meta.event_kinds.charge?310:470,t);o.frequency.exponentialRampToValueAtTime(140,t+.055);g.gain.setValueAtTime(.035,t);g.gain.exponentialRampToValueAtTime(.001,t+.07);o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+.075);}}
+function renderData(){
+ const query=$('filter').value.toLowerCase(),sort=$('sort').value;const moves=meta.moves.filter(m=>`${m.name} ${m.id} ${m.tags.join(' ')}`.toLowerCase().includes(query)).sort((a,b)=>sort==='name'?a.name.localeCompare(b.name):sort==='startup'?a[sort]-b[sort]:b[sort]-a[sort]);
+ $('frame-rows').replaceChildren(...moves.map(m=>{const row=document.createElement('tr');for(const text of [m.name,`${m.startup} / ${m.active} / ${m.recovery}`,m.resolved.hits?.map(h=>h.damage).join(' + ')??m.damage,`${signed(m.on_hit)} / ${signed(m.on_block)}`,m.tags.join(' · ')]){const td=document.createElement('td');td.textContent=text;row.append(td);}return row;}));
+ const rules=meta.cancel_table.tag_rules;setText('graph',rules.map(r=>`${r.from} → ${r.to} [${r.on}, frames ${r.after_frame??0}–${r.before_frame??255}]`).join('   |   ')+(Object.keys(meta.cancel_table.deny??{}).length?'   ·   Explicit deny: '+JSON.stringify(meta.cancel_table.deny):''));
+ renderDataItems();
 }
-function step(mask) {
-  state = game.step(mask);
-  if (state.contact.serial !== lastContact) { sound(state.contact); lastContact = state.contact.serial; }
-  if (state.winner) {
-    paused = true; clearInput();
-    overlay(['', 'You win.', `${state.actors[1].name} wins.`, 'A dead heat.'][state.winner],
-      `${state.actors[0].stocks} — ${state.actors[1].stocks} stocks · Switch fighters above or run it back.`,
-      state.remaining ? 'KNOCKOUT' : 'TIME LIMIT', 'Rematch');
-    $('status').textContent = `Bout complete · ${state.tick} simulated frames · replay available`;
-  }
+function renderDataItems(){const old=$('data-item').value,source=$('data-kind').value==='source';const options=source?Object.keys(files):meta.moves.map(m=>m.id);$('data-item').replaceChildren(...options.map(x=>new Option(x,x)));if(options.includes(old))$('data-item').value=old;else if(!source)$('data-item').value='jab';$('data-item').disabled=!['source','resolved'].includes($('data-kind').value);renderJson();}
+function renderJson(){const kind=$('data-kind').value,item=$('data-item').value;let value=kind==='source'?files[item]:kind==='cancels'?meta.cancel_table:kind==='resources'?meta.character:kind==='registry'?meta.rules:kind==='geometry'?geometryProbe:meta.moves.find(m=>m.id===item)?.resolved;setText('json',typeof value==='string'?value:JSON.stringify(value??{note:'This imported runtime pack has no editable overlay source.'},null,2));setText('source-note',kind==='source'?'The project ZIP contains these exact source files, including globals and the variant overlay.':'Resolved fields are decoded from the current binary. Authoring support is not a promise that this host executes every field.');}
+function download(name,bytes,type){const url=URL.createObjectURL(new Blob([bytes],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+// Stored ZIP: tiny text-only project, no dependency or compression needed.
+function projectZip(project){
+ const parts=[],central=[],encoder=new TextEncoder();let offset=0;
+ const crc=bytes=>{let c=0xffffffff;for(const b of bytes){c^=b;for(let n=0;n<8;n++)c=c&1?(c>>>1)^0xedb88320:c>>>1;}return(c^0xffffffff)>>>0;};
+ for(const[path,value]of Object.entries(project)){
+  if(!/^[a-zA-Z0-9_~./-]+$/.test(path)||path.startsWith('/')||path.split('/').includes('..'))throw new Error('Unsafe project filename');
+  if(typeof value!=='string')throw new Error('Project files must be native-serialized text');
+  const name=encoder.encode('framesmith-lab/'+path),bytes=encoder.encode(value+'\n'),sum=crc(bytes),header=new Uint8Array(30+name.length),v=new DataView(header.buffer);
+  v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x800,true);v.setUint16(12,33,true);v.setUint32(14,sum,true);v.setUint32(18,bytes.length,true);v.setUint32(22,bytes.length,true);v.setUint16(26,name.length,true);header.set(name,30);parts.push(header,bytes);
+  const entry=new Uint8Array(46+name.length),c=new DataView(entry.buffer);c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x800,true);c.setUint16(14,33,true);c.setUint32(16,sum,true);c.setUint32(20,bytes.length,true);c.setUint32(24,bytes.length,true);c.setUint16(28,name.length,true);c.setUint32(42,offset,true);entry.set(name,46);central.push(entry);offset+=header.length+bytes.length;
+ }
+ const centralSize=central.reduce((s,b)=>s+b.length,0),end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,central.length,true);e.setUint16(10,central.length,true);e.setUint32(12,centralSize,true);e.setUint32(16,offset,true);return new Blob([...parts,...central,end],{type:'application/zip'});
 }
-function update() {
-  if (!state) return;
-  for (const [i,a] of state.actors.entries()) {
-    const p=`p${i+1}`;
-    $(`${p}-name`).textContent=a.name.toUpperCase();
-    $(`${p}-damage`).textContent=`${a.damage}%`;
-    $(`${p}-damage`).classList.toggle('danger',a.damage>=100);
-    $(`${p}-stocks`).textContent='●'.repeat(a.stocks)+'○'.repeat(3-a.stocks);
-    $(`${p}-stocks`).setAttribute('aria-label',`${a.stocks} stocks remaining`);
-    $(`${p}-meter`).max=a.max_meter;$(`${p}-meter`).value=a.meter;
-    $(`${p}-charge`).textContent=`${a.meter} ENERGY${a.meter>=50?' · BURST READY':''}`;
-  }
-  const seconds=Math.ceil(state.remaining/60);
-  $('clock').textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
-  $('bout-state').textContent=state.winner?'MATCH COMPLETE':paused?'PAUSED':state.mode?'PRACTICE':'THREE STOCKS';
-  $('pause').textContent=paused?'Resume · P':'Pause · P';
-  document.querySelector('.special').classList.toggle('ready',state.actors[0].meter>=50);
-  $('debug').textContent=state.actors.map((a,i)=>`${i?'CPU':'YOU'} ${a.id} ${a.frame}/${a.total} · platform ${a.platform} · jumps ${a.jumps_remaining} · recovery ${a.recovery_ready}`).join('\n')+
-    `\nTick ${state.tick} · hitstop ${state.hitstop} · checkpoint ${state.checkpoint}\nHits ${state.stats.hits.join('/')} · cancels ${state.stats.cancels.join('/')} · ring-outs ${state.stats.kos.join('/')}\nEnergy spent ${state.stats.spent.join('/')} · authored signals ${state.stats.signals.join('/')}`;
-  const c=state.contact,visible=c.serial&&state.tick-c.tick<24;
-  $('impact').textContent=visible?`${c.kind===2?'THROW · ':c.counter?'COUNTER · ':''}+${c.damage}%`:'';
-  $('impact').style.color=state.actors[c.who].color;
-  $('combo').textContent=state.actors[1].combo>1?`${state.actors[1].combo} HIT`:'';
-  const burst=state.super_tick&&state.tick-state.super_tick<25;
-  $('round-call').textContent=state.ko_tick&&state.tick-state.ko_tick<65?'RING OUT!':burst?state.actors[state.super_who].super_name.toUpperCase():!paused&&state.tick<65?'GO!':'';
-  draw();
-}
-function styleTip(style) { return {shoto:'Fireballs and rising strikes. The all-rounder.',grappler:'Heavyweight throws. Get close and send them flying.',zoner:'Long pokes and rail shots. Build damage from a distance.',rushdown:'Fast movement, quick chains and a lunging special.'}[style]; }
-
-// The canvas is presentation only. Geometry and combat results are returned by Rust.
-function line(x1, y1, x2, y2, color, width) {
-  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-}
-function disk(x, y, radius, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill(); }
-function robot(a, index, unit) {
-  if(a.respawn>0)return;
-  const attack = !['idle','guard','crouch','jump','stun','landing'].includes(a.id);
-  const phase = a.phase, crouch = a.crouching, big = a.style === 'grappler', caster = a.style === 'zoner', fast = a.style === 'rushdown';
-  const ext = !attack ? 0 : phase === 'startup' ? -.15 : phase === 'active' ? 1 : Math.max(0,1-(a.frame-a.startup-a.active)/9);
-  const hurt = state.contact.serial && state.contact.who !== index && state.tick-state.contact.tick<8;
-  const color = hurt ? '#fff6dc' : a.color;
-  ctx.save(); ctx.translate(a.x,a.y);ctx.scale(a.facing,1);
-  if(a.invulnerable){ctx.strokeStyle='#e6eaff88';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,-a.height/2,a.width*.9,a.height*.65,0,0,Math.PI*2);ctx.stroke();}
-  const sy=(crouch?52:a.height)/88, sx=a.width/36;
-  const stride = !reduced && phase==='ready' && a.platform>=0 && Math.abs(a.vx)>0 ? Math.sin(state.tick*.5)*9:0;
-  const air=a.platform<0, low=a.id==='low', kick=['heavy','air_medium','air_heavy','air_special'].includes(a.id);
-  if (fast && attack && ext>0 && !reduced) for(let i=1;i<4;i++) line(-i*14,-40*sy,-i*14-22,-40*sy,a.color+'55',3);
-  ctx.save();ctx.scale(sx,sy);
-  if (caster) {ctx.fillStyle='#403454';ctx.beginPath();ctx.moveTo(-15,-64);ctx.lineTo(16,-64);ctx.lineTo(28,-16);ctx.lineTo(-26,-16);ctx.fill();line(-24,-18,24,-18,color,3);}
-  line(-8,-32,-16+stride,air?-20:-6,'#43546f',big?13:9);
-  const footX=kick&&ext>0?(a.reach-12)/sx:18-stride;
-  const footY=kick&&ext>0?-47:air?-26:-6;
-  line(8,-30,footX,footY,fast?color:'#7991ab',big?13:10);
-  line(-23+stride,air?-18:-3,-9+stride,air?-18:-3,color,7);
-  line(footX-5,footY+3,footX+11,footY+3,color,7);
-  ctx.fillStyle=big?'#67462f':caster?'#2e2941':fast?'#53293d':'#d8e6df';ctx.fillRect(-17,-65,34,35);
-  if (a.style==='shoto'){line(-15,-62,7,-37,color,6);line(15,-62,-7,-37,'#324e5b',6);line(-20,-32,20,-32,color,5);line(-6,-31,-17,-13,color,4);}
-  else {ctx.fillStyle=color;ctx.fillRect(-18,-65,36,10);ctx.fillRect(-10,-52,20,12);}
-  if(big){disk(-19,-58,12,color);disk(19,-58,12,color);line(-15,-33,15,-33,'#e8d39d',7);}
-  if(fast){line(-10,-72,-31,-58,color,7);line(-30,-58,-37,-35,color,5);}
-  ctx.fillStyle='#b6c1c7';ctx.fillRect(-6,-73,12,10);
-  ctx.fillStyle=big?'#75605b':'#273c55';ctx.fillRect(-13,-88,27,20);
-  ctx.fillStyle=color;ctx.fillRect(-15,-90,30,6);
-  ctx.fillStyle='#f9f5d6';ctx.fillRect(1,-80,14,4);
-  if(a.style==='shoto'){line(-14,-84,-32,-77,color,4);line(-31,-77,-39,-81,color,3);}
-  if(caster){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,-80,20,.4,5.8);ctx.stroke();}
-  ctx.restore();
-  let hx=26*sx,hy=-50*sy;
-  if(attack&&!kick){hx=26+ext*Math.max(15,a.reach-33);hy=low?-17:['anti_air','launch','air_up'].includes(a.id)?-105:-53*sy;}
-  const glove=big?12:8;
-  line(-14*sx,-59*sy,-24*sx,-37*sy,'#59718c',big?12:8);disk(-24*sx,-35*sy,glove,color);
-  line(14*sx,-59*sy,(hx+14)/2,hy+10,'#7f99b1',big?12:9);line((hx+14)/2,hy+10,hx,hy,color,big?14:10);disk(hx,hy,glove,color);
-  if(caster && a.id==='special')disk(hx+10,hy,12,'#d7bcff77');
-  if(phase==='startup'&&attack){ctx.strokeStyle='#ffe4a6';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hx,hy,14+a.frame/2,-.7,4.4);ctx.stroke();}
-  if(phase==='active'&&attack){ctx.strokeStyle=a.id==='burst'?'#fff4b0':color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(kick?a.reach-25:hx-10,kick?-45:hy,26,-1.1,1.1);ctx.stroke();}
-  if(big&&a.id==='anti_air'&&phase==='active'){ctx.strokeStyle=color;ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,-60,82,24,0,0,Math.PI*2);ctx.stroke();}
-  ctx.restore();
-  ctx.fillStyle=index?'#ffcfa9':'#c1fff1';ctx.font=`bold ${Math.max(10,10/unit)}px system-ui`;ctx.textAlign='center';ctx.fillText(index?'CPU':'YOU',a.x,a.y-a.height-12);
-}
-function draw() {
-  const bounds=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2),W=bounds.width,H=bounds.height;
-  if(!W||!H)return;
-  const pw=Math.round(W*dpr),ph=Math.round(H*dpr);if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph;}
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#10172f');bg.addColorStop(.7,'#413355');bg.addColorStop(1,'#172c3b');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-  const floor=H*.84;
-  disk(W*.78,H*.22,Math.min(35,H*.12),'#efd6d099');
-  for(let i=0;i<18;i++){
-    const x=i*W/16-20,h=30+(i*37%89);ctx.fillStyle=i%2?'#17213b':'#1c2742';ctx.fillRect(x,floor*.8-h,W/14,h+H*.3);
-    for(let yy=0;yy<h-12;yy+=15)for(let xx=6;xx<W/15;xx+=12){ctx.fillStyle=(i+xx+yy)%4?'#d5908140':'#75d6d740';ctx.fillRect(x+xx,floor*.8-h+yy+7,4,6);}
-  }
-  if(!state)return;
-  // Fixed arena overview: fighters never drag or zoom one another's camera.
-  const unit=Math.min((W-24)/800,(H-40)/760),originX=(W-800*unit)/2,originY=(H-760*unit)/2+530*unit;
-  const c=state.contact,age=state.tick-c.tick;
-  ctx.save();ctx.translate(originX,originY);ctx.scale(unit,unit);
-  ctx.strokeStyle='#ff9ea044';ctx.lineWidth=2;ctx.setLineDash([10,12]);ctx.strokeRect(state.blast[0],state.blast[1],state.blast[2]-state.blast[0],state.blast[3]-state.blast[1]);ctx.setLineDash([]);
-  for(const [i,p] of state.platforms.entries()){
-    const width=p.right-p.left,depth=i?10:20;
-    ctx.fillStyle=i?'#274957':'#2e3d57';ctx.fillRect(p.left,p.top,width,depth);
-    line(p.left,p.top,p.right,p.top,i?'#91f1dd':'#e5c0ff',4);
-    line(p.left+6,p.top+depth,p.right-6,p.top+depth,'#182439',4);
-    for(let x=p.left+12;x<p.right-10;x+=30)line(x,p.top+5,x+11,p.top+depth-2,'#567589',2);
-    if(!i){ctx.fillStyle='#18253e';ctx.beginPath();ctx.moveTo(p.left+20,p.top+22);ctx.lineTo(p.right-20,p.top+22);ctx.lineTo(p.right-95,p.top+65);ctx.lineTo(p.left+95,p.top+65);ctx.fill();
-      for(const x of [p.left+115,p.right-115]){disk(x,p.top+63,11,'#94c9ff44');line(x-10,p.top+68,x+10,p.top+68,'#92e8ff',3);}}
-  }
-  robot(state.actors[0],0,unit);robot(state.actors[1],1,unit);
-  for(const q of state.projectiles){
-    const color=state.actors[q.owner].color,x=q.x+q.w/2,y=q.y+q.h/2,dir=state.actors[q.owner].facing;
-    line(x-dir*40,y,x,y,color+'55',q.h*.6);ctx.fillStyle=color+'88';ctx.beginPath();ctx.ellipse(x,y,q.w*.65,q.h*.65,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#efffff';ctx.beginPath();ctx.ellipse(x,y,q.w*.35,q.h*.35,0,0,Math.PI*2);ctx.fill();
-    if($('boxes').checked){ctx.strokeStyle='#ff8098';ctx.strokeRect(q.x,q.y,q.w,q.h);}
-  }
-  if(c.serial&&age<15){
-    const color='#ffe7ac';for(let i=0;i<10;i++){const angle=i*Math.PI/5,r=8+age*(reduced?1:2.5);line(c.x+Math.cos(angle)*r,c.y+Math.sin(angle)*r,c.x+Math.cos(angle)*(r+13),c.y+Math.sin(angle)*(r+13),color,3);}
-  }
-  if($('boxes').checked)for(const a of state.actors)for(const [kind,boxes]of [['hurt',a.hurtboxes],['hit',a.hitboxes]]){ctx.fillStyle=kind==='hit'?'#ff677333':'#75d7ff16';ctx.strokeStyle=kind==='hit'?'#ff7682':'#75d7ff';ctx.lineWidth=1;for(const r of boxes){ctx.fillRect(r.x,r.y,r.w,r.h);ctx.strokeRect(r.x,r.y,r.w,r.h);}}
-  ctx.restore();
-}
-function loop(now) {
-  try {
-    const elapsed = previous ? Math.min(now - previous, 100) : 0; previous = now;
-    if (game && started && !paused) {
-      accumulator += elapsed;
-      while (accumulator >= 1000 / 60 && !paused) { step(consumeInput()); accumulator -= 1000 / 60; }
-      update();
-    }
-  } catch (error) { fail(error); }
-  requestAnimationFrame(loop);
-}
-$('play').addEventListener('click', () => { enableSound(); if (state.winner) newMatch(true); else pause(false); canvas.focus({ preventScroll: true }); });
-$('pause').addEventListener('click', () => pause());
-$('reset').addEventListener('click', () => { newMatch(true); canvas.focus({ preventScroll: true }); });
-for(const id of ['mode','fighter','rival']) $(id).addEventListener('change', () => newMatch(false));
-$('boxes').addEventListener('change', draw);
-async function enableSound() {
-  try { if ($('sound').checked) { audio ||= new AudioContext(); await audio.resume(); } }
-  catch { $('sound').checked = false; $('status').textContent = 'Audio unavailable; the game remains playable.'; }
-}
-$('sound').addEventListener('change', enableSound);
-$('step').addEventListener('click', () => { pause(true); step(input()); update(); });
-$('save').addEventListener('click', () => { pause(true); state = game.checkpoint(); $('replay').textContent = `Full-match checkpoint saved at tick ${state.tick}.`; update(); });
-$('restore').addEventListener('click', () => { paused = true; clearInput(); state = game.restore(); lastContact = state.contact.serial; pause(true); $('replay').textContent = `Full-match checkpoint restored to tick ${state.tick}.`; update(); });
-$('verify').addEventListener('click', () => {
-  pause(true);
-  try { const frames = game.verify_replay(); $('replay').textContent = frames ? `PASS · ${frames} frames replayed. Every complete Rust match state is identical.` : 'Record some frames first; an empty replay is not validation.'; }
-  catch (error) { $('replay').textContent = `FAIL · ${error}`; }
-});
-for (const b of document.querySelectorAll('[data-input]')) {
-  b.addEventListener('pointerdown', e => { if (!game || paused) return; e.preventDefault(); b.setPointerCapture(e.pointerId); pointers.set(e.pointerId, Number(b.dataset.input)); queuePress(Number(b.dataset.input)); showHeld(); });
-  b.addEventListener('click', e => { if (e.detail === 0 && game && !paused) { queued |= Number(b.dataset.input); queuedDirection = input() & 15; } });
-  const release = e => { pointers.delete(e.pointerId); showHeld(); };
-  b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
-}
-document.addEventListener('keydown', e => {
-  if (e.target.closest('input,select,summary,button:not([data-input])')) return;
-  if (e.target.closest('button[data-input]') && (e.code === 'Space' || e.code === 'Enter')) return;
-  if (keys.has(e.code)) { e.preventDefault(); if (!paused) { const fresh=!down.has(e.code); down.add(e.code); if(fresh)queuePress(keys.get(e.code)); showHeld(); } }
-  if (!e.repeat && game) {
-    if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); pause(); }
-    if (e.code === 'KeyR') { e.preventDefault(); newMatch(true); }
-  }
-});
-document.addEventListener('keyup', e => { down.delete(e.code); showHeld(); });
-window.addEventListener('blur', () => { if (started && game && !paused) pause(true); else clearInput(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && game && !paused) pause(true); });
-new ResizeObserver(draw).observe(canvas);
-Object.defineProperty(window, 'framesmith', { value: Object.freeze({ snapshot: () => structuredClone(state), paused: () => paused }) });
-
-try {
-  const get = async (url, type) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return type === 'json' ? r.json() : new Uint8Array(await r.arrayBuffer()); };
-  const roster = ['relay','bulwark','sable','zip'];
-  const loaded = await Promise.all([init(), ...roster.map(n=>get(`./packs/${n}.fspk`)), get('./build-info.json', 'json')]);
-  packs = Object.fromEntries(roster.map((name,i)=>[name,loaded[i+1]])); build = loaded[5];
-  newMatch();
-  for (const id of ['play', 'pause', 'reset', 'step', 'save', 'restore', 'verify', 'mode', 'fighter', 'rival']) $(id).disabled = false;
-  $('runtime').textContent = 'RUST / WASM / FSPK v2';
-  const info = game.pack_info();
-  $('provenance').textContent = `${info.map(p => `${p[2]} states / ${p[0]} B / FSPK v${p[1]}`).join(' + ')}\nSeed ${seed} · source ${build.commit.slice(0, 12)}${build.dirty ? ' + local edits' : ''}`;
-  $('status').textContent = 'Build % to launch farther · Direction + J/K changes attacks · Stay on the platforms';
-  if (!build.dirty && /^[0-9a-f]{40}$/.test(build.commit)) $('source').href = `https://github.com/RobDavenport/framesmith/tree/${build.commit}/demo-wasm`;
-  requestAnimationFrame(loop);
-} catch (error) { fail(error); }
+for(const b of document.querySelectorAll('[data-mode]'))b.addEventListener('click',()=>safe(()=>changeMode(b.dataset.mode)));
+for(const b of document.querySelectorAll('[data-command]'))b.addEventListener('click',()=>safe(()=>attack(Number(b.dataset.command))));
+$('experiment').addEventListener('change',()=>safe(()=>selectExperiment(Number($('experiment').value))));
+$('next').addEventListener('click',()=>safe(()=>selectExperiment(Math.min(mode==='trials'?3:7,(mode==='trials'?trial:lesson)+1))));
+$('next-trial').addEventListener('click',()=>safe(()=>selectExperiment(Math.min(3,trial+1))));
+$('run').addEventListener('click',()=>safe(startDemo));$('retry').addEventListener('click',()=>safe(retry));$('pause').addEventListener('click',()=>safe(()=>pause()));
+$('boxes').addEventListener('change',draw);$('sound').addEventListener('change',enableSound);$('speed').addEventListener('change',()=>accumulator=0);
+$('geometry').addEventListener('change',()=>safe(()=>{pause(true);geometryProbe=Number($('geometry').value)?lab.geometry(Number($('geometry').value),state.distance):null;sync();}));
+$('variant').addEventListener('change',()=>safe(()=>{state=lab.reset();cleanPlayback();sync();}));
+$('step').addEventListener('click',()=>safe(()=>{pause(true);tick();sync();}));$('back').addEventListener('click',()=>safe(()=>{pause(true);state=lab.back();lastHeard=0;sync();}));
+$('save').addEventListener('click',()=>safe(()=>{pause(true);state=lab.checkpoint();setText('replay',`Full checkpoint saved at frame ${state.tick}.`);}));
+$('restore').addEventListener('click',()=>safe(()=>{pause(true);state=lab.restore();lastHeard=state.notices.at(-1)?.seq??0;setText('replay',`Full checkpoint restored to frame ${state.tick}.`);sync();}));
+$('verify').addEventListener('click',()=>safe(()=>{pause(true);const n=lab.verify();setText('replay',`PASS · all ${n} complete world states replayed identically.`);}));
+$('reset-edits').addEventListener('click',()=>safe(()=>{const next=new Lab(basePack);lab.free();lab=next;cleanPlayback();refreshMetadata();sync();setText('edit-message','Restored the original editable example.');}));
+$('download-pack').addEventListener('click',()=>safe(()=>download('relay.fspk',lab.export_pack(),'application/octet-stream')));
+$('download-project').addEventListener('click',()=>safe(()=>download('framesmith-lab.zip',projectZip(JSON.parse(lab.export_project())),'application/zip')));
+$('import-pack').addEventListener('change',async()=>{const file=$('import-pack').files[0];if(!file)return;if(file.size>512*1024){setText('edit-message','Pack exceeds the 512 KiB lab limit.');$('import-pack').value='';return;}const bytes=new Uint8Array(await file.arrayBuffer());safe(()=>{const next=new Lab(bytes);lab.free();lab=next;cleanPlayback();refreshMetadata();sync();setText('edit-message',state.editable?'Loaded the editable baseline.':'Imported binary: simulation uses this pack; overlay editing is locked to prevent losing its unknown source.');});$('import-pack').value='';});
+$('invalid').addEventListener('click',()=>safe(()=>setText('edit-message',lab.validation_example())));
+$('inspect').addEventListener('click',()=>safe(()=>{pause(true);renderData();$('data-dialog').showModal();}));$('about').addEventListener('click',()=>{if(lab)pause(true);$('coverage-dialog').showModal();});
+for(const b of document.querySelectorAll('[data-close]'))b.addEventListener('click',()=>$(b.dataset.close).close());
+for(const id of ['filter','sort'])$(id).addEventListener('input',()=>safe(renderData));$('data-kind').addEventListener('change',()=>safe(renderDataItems));$('data-item').addEventListener('change',()=>safe(renderJson));
+document.addEventListener('keydown',e=>{if(!lab||e.repeat||document.querySelector('dialog[open]')||e.target.closest('input,select,textarea,summary'))return;const cmd=/^(?:Digit|Numpad)([1-4])$/.exec(e.code);if(cmd){e.preventDefault();safe(()=>attack(Number(cmd[1])));}else if(e.code==='KeyP'){e.preventDefault();pause();}else if(e.code==='KeyR'){e.preventDefault();safe(retry);}else if(e.code==='Period'){e.preventDefault();safe(()=>{pause(true);tick();sync();});}});
+window.addEventListener('blur',()=>{if(lab)pause(true);});document.addEventListener('visibilitychange',()=>{if(document.hidden&&lab)pause(true);});
+new ResizeObserver(()=>{draw();drawTimeline();}).observe(canvas);
+Object.defineProperty(window,'framesmith',{value:Object.freeze({snapshot:()=>structuredClone(state),metadata:()=>structuredClone(meta),paused:()=>paused,mode:()=>mode})});
+try{
+ const get=async(url,binary)=>{const response=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(20000)});if(!response.ok)throw new Error(`${url}: HTTP ${response.status}`);return binary?new Uint8Array(await response.arrayBuffer()):response.json();};
+ const loaded=await Promise.all([init(),get('./packs/lab.fspk',true),get('./build-info.json')]);basePack=loaded[1];build=loaded[2];lab=new Lab(basePack);refreshMetadata();renderExperiment();
+ for(const b of document.querySelectorAll('#moves button,#run,#retry,#pause,#experiment'))b.disabled=false;
+ $('app').setAttribute('aria-busy','false');setText('status',`Build ${build.commit.slice(0,10)}${build.dirty?' + local edits':''} · editable source → real binary → real behavior`);
+ if(!build.dirty&&/^[0-9a-f]{40}$/.test(build.commit))$('source').href=`https://github.com/RobDavenport/framesmith/tree/${build.commit}/demo-wasm`;
+ sync();requestAnimationFrame(loop);
+}catch(e){setText('error',`The lab could not load: ${e.message||e}. Reload to retry.`);$('error').hidden=false;setText('mission-text','The real runtime is unavailable. No substitute simulation is running.');$('app').setAttribute('aria-busy','false');}

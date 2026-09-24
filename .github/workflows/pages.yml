@@ -1,4 +1,4 @@
-name: FrameSmith Arena Pages
+name: FrameSmith Combo Lab Pages
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - 'demo-wasm/**'
       - 'crates/framesmith-runtime/**'
       - 'crates/framesmith-fspack/**'
+      - 'crates/framesmith-authoring/**'
       - 'src-tauri/**'
       - 'package.json'
       - 'package-lock.json'
@@ -43,7 +44,7 @@ jobs:
           tool: wasm-pack@0.10.3
       - name: Install existing test dependencies
         run: npm ci
-      - name: Build real authored packs and test Rust/WASM game
+      - name: Build real authored pack and test Rust/WASM lab
         run: python demo-wasm/build.py
       - name: Formatting and lint
         run: |
@@ -51,7 +52,7 @@ jobs:
           cargo clippy --manifest-path demo-wasm/Cargo.toml --all-targets --locked -- -D warnings
       - name: Install Chromium
         run: npx playwright install chromium
-      - name: Exercise static game at Pages subpath
+      - name: Exercise lab, manual trials and export at Pages subpath
         run: npx playwright test --config demo-wasm/playwright.config.ts
       - uses: actions/upload-pages-artifact@v3
         with:

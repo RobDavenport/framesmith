@@ -1,1407 +1,979 @@
-//! A small game consumer. Combat policy stays here, not in the helper crates.
-use framesmith_fspack::{payload::ValueView, OwnedPack};
+//! A bounded combat-design lab, not a second fighting-game engine.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod authoring;
+use authoring::Settings;
+use framesmith_authoring::schema::{CharacterData, EventEmit, GuardType, ResourceDelta};
+use framesmith_fspack::OwnedPack;
 use framesmith_runtime::{
-    aabb_overlap, check_hits, init_resources, next_frame, report_hit, Aabb, CharacterState,
-    FrameInput, HitResult,
+    can_cancel_to, check_hits, check_pushbox, init_resources, next_frame, report_block, report_hit,
+    CharacterState, FrameInput,
 };
 use serde::Serialize;
-const LEFT: u8 = 1;
-const RIGHT: u8 = 2;
-const UP: u8 = 4;
-const DOWN: u8 = 8;
-const JUMP_BUTTON: u8 = 16;
-const NORMAL: u8 = 32;
-const SPECIAL: u8 = 64;
-const INPUT_BITS: u16 = 127;
-const IDLE: usize = 0;
-const BLOCK: usize = 1;
-const CROUCH: usize = 2;
-const JUMP: usize = 3;
-const JAB: usize = 4;
-const MID: usize = 5;
-const DRIVE: usize = 6;
-const LOW: usize = 7;
-const LAUNCH: usize = 8;
-const AIR_L: usize = 9;
-const AIR_M: usize = 10;
-const AIR_H: usize = 11;
-const SKILL: usize = 12;
-const ANTI: usize = 13;
-const SUPER: usize = 14;
-const STUN: usize = 15;
-const LAND: usize = 16;
-const AIR_S: usize = 17;
-const AIR_UP: usize = 18;
-const IDS: [&str; 19] = [
-    "idle",
-    "guard",
-    "crouch",
-    "jump",
-    "light",
-    "medium",
-    "heavy",
-    "low",
-    "launch",
-    "air_light",
-    "air_medium",
-    "air_heavy",
+use serde_json::{json, Value};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+const ACTIONS: [&str; 7] = [
+    "jab",
+    "follow",
     "special",
-    "anti_air",
-    "burst",
-    "stun",
-    "landing",
-    "air_special",
-    "air_up",
+    "finisher",
+    "multi",
+    "special~charged",
+    "reload",
 ];
-const HZ: u32 = 60; // Demo policy, not a FrameSmith clock requirement.
-const MATCH_FRAMES: u32 = HZ * 180;
-const SCALE: i32 = 256;
-const PROJECTILES: usize = 8;
-const STOCKS: u8 = 3;
-const BLAST: [i32; 4] = [0, -470, 800, 210]; // Left, top, right, bottom; feet coordinates.
-#[derive(Clone, Copy, Debug, Serialize)]
-struct Platform {
-    left: i32,
-    right: i32,
-    top: i32,
-}
-const PLATFORMS: [Platform; 4] = [
-    Platform {
-        left: 120,
-        right: 680,
-        top: 0,
-    },
-    Platform {
-        left: 190,
-        right: 320,
-        top: -95,
-    },
-    Platform {
-        left: 480,
-        right: 610,
-        top: -95,
-    },
-    Platform {
-        left: 335,
-        right: 465,
-        top: -190,
-    },
-];
-fn attacking(role: usize) -> bool {
-    (JAB..=SUPER).contains(&role) || matches!(role, AIR_S | AIR_UP)
-}
-fn number(value: ValueView<'_>) -> Option<f64> {
-    value
-        .as_f64()
-        .or_else(|| value.as_i64().map(|v| v as f64))
-        .or_else(|| value.as_u64().map(|v| v as f64))
-}
-fn required_number(v: ValueView<'_>, key: &str, min: f64, max: f64) -> Result<f64, String> {
-    let n = v
-        .get(key)
-        .and_then(number)
-        .ok_or_else(|| format!("Missing numeric payload: {key}"))?;
-    if !n.is_finite() || n < min || n > max || (n * f64::from(SCALE)).fract() != 0.0 {
-        return Err(format!("Out-of-range or non-quantized payload: {key}"));
-    }
-    Ok(n)
-}
-#[derive(Clone, Copy, Default)]
-struct MoveRule {
-    travel: i32,
-    lift: i32,
-    launch: i32,
-    projectile: bool,
-    projectile_speed: i32,
-    projectile_y: i32,
-    grab: bool,
-    knockdown: bool,
-    projectile_invuln: bool,
-}
+const MAX_FRAMES: usize = 3600;
+const TRACE_LEN: usize = 48;
+// Trace kinds: input, start, link attempt, cancel, hit, block, whiff, rejected,
+// event, resource, gap, trial clear, trial fail, auto end.
+const INPUT: u8 = 1;
+const START: u8 = 2;
+const LINK: u8 = 3;
+const CANCEL: u8 = 4;
+const HIT: u8 = 5;
+const BLOCK: u8 = 6;
+const WHIFF: u8 = 7;
+const DENIED: u8 = 8;
+const EVENT: u8 = 9;
+const RESOURCE: u8 = 10;
+const GAP: u8 = 11;
+const CLEAR: u8 = 12;
+const FAILED: u8 = 13;
+const END: u8 = 14;
+const PUSH: u8 = 15;
+
 struct Definition {
     pack: OwnedPack,
-    ids: [u16; IDS.len()],
-    rules: [MoveRule; IDS.len()],
-    name: String,
-    color: String,
-    style: String,
-    weight: i32,
-    speed: i32,
-    jump: i32,
-    gravity: i32,
-    width: i32,
-    height: i32,
-    counter_bonus: i32,
-    meter: usize,
-    meter_max: u16,
-    bytes: usize,
+    bytes: Vec<u8>,
+    data: CharacterData,
+    ids: [u16; 7],
+    idle: u16,
+    hit: u16,
+    block: u16,
+    energy: usize,
+    ammo: usize,
 }
 impl Definition {
-    fn new(bytes: &[u8]) -> Result<Self, String> {
-        let pack = OwnedPack::new(bytes.to_vec()).map_err(|e| e.to_string())?;
-        let view = pack.view();
-        let root = view
-            .payload()
-            .ok_or("Arena requires full-fidelity FSPK v2")?
-            .root();
-        let character = root.get("character").ok_or("Missing character payload")?;
-        let props = character
-            .get("properties")
-            .ok_or("Missing character properties")?;
-        let text = |v: ValueView<'_>, key: &str| {
-            v.get(key)
-                .and_then(ValueView::as_str)
-                .map(str::to_owned)
-                .ok_or_else(|| format!("Missing {key}"))
+    fn new(bytes: Vec<u8>) -> Result<Self, String> {
+        if bytes.len() > 1024 * 1024 {
+            return Err("Lab pack exceeds 1 MiB".into());
+        }
+        let pack = OwnedPack::new(bytes.clone()).map_err(|e| format!("Invalid FSPK: {e:?}"))?;
+        let p = pack.view();
+        let payload = p.payload().ok_or("The lab requires FSPK v2 typed data")?;
+        let data: CharacterData =
+            serde_json::from_value(payload.root().to_json()).map_err(|e| e.to_string())?;
+        if data.moves.len() > 64 || data.character.resources.len() > 8 {
+            return Err("Lab limits: 64 states, 8 resources".into());
+        }
+        let lookup = |name: &str| -> Result<u16, String> {
+            (0..data.moves.len())
+                .find(|i| p.state_id(*i) == Some(name))
+                .map(|i| i as u16)
+                .ok_or_else(|| format!("Lab pack needs state {name}"))
         };
-        let name = text(character, "name")?;
-        let color = text(props, "color")?;
-        let style = text(props, "style")?;
-        if !["shoto", "grappler", "zoner", "rushdown"].contains(&style.as_str()) {
-            return Err("Unknown archetype".into());
+        let mut ids = [0; 7];
+        for (i, name) in ACTIONS.iter().enumerate() {
+            ids[i] = lookup(name)?;
         }
-        if color.len() != 7
-            || !color.starts_with('#')
-            || !color[1..].bytes().all(|v| v.is_ascii_hexdigit())
-        {
-            return Err("Invalid color".into());
-        }
-        let weight = required_number(props, "weight", 40., 200.)? as i32;
-        let speed = (required_number(props, "walk_speed", 0.25, 8.)? * SCALE as f64) as i32;
-        let jump = (required_number(props, "jump_speed", 4., 14.)? * SCALE as f64) as i32;
-        let gravity = (required_number(props, "gravity", 0.25, 1.)? * SCALE as f64) as i32;
-        let width = required_number(props, "width", 20., 64.)? as i32;
-        let height = required_number(props, "height", 60., 120.)? as i32;
-        let counter_bonus = required_number(props, "counter_bonus", 0., 100.)? as i32;
-        let states = view.states().ok_or("Missing compiled states")?;
-        let mut ids = [0; IDS.len()];
-        let mut rules = [MoveRule::default(); IDS.len()];
-        for (role, name) in IDS.iter().enumerate() {
-            ids[role] = (0..states.len())
-                .find(|&i| view.state_id(i) == Some(*name))
-                .ok_or_else(|| format!("Missing authored state '{name}'"))?
-                as u16;
-            let v = view
-                .state_data(ids[role] as usize)
-                .and_then(|v| v.get("properties"))
-                .ok_or("Missing move properties")?;
-            let n = |k: &str, min: f64, max: f64| -> Result<f64, String> {
-                if v.get(k).is_some() {
-                    required_number(v, k, min, max)
-                } else {
-                    Ok(0.)
-                }
-            };
-            rules[role] = MoveRule {
-                travel: (n("travel", 0., 10.)? * SCALE as f64) as i32,
-                lift: (n("lift", 0., 14.)? * SCALE as f64) as i32,
-                launch: (n("launch", -14., 0.)? * SCALE as f64) as i32,
-                projectile: n("projectile", 0., 1.)? == 1.,
-                projectile_speed: (n("projectile_speed", 0., 12.)? * SCALE as f64) as i32,
-                projectile_y: (n("projectile_y", -8., 8.)? * SCALE as f64) as i32,
-                grab: n("grab", 0., 1.)? == 1.,
-                knockdown: n("knockdown", 0., 1.)? == 1.,
-                projectile_invuln: n("projectile_invuln", 0., 1.)? == 1.,
-            };
-        }
-        // ponytail: attack-local mirroring needs centered AABB body shapes. Reject other fixtures;
-        // add facing-aware arbitrary shape queries only when this consumer needs asymmetric bodies.
-        let shapes = view.shapes().ok_or("Missing shapes")?;
-        if let Some(windows) = view.hurt_windows() {
-            for i in 0..windows.len() {
-                let w = windows.get(i).ok_or("Invalid hurt window")?;
-                for j in 0..usize::from(w.shapes_len()) {
-                    let s = shapes
-                        .get_at(w.shapes_off(), j)
-                        .ok_or("Invalid body shape")?;
-                    if s.kind() != 0 || s.x_px() * 2 + s.width_px() as i32 != 0 {
-                        return Err("Arena requires symmetric AABB hurtboxes".into());
-                    }
-                }
-            }
-        }
-        let resources = view.resource_defs().ok_or("Missing resource definitions")?;
-        let meter = (0..resources.len())
-            .find(|&i| {
-                resources
-                    .get(i)
-                    .is_some_and(|d| view.string(d.name_off(), d.name_len()) == Some("meter"))
-            })
-            .ok_or("Missing meter pool")?;
-        let meter_max = resources.get(meter).ok_or("Invalid meter")?.max();
+        let (idle, hit, block) = (lookup("idle")?, lookup("hitstun")?, lookup("blockstun")?);
+        let index = |n: &str| {
+            data.character
+                .resources
+                .iter()
+                .position(|r| r.name == n)
+                .ok_or_else(|| format!("Missing resource {n}"))
+        };
+        let (energy, ammo) = (index("energy")?, index("ammo")?);
         let mut state = CharacterState::default();
-        if !init_resources(&mut state, &view) {
-            return Err("Unsupported resource capacity".into());
+        if !init_resources(&mut state, &p) {
+            return Err("Unsupported resources".into());
+        }
+        for (i, m) in data.moves.iter().enumerate() {
+            if p.state_id(i) != Some(m.id.as_deref().unwrap_or(&m.input)) {
+                return Err("Pack state ordering differs from payload".into());
+            }
+            let mv = p
+                .states()
+                .and_then(|s| s.get(i))
+                .ok_or("Missing helper state")?;
+            if mv.hit_windows_len() > 64
+                || m.startup as u16 + m.active as u16 + m.recovery as u16 == 0
+            {
+                return Err("Invalid lab timing/window count".into());
+            }
         }
         Ok(Self {
             pack,
+            bytes,
+            data,
             ids,
-            rules,
-            name,
-            color,
-            style,
-            weight,
-            speed,
-            jump,
-            gravity,
-            width,
-            height,
-            counter_bonus,
-            meter,
-            meter_max,
-            bytes: bytes.len(),
+            idle,
+            hit,
+            block,
+            energy,
+            ammo,
         })
     }
-    fn role(&self, s: &CharacterState) -> usize {
+    fn command(&self, id: u16) -> u8 {
         self.ids
             .iter()
-            .position(|&id| id == s.current_state)
-            .unwrap_or(STUN)
+            .position(|x| *x == id)
+            .map_or(0, |i| i as u8 + 1)
     }
-    fn actor(&self, x: i32, facing: i32) -> Actor {
-        let mut state = CharacterState {
-            current_state: self.ids[IDLE],
+    fn state(&self, id: u16) -> &framesmith_authoring::schema::State {
+        &self.data.moves[id as usize]
+    }
+    fn phase(&self, s: &CharacterState) -> u8 {
+        if s.current_state == self.idle {
+            0
+        } else if s.current_state == self.hit {
+            4
+        } else if s.current_state == self.block {
+            5
+        } else {
+            let m = self.state(s.current_state);
+            if s.frame < u16::from(m.startup) {
+                1
+            } else if s.frame < u16::from(m.startup) + u16::from(m.active) {
+                2
+            } else {
+                3
+            }
+        }
+    }
+    fn fresh(&self) -> CharacterState {
+        let mut s = CharacterState {
+            current_state: self.idle,
             ..Default::default()
         };
-        assert!(init_resources(&mut state, &self.pack.view()));
-        Actor {
-            state,
-            x: x * SCALE,
-            facing,
-            stocks: STOCKS,
-            platform: 0,
-            ..Default::default()
+        assert!(init_resources(&mut s, &self.pack.view()));
+        s
+    }
+    fn reason(&self, s: &CharacterState, target: u16) -> String {
+        if can_cancel_to(s, &self.pack.view(), target) {
+            return "Available now".into();
         }
+        if self.pack.view().has_cancel_deny(s.current_state, target) {
+            return "Explicit deny overrides the tag rule".into();
+        }
+        let m = self.state(target);
+        for cost in m.costs.as_deref().unwrap_or(&[]) {
+            if let framesmith_authoring::schema::Cost::Resource { name, amount } = cost {
+                if let Some(i) = self
+                    .data
+                    .character
+                    .resources
+                    .iter()
+                    .position(|r| r.name == *name)
+                {
+                    if s.resources[i] < *amount {
+                        return format!(
+                            "Needs {amount} {name}; you have {}. Nothing spent.",
+                            s.resources[i]
+                        );
+                    }
+                }
+            }
+        }
+        let from = self.state(s.current_state);
+        let matches = |tag: &str, state: &framesmith_authoring::schema::State| {
+            tag == "any"
+                || state.input == tag
+                || state.id.as_deref() == Some(tag)
+                || state.tags.iter().any(|t| t.as_str() == tag)
+        };
+        for rule in &self.data.cancel_table.tag_rules {
+            if !matches(&rule.from, from) || !matches(&rule.to, m) {
+                continue;
+            }
+            if s.frame < u16::from(rule.after_frame) {
+                return format!(
+                    "Cancel opens at frame {}; now {}",
+                    rule.after_frame, s.frame
+                );
+            }
+            if s.frame > u16::from(rule.before_frame) {
+                return format!("Cancel window closed at frame {}", rule.before_frame);
+            }
+            if !rule.on.matches(s.hit_confirmed, s.block_confirmed) {
+                return "Required hit/block/whiff confirmation is absent".into();
+            }
+        }
+        "No matching tag rule here. Finish recovery to link.".into()
     }
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct Actor {
-    state: CharacterState,
-    x: i32,
-    y: i32,
-    vx: i32,
-    vy: i32,
-    facing: i32,
-    damage: i32,
-    stocks: u8,
-    platform: i8,
-    jumps: u8,
-    recovery_used: bool,
-    drop_timer: u8,
-    respawn: u8,
-    invulnerable: u8,
-    previous_input: u8,
-    control: u8,
-    buffer: u8,
-    buffer_age: u8,
-    connected: bool,
-    serial: u32,
-    combo: u8,
-    combo_damage: i32,
-    throw_immune: u8,
-}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-struct Stats {
-    hits: [u32; 2],
-    cancels: [u32; 2],
-    spent: [u32; 2],
-    signals: [u32; 2],
-    shots: [u32; 2],
-    throws: [u32; 2],
-    air_hits: [u32; 2],
-    max_combo: [u8; 2],
-    kos: [u32; 2],
-    clashes: u32,
-}
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-struct Contact {
+struct Notice {
+    seq: u32,
     tick: u32,
-    who: usize,
-    damage: i32,
-    counter: bool,
-    serial: u32,
-    x: i32,
-    y: i32,
     kind: u8,
-}
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct Projectile {
-    live: bool,
-    owner: usize,
-    role: usize,
-    serial: u32,
-    x: i32,
-    y: i32,
-    vx: i32,
-    vy: i32,
-    w: u32,
-    h: u32,
-    facing: i32,
-    life: u16,
-}
-impl Projectile {
-    fn bounds(&self) -> Aabb {
-        Aabb {
-            x: self.x / SCALE,
-            y: self.y / SCALE,
-            w: self.w,
-            h: self.h,
-        }
-    }
+    command: u8,
+    value: i32,
+    aux: i32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct World {
-    actors: [Actor; 2],
-    projectiles: [Projectile; PROJECTILES],
     tick: u32,
-    rng: u32,
-    mode: u8,
-    ai_wait: u16,
-    hitstop: u8,
-    winner: u8,
-    super_tick: u32,
-    super_who: usize,
-    ko_tick: u32,
-    ko_who: usize,
-    stats: Stats,
-    contact: Contact,
+    p: CharacterState,
+    d: CharacterState,
+    denied: CharacterState,
+    px: i32,
+    dx: i32,
+    behavior: u8,
+    freeze: u8,
+    consumed: u64,
+    buffer: u8,
+    buffer_age: u8,
+    last_action: u8,
+    transition: u8,
+    combo: u16,
+    max_combo: u16,
+    damage: u32,
+    hits: u16,
+    blocks: u16,
+    links: u16,
+    cancels: u16,
+    had_hit: bool,
+    freed_at: u32,
+    contact_tick: u32,
+    contact_kind: u8,
+    contact_damage: u16,
+    trial: i8,
+    trial_progress: u8,
+    trial_failed: bool,
+    trial_clear: bool,
+    manual: bool,
+    auto: bool,
+    route: [u8; 4],
+    route_len: u8,
+    cursor: u8,
+    notices: [Notice; TRACE_LEN],
+    notice_count: u32,
+    event_count: u16,
 }
-fn rng(w: &mut World) -> u32 {
-    w.rng = w.rng.wrapping_mul(1664525).wrapping_add(1013904223);
-    w.rng
-}
-fn axis(c: u8) -> i32 {
-    i32::from(c & RIGHT != 0) - i32::from(c & LEFT != 0)
-}
-fn direction(from: i32, to: i32) -> u8 {
-    if to >= from {
-        RIGHT
-    } else {
-        LEFT
-    }
-}
-fn bot(w: &mut World, d: &[Definition; 2]) -> u8 {
-    let a = w.actors[1];
-    let b = w.actors[0];
-    let role = d[1].role(&a.state);
-    if w.mode == 1 || a.respawn > 0 {
-        return 0;
-    }
-    let inward = direction(a.x, 400 * SCALE);
-    if role == STUN {
-        return inward;
-    }
-    let forward = direction(a.x, b.x);
-    let dist = (a.x - b.x).abs() / SCALE;
-    // Recover before choosing attacks: no suicidal pursuit beyond the main deck.
-    if a.platform < 0 && (a.x < 145 * SCALE || a.x > 655 * SCALE || a.y > 10 * SCALE) {
-        if a.vy >= 0 && a.jumps < 2 && a.previous_input & JUMP_BUTTON == 0 {
-            return inward | JUMP_BUTTON;
+impl World {
+    fn new(d: &Definition, behavior: u8, distance: i32, trial: i8) -> Self {
+        Self {
+            tick: 0,
+            p: d.fresh(),
+            d: d.fresh(),
+            denied: d.fresh(),
+            px: 0,
+            dx: distance,
+            behavior,
+            freeze: 0,
+            consumed: 0,
+            buffer: 0,
+            buffer_age: 0,
+            last_action: 0,
+            transition: START,
+            combo: 0,
+            max_combo: 0,
+            damage: 0,
+            hits: 0,
+            blocks: 0,
+            links: 0,
+            cancels: 0,
+            had_hit: false,
+            freed_at: 0,
+            contact_tick: 0,
+            contact_kind: 0,
+            contact_damage: 0,
+            trial,
+            trial_progress: 0,
+            trial_failed: false,
+            trial_clear: false,
+            manual: true,
+            auto: false,
+            route: [0; 4],
+            route_len: 0,
+            cursor: 0,
+            notices: [Notice::default(); TRACE_LEN],
+            notice_count: 0,
+            event_count: 0,
         }
-        if a.jumps >= 2 && !a.recovery_used && a.vy >= 0 {
-            return inward | UP | SPECIAL;
-        }
-        return inward;
     }
-    if attacking(role) {
-        return if a.state.hit_confirmed && matches!(role, JAB | MID | AIR_L | AIR_M) {
-            NORMAL
+    fn note(&mut self, kind: u8, command: u8, value: i32, aux: i32) {
+        let n = self.notice_count as usize % TRACE_LEN;
+        self.notices[n] = Notice {
+            seq: self.notice_count + 1,
+            tick: self.tick,
+            kind,
+            command,
+            value,
+            aux,
+        };
+        self.notice_count += 1;
+    }
+}
+#[derive(Clone, Copy, Debug, Serialize)]
+struct Sample {
+    tick: u32,
+    player: u8,
+    dummy: u8,
+    command: u8,
+    frame: u16,
+    freeze: bool,
+    contact: u8,
+}
+fn sample(w: &World, d: &Definition) -> Sample {
+    Sample {
+        tick: w.tick,
+        player: d.phase(&w.p),
+        dummy: d.phase(&w.d),
+        command: d.command(w.p.current_state),
+        frame: w.p.frame,
+        freeze: w.freeze > 0,
+        contact: if w.contact_tick == w.tick {
+            w.contact_kind
         } else {
             0
-        };
-    }
-    if a.platform == 0 && (a.x < 155 * SCALE || a.x > 645 * SCALE) {
-        return inward;
-    }
-    if a.platform > 0 && b.y > a.y + 60 * SCALE && dist < 140 && a.previous_input & JUMP_BUTTON == 0
-    {
-        return DOWN | JUMP_BUTTON;
-    }
-    w.ai_wait = w.ai_wait.saturating_sub(1);
-    if w.ai_wait == 0 {
-        let choice = rng(w);
-        w.ai_wait = 10 + (choice % 14) as u16;
-        if a.platform >= 0 && (b.y < a.y - 45 * SCALE || dist > 145 && choice.is_multiple_of(4)) {
-            return forward | JUMP_BUTTON;
-        }
-        if a.state.resources[d[1].meter] >= 50
-            && dist < if d[1].style == "grappler" { 70 } else { 190 }
-            && choice.is_multiple_of(5)
-        {
-            return forward | DOWN | SPECIAL;
-        }
-        if (a.y - b.y).abs() < 75 * SCALE {
-            match d[1].style.as_str() {
-                "grappler" if dist < 75 => return forward | SPECIAL,
-                "zoner" if dist > 115 => return forward | SPECIAL,
-                "shoto" if dist > 150 => return forward | SPECIAL,
-                "rushdown" if (95..240).contains(&dist) => return forward | SPECIAL,
-                _ => {}
-            }
-        }
-        if dist < 100 {
-            return forward | NORMAL | if b.y < a.y - 50 * SCALE { UP } else { 0 };
-        }
-    }
-    if dist > 58 {
-        forward
-    } else {
-        0
-    }
-}
-fn enter(a: &mut Actor, id: u16, duration: u16) {
-    a.state.current_state = id;
-    a.state.frame = 0;
-    a.state.instance_duration = duration;
-    a.state.hit_confirmed = false;
-    a.state.block_confirmed = false;
-    a.connected = false;
-}
-fn reward(actor: &mut Actor, def: &Definition, state_id: u16, trigger: u8) {
-    let p = def.pack.view();
-    if let (Some(extra), Some(deltas)) = (
-        p.state_extras().and_then(|s| s.get(state_id as usize)),
-        p.move_resource_deltas(),
-    ) {
-        let (offset, count) = extra.resource_deltas();
-        for i in 0..usize::from(count) {
-            if let Some(delta) = deltas.get_at(offset, i) {
-                if delta.trigger() == trigger
-                    && p.string(delta.name_off(), delta.name_len()) == Some("meter")
-                {
-                    actor.state.resources[def.meter] =
-                        (i64::from(actor.state.resources[def.meter]) + i64::from(delta.delta()))
-                            .clamp(0, i64::from(def.meter_max)) as u16;
-                }
-            }
-        }
-    }
-}
-
-fn requested(a: &Actor, d: &Definition, pressed: u8) -> Option<usize> {
-    if pressed & SPECIAL != 0 {
-        return Some(if a.control & UP != 0 {
-            ANTI
-        } else if a.control & DOWN != 0 {
-            SUPER
-        } else if a.platform < 0 {
-            AIR_S
-        } else {
-            SKILL
-        });
-    }
-    if pressed & NORMAL != 0 {
-        let role = d.role(&a.state);
-        return Some(if a.platform < 0 {
-            if a.control & UP != 0 {
-                AIR_UP
-            } else if a.control & DOWN != 0 {
-                AIR_H
-            } else if role == AIR_L && a.state.hit_confirmed {
-                AIR_M
-            } else if role == AIR_M && a.state.hit_confirmed {
-                AIR_H
-            } else if axis(a.control) != 0 {
-                AIR_M
-            } else {
-                AIR_L
-            }
-        } else if a.control & UP != 0 {
-            LAUNCH
-        } else if a.control & DOWN != 0 {
-            LOW
-        } else if role == JAB && a.state.hit_confirmed {
-            MID
-        } else if role == MID && a.state.hit_confirmed || axis(a.control) != 0 {
-            DRIVE
-        } else {
-            JAB
-        });
-    }
-    if pressed & JUMP_BUTTON != 0 {
-        return Some(JUMP);
-    }
-    None
-}
-fn neutral(a: &Actor) -> usize {
-    if a.platform < 0 {
-        JUMP
-    } else if a.control & DOWN != 0 {
-        CROUCH
-    } else {
-        IDLE
-    }
-}
-fn advance(a: &mut Actor, d: &Definition, stats: &mut Stats, i: usize) -> bool {
-    if a.respawn > 0 {
-        a.respawn -= 1;
-        return false;
-    }
-    a.invulnerable = a.invulnerable.saturating_sub(1);
-    let role = d.role(&a.state);
-    if role != STUN && !attacking(role) && axis(a.control) != 0 {
-        a.facing = axis(a.control);
-    }
-    let buffered = a.buffer as usize;
-    let allowed = !(buffered == JUMP && a.platform < 0 && a.jumps >= 2
-        || buffered == ANTI && a.recovery_used);
-    let request = if role == STUN {
-        None
-    } else if a.buffer_age > 0 && allowed {
-        Some(d.ids[buffered])
-    } else if role <= CROUCH {
-        let n = neutral(a);
-        (role != n).then_some(d.ids[n])
-    } else {
-        None
-    };
-    let before = a.state;
-    let result = next_frame(
-        &a.state,
-        &d.pack.view(),
-        &FrameInput {
-            requested_state: request,
         },
-    );
-    a.state = result.state;
-    let started = request == Some(a.state.current_state) && a.state.frame == 0;
-    let mut super_started = false;
-    if started {
-        let next = d.role(&a.state);
-        a.connected = false;
-        if attacking(next) || next == JUMP {
-            if attacking(role) {
-                stats.cancels[i] += 1;
-            }
-            a.buffer_age = 0;
-            a.serial += 1;
-            stats.spent[i] +=
-                u32::from(before.resources[d.meter].saturating_sub(a.state.resources[d.meter]));
-            reward(a, d, a.state.current_state, 0);
-            if next == JUMP {
-                if a.platform > 0 && a.control & DOWN != 0 {
-                    a.drop_timer = 12;
-                    a.y += SCALE;
-                    a.vy = 2 * SCALE;
-                    a.jumps = 1;
-                } else {
-                    a.vy = -d.jump;
-                    a.jumps += 1;
-                }
-                a.platform = -1;
-            } else if next == ANTI {
-                a.vy = -d.rules[next].lift;
-                a.platform = -1;
-                a.recovery_used = true;
-                a.jumps = a.jumps.max(1);
-            }
-            super_started = next == SUPER;
-        }
-    }
-    if result.move_ended {
-        if role == STUN {
-            a.throw_immune = 8;
-            a.combo = 0;
-            a.combo_damage = 0;
-        }
-        enter(a, d.ids[neutral(a)], 0);
-    }
-    a.buffer_age = a.buffer_age.saturating_sub(1);
-    a.throw_immune = a.throw_immune.saturating_sub(1);
-    a.drop_timer = a.drop_timer.saturating_sub(1);
-    let role = d.role(&a.state);
-    if role != STUN {
-        // Direct horizontal control; no opponent attraction, side locks or air body walls.
-        a.vx = axis(a.control) * d.speed;
-        if a.platform >= 0 && attacking(role) {
-            a.vx = 0;
-        }
-    } else if a.platform >= 0 {
-        a.vx = a.vx * 7 / 8;
-    }
-    a.x += a.vx;
-    let mv = d
-        .pack
-        .view()
-        .states()
-        .unwrap()
-        .get(a.state.current_state as usize)
-        .unwrap();
-    if attacking(role) && a.state.frame < u16::from(mv.startup()) + u16::from(mv.active()) {
-        a.x += d.rules[role].travel * a.facing;
-    }
-    if a.platform >= 0 {
-        let p = PLATFORMS[a.platform as usize];
-        if a.x < p.left * SCALE || a.x > p.right * SCALE {
-            a.platform = -1;
-            a.jumps = a.jumps.max(1);
-        }
-    }
-    if a.platform < 0 {
-        let old_y = a.y;
-        a.y += a.vy;
-        a.vy = (a.vy
-            + d.gravity
-            + if a.control & DOWN != 0 && a.vy > 0 && role != STUN {
-                d.gravity
-            } else {
-                0
-            })
-        .min(24 * SCALE);
-        if a.vy >= 0 {
-            for k in (0..PLATFORMS.len()).rev() {
-                let p = PLATFORMS[k];
-                let top = p.top * SCALE;
-                if k > 0 && a.drop_timer > 0 {
-                    continue;
-                }
-                if old_y <= top && a.y >= top && a.x >= p.left * SCALE && a.x <= p.right * SCALE {
-                    a.y = top;
-                    a.vy = 0;
-                    a.platform = k as i8;
-                    a.jumps = 0;
-                    a.recovery_used = false;
-                    if role != STUN {
-                        enter(a, d.ids[LAND], 0);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    super_started
-}
-fn spawn_notes(w: &mut World, defs: &[Definition; 2], i: usize) {
-    let a = w.actors[i];
-    let def = &defs[i];
-    let pack = def.pack.view();
-    let role = def.role(&a.state);
-    let rule = def.rules[role];
-    if let (Some(extra), Some(notes), Some(emits)) = (
-        pack.state_extras()
-            .and_then(|e| e.get(a.state.current_state as usize)),
-        pack.move_notifies(),
-        pack.event_emits(),
-    ) {
-        let (off, count) = extra.notifies();
-        for j in 0..usize::from(count) {
-            let note = notes.get_at(off, j).unwrap();
-            if note.frame() != a.state.frame {
-                continue;
-            }
-            let (eoff, ecount) = note.emits();
-            for k in 0..usize::from(ecount) {
-                let event = emits.get_at(eoff, k).unwrap();
-                w.stats.signals[i] += 1;
-                if pack.string(event.id_off(), event.id_len()) != Some("projectile")
-                    || !rule.projectile
-                {
-                    continue;
-                }
-                if let Some(q) = w.projectiles.iter_mut().find(|p| !p.live) {
-                    let mv = pack
-                        .states()
-                        .unwrap()
-                        .get(a.state.current_state as usize)
-                        .unwrap();
-                    let hit = pack
-                        .hit_windows()
-                        .unwrap()
-                        .get_at(mv.hit_windows_off(), 0)
-                        .unwrap();
-                    let shape = pack.shapes().unwrap().get_at(hit.shapes_off(), 0).unwrap();
-                    let rect = rectangle(shape, a.x / SCALE, a.y / SCALE, a.facing);
-                    *q = Projectile {
-                        live: true,
-                        owner: i,
-                        role,
-                        serial: a.serial,
-                        x: rect.x * SCALE,
-                        y: rect.y * SCALE,
-                        vx: rule.projectile_speed * a.facing,
-                        vy: rule.projectile_y,
-                        w: rect.w,
-                        h: rect.h,
-                        facing: a.facing,
-                        life: 220,
-                    };
-                    w.stats.shots[i] += 1;
-                }
-            }
-        }
     }
 }
-struct ContactHit {
-    hit: HitResult,
-    owner: usize,
-    serial: u32,
-    role: usize,
-    facing: i32,
-    counter: bool,
-    kind: u8,
+fn enter(s: &mut CharacterState, id: u16, duration: u16) {
+    s.current_state = id;
+    s.frame = 0;
+    s.instance_duration = duration;
+    s.hit_confirmed = false;
+    s.block_confirmed = false;
 }
-fn strike(w: &mut World, defs: &[Definition; 2], c: ContactHit) {
-    let i = c.owner;
-    let j = 1 - i;
-    let rule = defs[i].rules[c.role];
-    let hit = c.hit;
-    if w.actors[j].invulnerable > 0 || w.actors[j].respawn > 0 {
-        return;
-    }
-    let airborne = w.actors[j].platform < 0;
-    let combo = if defs[j].role(&w.actors[j].state) == STUN {
-        w.actors[j].combo.saturating_add(1)
-    } else {
-        1
-    };
-    let raw = i32::from(hit.damage) + if c.counter { defs[i].counter_bonus } else { 0 };
-    let damage = (raw * (100 - i32::from(combo.saturating_sub(1)) * 12).max(35) / 400).max(1);
-    if w.actors[i].serial == c.serial && w.actors[i].state.current_state == hit.attacker_move {
-        report_hit(&mut w.actors[i].state);
-    }
-    w.stats.hits[i] += 1;
-    w.stats.max_combo[i] = w.stats.max_combo[i].max(combo);
-    if airborne {
-        w.stats.air_hits[i] += 1;
-    }
-    if rule.grab {
-        w.stats.throws[i] += 1;
-    }
-    reward(&mut w.actors[i], &defs[i], hit.attacker_move, 1);
-    let b = &mut w.actors[j];
-    b.damage = (b.damage + damage).min(999);
-    b.combo = combo;
-    b.combo_damage = if combo > 1 {
-        b.combo_damage + damage
-    } else {
-        damage
-    };
-    let power = ((3 * SCALE
-        + raw * SCALE / 24
-        + b.damage * SCALE / 16
-        + if rule.knockdown { SCALE } else { 0 })
-        * 100
-        / defs[j].weight)
-        .min(28 * SCALE);
-    b.vx = power * c.facing;
-    b.vy = -(power * 2 / 3 + (-rule.launch).max(0) / 3 + SCALE);
-    b.platform = -1;
-    b.jumps = b.jumps.max(1);
-    b.y -= 1;
-    enter(
-        b,
-        defs[j].ids[STUN],
-        (u16::from(hit.hitstun) / 2 + b.damage as u16 / 12).clamp(8, 42),
-    );
-    w.hitstop = w.hitstop.max(hit.hitstop.min(8));
-    w.contact = Contact {
-        tick: w.tick,
-        who: i,
-        damage,
-        counter: c.counter,
-        serial: w.contact.serial + 1,
-        x: b.x / SCALE,
-        y: b.y / SCALE - 50,
-        kind: c.kind,
-    };
-}
-fn contacts(w: &mut World, defs: &[Definition; 2]) {
-    let hits = std::array::from_fn::<_, 2, _>(|i| {
-        let a = w.actors[i];
-        let b = w.actors[1 - i];
-        let role = defs[i].role(&a.state);
-        let rule = defs[i].rules[role];
-        if a.connected || rule.projectile || a.respawn > 0 || b.respawn > 0 || b.invulnerable > 0 {
-            return None;
-        }
-        if rule.grab && (b.throw_immune > 0 || defs[1 - i].role(&b.state) == STUN) {
-            return None;
-        }
-        let hit = check_hits(
-            &a.state,
-            &defs[i].pack.view(),
-            (a.x / SCALE * a.facing, a.y / SCALE),
-            &b.state,
-            &defs[1 - i].pack.view(),
-            (b.x / SCALE * a.facing, b.y / SCALE),
-        )
-        .get(0)
-        .copied()?;
-        Some(ContactHit {
-            hit,
-            owner: i,
-            serial: a.serial,
-            role,
-            facing: a.facing,
-            counter: attacking(defs[1 - i].role(&b.state)),
-            kind: if rule.grab { 2 } else { 0 },
-        })
-    });
-    // Both melee contacts are planned before either is applied, preserving trades.
-    for (i, c) in hits.into_iter().enumerate() {
-        if let Some(c) = c {
-            w.actors[i].connected = true;
-            strike(w, defs, c);
-        }
-    }
-    for k in 0..PROJECTILES {
-        if !w.projectiles[k].live {
-            continue;
-        }
-        let q = &mut w.projectiles[k];
-        q.x += q.vx;
-        q.y += q.vy;
-        q.life = q.life.saturating_sub(1);
-        if q.life == 0
-            || q.x < BLAST[0] * SCALE
-            || q.x > BLAST[2] * SCALE
-            || q.y < BLAST[1] * SCALE
-            || q.y > BLAST[3] * SCALE
+fn deltas(w: &mut World, d: &Definition, values: &[ResourceDelta], cmd: u8) {
+    for delta in values {
+        if let Some(i) = d
+            .data
+            .character
+            .resources
+            .iter()
+            .position(|r| r.name == delta.name)
         {
-            q.live = false;
-            continue;
-        }
-        for l in 0..k {
-            if w.projectiles[l].live
-                && w.projectiles[l].owner != w.projectiles[k].owner
-                && aabb_overlap(&w.projectiles[l].bounds(), &w.projectiles[k].bounds())
-            {
-                w.projectiles[l].live = false;
-                w.projectiles[k].live = false;
-                w.stats.clashes += 1;
-                break;
-            }
-        }
-        if !w.projectiles[k].live {
-            continue;
-        }
-        let q = w.projectiles[k];
-        let j = 1 - q.owner;
-        let b = w.actors[j];
-        let role = defs[j].role(&b.state);
-        if b.invulnerable > 0 || b.respawn > 0 || defs[j].rules[role].projectile_invuln {
-            continue;
-        }
-        let p = defs[j].pack.view();
-        let mv = p
-            .states()
-            .unwrap()
-            .get(b.state.current_state as usize)
-            .unwrap();
-        let mut touched = false;
-        for h in 0..usize::from(mv.hurt_windows_len()) {
-            let win = p
-                .hurt_windows()
-                .unwrap()
-                .get_at(mv.hurt_windows_off(), h)
-                .unwrap();
-            if !(u16::from(win.start_frame())..=u16::from(win.end_frame())).contains(&b.state.frame)
-            {
-                continue;
-            }
-            for s in 0..usize::from(win.shapes_len()) {
-                let shape = p.shapes().unwrap().get_at(win.shapes_off(), s).unwrap();
-                if aabb_overlap(
-                    &q.bounds(),
-                    &Aabb::from_shape(&shape, b.x / SCALE, b.y / SCALE),
-                ) {
-                    touched = true;
-                }
-            }
-        }
-        if touched {
-            let p = defs[q.owner].pack.view();
-            let id = defs[q.owner].ids[q.role];
-            let mv = p.states().unwrap().get(id as usize).unwrap();
-            let h = p
-                .hit_windows()
-                .unwrap()
-                .get_at(mv.hit_windows_off(), 0)
-                .unwrap();
-            let hit = HitResult {
-                attacker_move: id,
-                window_index: 0,
-                damage: h.damage(),
-                chip_damage: h.chip_damage(),
-                hitstun: h.hitstun(),
-                blockstun: h.blockstun(),
-                hitstop: h.hitstop(),
-                guard: h.guard(),
-                hit_pushback: h.hit_pushback_px(),
-                block_pushback: h.block_pushback_px(),
-            };
-            w.projectiles[k].live = false;
-            strike(
-                w,
-                defs,
-                ContactHit {
-                    hit,
-                    owner: q.owner,
-                    serial: q.serial,
-                    role: q.role,
-                    facing: q.facing,
-                    counter: attacking(role),
-                    kind: 1,
-                },
+            let before = w.p.resources[i];
+            w.p.resources[i] = (i64::from(before) + i64::from(delta.delta))
+                .clamp(0, i64::from(d.data.character.resources[i].max))
+                as u16;
+            w.note(
+                RESOURCE,
+                cmd,
+                i32::from(w.p.resources[i]) - i32::from(before),
+                i as i32,
             );
         }
     }
 }
-fn step_world(w: &mut World, defs: &[Definition; 2], input: u8) {
-    if w.winner != 0 {
+fn events(w: &mut World, values: &[EventEmit], cmd: u8) {
+    for event in values {
+        let kind = match event.id.as_str() {
+            "spark" => 1,
+            "charge" => 2,
+            _ => 0,
+        };
+        let size = event
+            .args
+            .get("size")
+            .and_then(|v| match v {
+                framesmith_authoring::schema::EventArgValue::F32(n) => Some(*n as i32),
+                framesmith_authoring::schema::EventArgValue::I64(n) => Some(*n as i32),
+                _ => None,
+            })
+            .unwrap_or(12);
+        w.event_count = w.event_count.saturating_add(1);
+        w.note(EVENT, cmd, size, kind);
+    }
+}
+fn route(trial: i8) -> (&'static [u8], &'static [u8]) {
+    match trial {
+        0 => (&[1, 2], &[START, LINK]),
+        1 => (&[2, 3], &[START, CANCEL]),
+        2 => (&[3, 4], &[START, CANCEL]),
+        _ => (&[1, 2, 3, 4], &[START, LINK, CANCEL, CANCEL]),
+    }
+}
+fn fail_trial(w: &mut World, cmd: u8, reason: i32) {
+    if w.trial >= 0 && !w.trial_failed && !w.trial_clear && w.manual {
+        w.trial_failed = true;
+        w.note(FAILED, cmd, reason, 0);
+    }
+}
+fn step_world(w: &mut World, d: &Definition, command: u8) {
+    w.tick += 1;
+    if command > 0 {
+        w.buffer = command;
+        w.buffer_age = 5;
+        w.note(INPUT, command, 0, 0);
+    }
+    if w.freeze > 0 {
+        w.freeze -= 1;
         return;
     }
-    w.tick += 1;
-    let cpu = if w.hitstop == 0 {
-        bot(w, defs)
-    } else {
-        w.actors[1].control
-    };
-    for (i, control) in [input, cpu].into_iter().enumerate() {
-        let a = &mut w.actors[i];
-        let pressed = control & !a.previous_input;
-        a.control = control;
-        if a.respawn == 0 {
-            if let Some(role) = requested(a, &defs[i], pressed) {
-                a.buffer = role as u8;
-                a.buffer_age = 8;
+    // Stun counts frames AFTER impact. +1 retains the impact sample at frame zero.
+    let was_stunned = w.d.current_state == d.hit;
+    let next = next_frame(&w.d, &d.pack.view(), &FrameInput::default());
+    w.d = next.state;
+    if next.move_ended {
+        if was_stunned {
+            w.freed_at = w.tick;
+            w.combo = 0;
+            if w.trial_progress > 0 && !w.trial_clear {
+                fail_trial(w, 0, 1);
             }
         }
-        a.previous_input = control;
+        enter(&mut w.d, d.idle, 0);
     }
-    if w.hitstop > 0 {
-        w.hitstop -= 1;
-    } else {
-        for (i, d) in defs.iter().enumerate() {
-            if advance(&mut w.actors[i], d, &mut w.stats, i) {
-                w.hitstop = 10;
-                w.super_tick = w.tick;
-                w.super_who = i;
-            }
-            if w.actors[i].respawn == 0 {
-                spawn_notes(w, defs, i);
-            }
+    if w.auto && w.cursor < w.route_len {
+        let next = w.route[w.cursor as usize];
+        let first = w.cursor == 0;
+        let link = w.cursor == 1 && w.route[0] == 1 && next == 2;
+        let ready = w.p.current_state == d.idle;
+        let m = d.state(w.p.current_state);
+        let confirmed = w.p.hit_confirmed
+            || w.p.block_confirmed
+            || w.p.frame >= u16::from(m.startup) + u16::from(m.active);
+        if first || link && ready || !link && confirmed && !ready {
+            w.buffer = next;
+            w.buffer_age = 2;
         }
-        contacts(w, defs);
-    }
-    for (i, d) in defs.iter().enumerate() {
-        let a = w.actors[i];
-        if a.respawn == 0
-            && (a.x < BLAST[0] * SCALE
-                || a.x > BLAST[2] * SCALE
-                || a.y < BLAST[1] * SCALE
-                || a.y > BLAST[3] * SCALE)
-        {
-            w.stats.kos[1 - i] += 1;
-            w.ko_tick = w.tick;
-            w.ko_who = i;
-            let stocks = a.stocks.saturating_sub(1);
-            w.actors[i] = d.actor(if i == 0 { 260 } else { 540 }, if i == 0 { 1 } else { -1 });
-            w.actors[i].stocks = stocks;
-            w.actors[i].respawn = 60;
-            w.actors[i].invulnerable = 90;
-            for q in &mut w.projectiles {
-                if q.owner == i {
-                    q.live = false;
-                }
-            }
+        if !first && !link && ready {
+            w.auto = false;
+            w.denied = w.p;
+            w.note(DENIED, next, 1, 0);
         }
     }
-    if w.actors[0].stocks == 0 || w.actors[1].stocks == 0 || w.tick >= MATCH_FRAMES {
-        let score = |a: Actor| i32::from(a.stocks) * 1000 - a.damage;
-        w.winner = if score(w.actors[0]) > score(w.actors[1]) {
-            1
-        } else if score(w.actors[1]) > score(w.actors[0]) {
-            2
-        } else {
-            3
-        };
-    }
-}
-#[derive(Serialize)]
-pub struct Rect {
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-}
-fn rectangle(shape: framesmith_fspack::ShapeView<'_>, x: i32, y: i32, facing: i32) -> Rect {
-    let r = Aabb::from_shape(&shape, 0, 0);
-    Rect {
-        x: x + if facing == 1 { r.x } else { -r.x - r.w as i32 },
-        y: y + r.y,
-        w: r.w,
-        h: r.h,
-    }
-}
-#[derive(Serialize)]
-pub struct FighterView<'a> {
-    name: &'a str,
-    style: &'a str,
-    special: &'a str,
-    anti: &'a str,
-    super_name: &'a str,
-    width: i32,
-    height: i32,
-    facing: i32,
-    y: f64,
-    crouching: bool,
-    combo: u8,
-    combo_damage: i32,
-    color: &'a str,
-    x: f64,
-    damage: i32,
-    stocks: u8,
-    platform: i8,
-    jumps_remaining: u8,
-    recovery_ready: bool,
-    respawn: u8,
-    invulnerable: u8,
-    vx: f64,
-    vy: f64,
-    meter: u16,
-    max_meter: u16,
-    id: &'a str,
-    name_of_move: &'a str,
-    frame: u16,
-    total: u16,
-    startup: u8,
-    active: u8,
-    phase: &'static str,
-    confirmed: bool,
-    hitboxes: Vec<Rect>,
-    hurtboxes: Vec<Rect>,
-    reach: i32,
-}
-#[derive(Serialize)]
-pub struct View<'a> {
-    tick: u32,
-    remaining: u32,
-    platforms: [Platform; 4],
-    blast: [i32; 4],
-    ko_tick: u32,
-    ko_who: usize,
-    super_tick: u32,
-    super_who: usize,
-    projectiles: Vec<ShotView>,
-    winner: u8,
-    hitstop: u8,
-    rng: u32,
-    mode: u8,
-    actors: [FighterView<'a>; 2],
-    stats: Stats,
-    contact: Contact,
-    recorded: usize,
-    checkpoint: u32,
-}
-fn fighter_view<'a>(a: &Actor, def: &'a Definition, facing: i32) -> FighterView<'a> {
-    let pack = def.pack.view();
-    let mv = pack
-        .states()
-        .unwrap()
-        .get(a.state.current_state as usize)
-        .unwrap();
-    let data = pack.state_data(a.state.current_state as usize).unwrap();
-    let role = def.role(&a.state);
-    let phase = if role == IDLE || role == CROUCH || role == JUMP || role == LAND {
-        "ready"
-    } else if role == BLOCK {
-        "guard"
-    } else if role == STUN {
-        "stun"
-    } else if a.state.frame < u16::from(mv.startup()) {
-        "startup"
-    } else if a.state.frame < u16::from(mv.startup()) + u16::from(mv.active()) {
-        "active"
-    } else {
-        "recovery"
-    };
-    let mut hitboxes = Vec::new();
-    let mut hurtboxes = Vec::new();
-    let mut reach = 0;
-    let shapes = pack.shapes().unwrap();
-    if let Some(windows) = pack.hit_windows() {
-        for i in 0..usize::from(mv.hit_windows_len()) {
-            let window = windows.get_at(mv.hit_windows_off(), i).unwrap();
-            for j in 0..usize::from(window.shapes_len()) {
-                let shape = shapes.get_at(window.shapes_off(), j).unwrap();
-                reach = reach.max(shape.x_px() + shape.width_px() as i32);
-                if (u16::from(window.start_frame())..=u16::from(window.end_frame()))
-                    .contains(&a.state.frame)
-                    && !def.rules[role].projectile
-                {
-                    hitboxes.push(rectangle(shape, a.x / SCALE, a.y / SCALE, facing));
-                }
-            }
-        }
-    }
-    if let Some(windows) = pack.hurt_windows() {
-        for i in 0..usize::from(mv.hurt_windows_len()) {
-            let window = windows.get_at(mv.hurt_windows_off(), i).unwrap();
-            if (u16::from(window.start_frame())..=u16::from(window.end_frame()))
-                .contains(&a.state.frame)
-            {
-                for j in 0..usize::from(window.shapes_len()) {
-                    hurtboxes.push(rectangle(
-                        shapes.get_at(window.shapes_off(), j).unwrap(),
-                        a.x / SCALE,
-                        a.y / SCALE,
-                        facing,
-                    ));
-                }
-            }
-        }
-    }
-    FighterView {
-        name: &def.name,
-        style: &def.style,
-        special: pack
-            .state_data(def.ids[SKILL] as usize)
-            .unwrap()
-            .get("name")
-            .and_then(ValueView::as_str)
-            .unwrap(),
-        anti: pack
-            .state_data(def.ids[ANTI] as usize)
-            .unwrap()
-            .get("name")
-            .and_then(ValueView::as_str)
-            .unwrap(),
-        super_name: pack
-            .state_data(def.ids[SUPER] as usize)
-            .unwrap()
-            .get("name")
-            .and_then(ValueView::as_str)
-            .unwrap(),
-        width: def.width,
-        height: def.height,
-        facing: a.facing,
-        y: f64::from(a.y) / f64::from(SCALE),
-        crouching: matches!(role, CROUCH | LOW | LAUNCH),
-        combo: a.combo,
-        combo_damage: a.combo_damage,
-        color: &def.color,
-        x: f64::from(a.x) / f64::from(SCALE),
-        damage: a.damage,
-        stocks: a.stocks,
-        platform: a.platform,
-        jumps_remaining: 2 - a.jumps,
-        recovery_ready: !a.recovery_used,
-        respawn: a.respawn,
-        invulnerable: a.invulnerable,
-        vx: f64::from(a.vx) / f64::from(SCALE),
-        vy: f64::from(a.vy) / f64::from(SCALE),
-        meter: a.state.resources[def.meter],
-        max_meter: def.meter_max,
-        id: pack.state_id(a.state.current_state as usize).unwrap(),
-        name_of_move: data.get("name").and_then(ValueView::as_str).unwrap(),
-        frame: a.state.frame,
-        total: if a.state.instance_duration > 0 {
-            a.state.instance_duration
-        } else {
-            mv.total()
+    let old = w.p;
+    let target = (w.buffer_age > 0).then(|| d.ids[(w.buffer - 1) as usize]);
+    let result = next_frame(
+        &old,
+        &d.pack.view(),
+        &FrameInput {
+            requested_state: target,
         },
-        startup: mv.startup(),
-        active: mv.active(),
-        phase,
-        confirmed: a.state.hit_confirmed,
-        hitboxes,
-        hurtboxes,
-        reach,
+    );
+    w.p = result.state;
+    let mut accepted = target == Some(w.p.current_state) && w.p.frame == 0;
+    if result.move_ended {
+        let cmd = d.command(old.current_state);
+        if cmd > 0 && w.consumed == 0 && !d.state(old.current_state).hitboxes.is_empty() {
+            w.note(WHIFF, cmd, 0, 0);
+            fail_trial(w, cmd, 2);
+        }
+        enter(&mut w.p, d.idle, 0);
+        let wanted_cancel =
+            w.auto && w.cursor > 0 && !(w.cursor == 1 && w.route[0] == 1 && w.route[1] == 2);
+        if wanted_cancel {
+            w.auto = false;
+            w.denied = old;
+            w.note(DENIED, w.buffer, 0, 0);
+            w.buffer = 0;
+            w.buffer_age = 0;
+        }
+        // A manual buffered link may start at the recovery boundary. A scripted
+        // cancel must not silently turn into a different (possibly valid) link.
+        else if let Some(t) = target {
+            let r = next_frame(
+                &w.p,
+                &d.pack.view(),
+                &FrameInput {
+                    requested_state: Some(t),
+                },
+            );
+            if r.state.current_state == t && r.state.frame == 0 {
+                w.p = r.state;
+                accepted = true;
+            }
+        }
+    }
+    if accepted {
+        let cmd = w.buffer;
+        w.transition = if old.current_state == d.idle || result.move_ended {
+            if w.last_action > 0 {
+                LINK
+            } else {
+                START
+            }
+        } else {
+            CANCEL
+        };
+        if w.transition == CANCEL {
+            w.cancels += 1;
+        }
+        w.note(
+            w.transition,
+            cmd,
+            i32::from(old.frame),
+            i32::from(d.command(old.current_state)),
+        );
+        if w.trial >= 0 && w.manual && !w.trial_failed {
+            let (expected, kinds) = route(w.trial);
+            let i = w.trial_progress as usize;
+            if i >= expected.len() || expected[i] != cmd || kinds[i] != w.transition {
+                fail_trial(w, cmd, 3);
+            }
+        }
+        w.last_action = cmd;
+        w.consumed = 0;
+        w.buffer = 0;
+        w.buffer_age = 0;
+        if w.auto {
+            w.cursor += 1;
+        }
+        let m = d.state(w.p.current_state);
+        if let Some(on) = &m.on_use {
+            deltas(w, d, &on.resource_deltas, cmd);
+            events(w, &on.events, cmd);
+        }
+        // One presentation freeze policy; the authored value comes from the v2 payload.
+        if let Some(f) = &m.super_freeze {
+            w.freeze = f.frames.min(12);
+        }
+    } else if w.buffer_age > 0 {
+        w.buffer_age -= 1;
+        if w.buffer_age == 0 {
+            w.denied = w.p;
+            w.note(DENIED, w.buffer, 0, 0);
+            if w.trial >= 0 {
+                fail_trial(w, w.buffer, 4);
+            }
+            w.buffer = 0;
+        }
+    }
+    let cmd = d.command(w.p.current_state);
+    let m = d.state(w.p.current_state);
+    for n in &m.notifies {
+        if w.p.frame == n.frame {
+            events(w, &n.events, cmd);
+        }
+    }
+    let hits = check_hits(
+        &w.p,
+        &d.pack.view(),
+        (w.px, 0),
+        &w.d,
+        &d.pack.view(),
+        (w.dx, 0),
+    );
+    for h in hits.iter() {
+        let mask = 1u64 << h.window_index;
+        if w.consumed & mask != 0 {
+            continue;
+        }
+        let first_contact = w.consumed == 0;
+        w.consumed |= mask;
+        let advanced = m
+            .hits
+            .as_ref()
+            .and_then(|hs| hs.get(h.window_index as usize));
+        let (damage, stun, blockstun, stop, guard) = advanced.map_or(
+            (h.damage, h.hitstun, h.blockstun, h.hitstop, &m.guard),
+            |a| (a.damage, a.hitstun, a.blockstun, a.hitstop, &a.guard),
+        );
+        let in_stun = w.d.current_state == d.hit && w.d.frame < w.d.instance_duration;
+        let guards = match w.behavior {
+            1 => true,
+            2 => !matches!(guard, GuardType::High),
+            3 => w.had_hit && !in_stun,
+            _ => false,
+        };
+        let blocked = guards && !matches!(guard, GuardType::Unblockable);
+        w.contact_tick = w.tick;
+        w.contact_kind = if blocked { BLOCK } else { HIT };
+        w.contact_damage = if blocked {
+            advanced
+                .and_then(|h| h.chip_damage)
+                .unwrap_or(h.chip_damage)
+        } else {
+            damage
+        };
+        w.freeze = w.freeze.max(stop.min(12));
+        if blocked {
+            report_block(&mut w.p);
+            w.blocks += 1;
+            w.combo = 0;
+            enter(&mut w.d, d.block, u16::from(blockstun) + 1);
+            w.note(BLOCK, cmd, i32::from(w.contact_damage), 0);
+            fail_trial(w, cmd, 5);
+            if let Some(on) = &m.on_block {
+                deltas(w, d, &on.resource_deltas, cmd);
+                events(w, &on.events, cmd);
+            }
+        } else {
+            if w.had_hit && !in_stun {
+                w.note(GAP, cmd, (w.tick - w.freed_at) as i32, 0);
+            }
+            report_hit(&mut w.p);
+            w.hits += 1;
+            w.damage += u32::from(damage);
+            w.combo = if in_stun { w.combo + 1 } else { 1 };
+            w.max_combo = w.max_combo.max(w.combo);
+            w.had_hit = true;
+            if in_stun && w.transition == LINK && first_contact {
+                w.links += 1;
+            }
+            enter(&mut w.d, d.hit, u16::from(stun) + 1);
+            w.note(HIT, cmd, i32::from(damage), i32::from(w.combo));
+            if let Some(on) = &m.on_hit {
+                deltas(w, d, &on.resource_deltas, cmd);
+                events(w, &on.events, cmd);
+            }
+            if w.trial >= 0 && w.manual && !w.trial_failed && !w.trial_clear {
+                let (expected, _) = route(w.trial);
+                let index = w.trial_progress as usize;
+                if expected.get(index) == Some(&cmd) && (index == 0 || in_stun) {
+                    w.trial_progress += 1;
+                    if w.trial_progress as usize == expected.len() {
+                        w.trial_clear = true;
+                        w.note(CLEAR, cmd, i32::from(w.combo), 0);
+                    }
+                } else {
+                    fail_trial(w, cmd, 3);
+                }
+            }
+        }
+    }
+    if let Some(push) = check_pushbox(
+        &w.p,
+        &d.pack.view(),
+        (w.px, 0),
+        &w.d,
+        &d.pack.view(),
+        (w.dx, 0),
+    ) {
+        w.px += push.p1_dx;
+        w.dx += push.p2_dx;
+        if push.p1_dx != 0 || push.p2_dx != 0 {
+            w.note(PUSH, 0, w.dx - w.px, 0);
+        }
+    }
+    if w.auto && w.cursor == w.route_len && w.p.current_state == d.idle {
+        w.auto = false;
+        w.note(END, 0, i32::from(w.max_combo), 0);
     }
 }
 
-#[derive(Serialize)]
-pub struct ShotView {
-    owner: usize,
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-    super_shot: bool,
-}
-pub struct Game {
-    defs: [Definition; 2],
-    world: World,
-    base: World,
-    // ponytail: exact per-frame states, bounded by a three-minute match; stream traces for longer games.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct Lab {
+    def: Definition,
+    settings: Settings,
+    editable: bool,
+    w: World,
+    initial: World,
     tape: Vec<(u8, World)>,
+    samples: Vec<Sample>,
+    checkpoint: Option<(World, usize)>,
 }
-impl Game {
-    pub fn new(player: &[u8], opponent: &[u8], seed: u32, mode: u8) -> Result<Self, String> {
-        if mode > 1 {
-            return Err("Unknown opponent mode".into());
-        }
-        let defs = [Definition::new(player)?, Definition::new(opponent)?];
-        let world = World {
-            actors: [defs[0].actor(260, 1), defs[1].actor(540, -1)],
-            projectiles: [Projectile::default(); PROJECTILES],
-            ko_tick: 0,
-            ko_who: 0,
-            super_tick: 0,
-            super_who: 0,
-            tick: 0,
-            rng: seed,
-            mode,
-            ai_wait: 25,
-            hitstop: 0,
-            winner: 0,
-            stats: Stats::default(),
-            contact: Contact::default(),
-        };
+impl Lab {
+    fn create(bytes: Vec<u8>) -> Result<Self, String> {
+        let def = Definition::new(bytes)?;
+        let settings = Settings::default();
+        let editable = authoring::compile(&settings.files())? == def.bytes;
+        let w = World::new(&def, 3, 74, -1);
         Ok(Self {
-            defs,
-            world,
-            base: world,
-            tape: Vec::with_capacity(MATCH_FRAMES as usize),
+            def,
+            settings,
+            editable,
+            w,
+            initial: w,
+            tape: Vec::new(),
+            samples: Vec::new(),
+            checkpoint: None,
         })
     }
-    pub fn step(&mut self, input: u16) -> Result<(), String> {
-        if input > INPUT_BITS {
-            return Err("Unknown input bits".into());
-        }
-        if self.world.winner == 0 {
-            step_world(&mut self.world, &self.defs, input as u8);
-            self.tape.push((input as u8, self.world));
-        }
+    fn reset_world(&mut self, behavior: u8, distance: i32, trial: i8) {
+        self.w = World::new(&self.def, behavior, distance, trial);
+        self.initial = self.w;
+        self.tape.clear();
+        self.samples.clear();
+        self.checkpoint = None;
+    }
+    fn apply(&mut self, settings: Settings) -> Result<(), String> {
+        let bytes = authoring::compile(&settings.files())?;
+        let def = Definition::new(bytes)?;
+        self.def = def;
+        self.settings = settings;
+        self.editable = true;
+        self.reset_world(self.w.behavior, self.w.dx - self.w.px, -1);
         Ok(())
     }
-    pub fn view(&self) -> View<'_> {
-        View {
-            tick: self.world.tick,
-            remaining: MATCH_FRAMES.saturating_sub(self.world.tick),
-            platforms: PLATFORMS,
-            blast: BLAST,
-            ko_tick: self.world.ko_tick,
-            ko_who: self.world.ko_who,
-            super_tick: self.world.super_tick,
-            super_who: self.world.super_who,
-            projectiles: self
-                .world
-                .projectiles
-                .iter()
-                .filter(|p| p.live)
-                .map(|p| ShotView {
-                    owner: p.owner,
-                    x: p.x / SCALE,
-                    y: p.y / SCALE,
-                    w: p.w,
-                    h: p.h,
-                    super_shot: p.role == SUPER,
-                })
-                .collect(),
-            winner: self.world.winner,
-            hitstop: self.world.hitstop,
-            rng: self.world.rng,
-            mode: self.world.mode,
-            actors: [
-                fighter_view(
-                    &self.world.actors[0],
-                    &self.defs[0],
-                    self.world.actors[0].facing,
-                ),
-                fighter_view(
-                    &self.world.actors[1],
-                    &self.defs[1],
-                    self.world.actors[1].facing,
-                ),
-            ],
-            stats: self.world.stats,
-            contact: self.world.contact,
-            recorded: self.tape.len(),
-            checkpoint: self.base.tick,
+    fn tick(&mut self, cmd: u8) -> Result<(), String> {
+        if cmd > 7 {
+            return Err("Unknown action".into());
         }
+        if self.tape.len() >= MAX_FRAMES {
+            return Err("60-second recording limit; reset to continue".into());
+        }
+        step_world(&mut self.w, &self.def, cmd);
+        self.tape.push((cmd, self.w));
+        self.samples.push(sample(&self.w, &self.def));
+        Ok(())
     }
-    pub fn checkpoint(&mut self) {
-        self.base = self.world;
-        self.tape.clear();
-    }
-    pub fn restore(&mut self) {
-        self.world = self.base;
-        self.tape.clear();
-    }
-    pub fn verify_replay(&self) -> Result<usize, String> {
-        let mut replay = self.base;
-        for (index, (input, expected)) in self.tape.iter().enumerate() {
-            step_world(&mut replay, &self.defs, *input);
-            if replay != *expected {
-                return Err(format!(
-                    "Replay divergence at frame {} / input {}: expected {:?}, actual {:?}",
-                    index + 1,
-                    input,
-                    expected,
-                    replay
-                ));
+    fn replay(&self) -> Result<usize, String> {
+        if self.tape.is_empty() {
+            return Err("Record some frames first".into());
+        }
+        let mut w = self.initial;
+        for (i, (cmd, expected)) in self.tape.iter().enumerate() {
+            step_world(&mut w, &self.def, *cmd);
+            if &w != expected {
+                return Err(format!("Divergence at recorded frame {i}"));
             }
-        }
-        if replay != self.world {
-            return Err("Live state diverged from recorded timeline".into());
         }
         Ok(self.tape.len())
     }
-    pub fn pack_info(&self) -> [(usize, u32, usize); 2] {
-        self.defs.each_ref().map(|d| {
-            (
-                d.bytes,
-                d.pack.view().version(),
-                d.pack.view().states().unwrap().len(),
-            )
-        })
+    fn set_trial_inner(&mut self, id: i8) -> Result<(), String> {
+        if !(-1..=3).contains(&id) {
+            return Err("Unknown trial".into());
+        }
+        if id >= 0 {
+            let mut s = Settings {
+                recovery: 4,
+                ..Default::default()
+            };
+            if id == 2 {
+                s.energy = 50;
+            }
+            self.apply(s)?;
+        }
+        self.reset_world(3, 74, id);
+        Ok(())
+    }
+    fn start_demo(&mut self, which: u8) -> Result<(), String> {
+        if which > 4 {
+            return Err("Unknown demonstration".into());
+        }
+        let trial = self.w.trial;
+        self.reset_world(self.w.behavior, self.w.dx - self.w.px, trial);
+        self.w.manual = false;
+        // Reload is a resource-gain experiment: start this instance empty.
+        if which == 3 {
+            self.w.p.resources[self.def.ammo] = 0;
+        }
+        let commands: &[u8] = match which {
+            0 => {
+                if trial >= 0 {
+                    route(trial).0
+                } else {
+                    &[1, 2, 3, 4]
+                }
+            }
+            1 => &[5],
+            2 => &[6],
+            3 => &[7],
+            _ => &[1],
+        };
+        self.w.route[..commands.len()].copy_from_slice(commands);
+        self.w.route_len = commands.len() as u8;
+        self.w.auto = true;
+        self.initial = self.w;
+        Ok(())
+    }
+    fn view_value(&self) -> Value {
+        let d = &self.def;
+        let w = &self.w;
+        let actor = |s: &CharacterState, x: i32, dummy: bool| {
+            let m = d.state(s.current_state);
+            json!({"id":m.id.as_deref().unwrap_or(&m.input),"command":d.command(s.current_state),"name":if dummy{"DUMMY"}else{"RELAY"},"move_name":m.name,"frame":s.frame,"startup":m.startup,"active":m.active,"recovery":m.recovery,"phase":d.phase(s),"hit_confirmed":s.hit_confirmed,"block_confirmed":s.block_confirmed,"stun_remaining":s.instance_duration.saturating_sub(s.frame),"resources":s.resources[..d.data.character.resources.len()],"x":x,"y":0,"facing":if dummy{-1}else{1},"height":88,"width":36,"color":if dummy{"#ffa76b"}else{"#55e1ca"},"hitboxes":m.hitboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"pushboxes":m.pushboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"hurtboxes":m.hurtboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>()})
+        };
+        let start = w.notice_count.saturating_sub(TRACE_LEN as u32);
+        let notices: Vec<_> = (start..w.notice_count)
+            .map(|i| w.notices[i as usize % TRACE_LEN])
+            .collect();
+        let available:Vec<_>=d.ids.iter().enumerate().map(|(i,id)|json!({"command":i+1,"allowed":can_cancel_to(&w.p,&d.pack.view(),*id),"reason":d.reason(&w.p,*id)})).collect();
+        let reason=notices.iter().rev().find(|n|[HIT,BLOCK,WHIFF,DENIED,GAP,CLEAR,FAILED,END,PUSH].contains(&n.kind)).map(|n|match n.kind {PUSH=>format!("Pushboxes separated overlapping bodies to {} pixels.",n.value),HIT=>if n.aux>1{format!("{}-hit true combo. {} damage.",n.aux,w.damage)}else{"Hit confirmed. The dummy is in hitstun.".into()},BLOCK=>"Blocked: the defender was able to guard. This is not a combo.".into(),WHIFF=>"Whiff: the active hitbox never reached the hurtbox.".into(),DENIED=>{let s=w.denied;if n.command>0{d.reason(&s,d.ids[n.command as usize-1])}else{"Move unavailable".into()}},GAP=>format!("Link broke: the dummy was free for {} frames.",n.value),CLEAR=>"TRIAL CLEAR — every required hit connected without a gap.".into(),FAILED=>match n.value{1=>"Trial failed: the defender recovered between hits.",2=>"Trial failed: an attack missed.",3=>"Trial failed: wrong move or transition (link vs cancel).",4=>"Too early: buffered input expired before the move became available.",_=>"Trial failed: the dummy blocked."}.into(),END=>format!("Demonstration finished: best true combo {} hits. Autoplay never clears a trial.",n.value),_=>String::new()}).unwrap_or_else(||"Try the sequence, change one rule, then run it again.".into());
+        json!({"tick":w.tick,"actors":[actor(&w.p,w.px,false),actor(&w.d,w.dx,true)],"combo":w.combo,"max_combo":w.max_combo,"damage":w.damage,"hits":w.hits,"blocks":w.blocks,"links":w.links,"cancels":w.cancels,"freeze":w.freeze,"events":w.event_count,"energy":w.p.resources[d.energy],"ammo":w.p.resources[d.ammo],"available":available,"notices":notices,"reason":reason,"trial":w.trial,"trial_progress":w.trial_progress,"trial_failed":w.trial_failed,"trial_clear":w.trial_clear,"manual":w.manual,"auto":w.auto,"distance":w.dx-w.px,"dummy":w.behavior,"editable":self.editable&&w.trial<0,"recorded":self.tape.len(),"limit":MAX_FRAMES,"samples":&self.samples[self.samples.len().saturating_sub(180)..]})
+    }
+    fn metadata_value(&self) -> Value {
+        let d = &self.def;
+        let rows:Vec<_>=d.data.moves.iter().enumerate().map(|(i,m)| {
+            let remaining=m.hitboxes.first().map(|h|i32::from(m.startup)+i32::from(m.active)+i32::from(m.recovery)-i32::from(h.frames.0)-1);
+            let hit=m.hits.as_ref().and_then(|v|v.first());
+            let on_hit=remaining.map(|n|i32::from(hit.map_or(m.hitstun,|h|h.hitstun))-n);
+            let on_block=remaining.map(|n|i32::from(hit.map_or(m.blockstun,|h|h.blockstun))-n);
+            json!({"id":m.id.as_deref().unwrap_or(&m.input),"input":m.input,"name":m.name,"command":d.command(i as u16),"startup":m.startup,"active":m.active,"recovery":m.recovery,"total":u16::from(m.startup)+u16::from(m.active)+u16::from(m.recovery),"damage":m.damage,"hitstun":m.hitstun,"blockstun":m.blockstun,"on_hit":on_hit,"on_block":on_block,"tags":m.tags,"animation":m.animation,"variant":m.id.as_deref().unwrap_or("").contains('~'),"resolved":m})}).collect();
+        json!({"trace_kinds":{"input":INPUT,"hit":HIT,"block":BLOCK,"whiff":WHIFF,"event":EVENT},"event_kinds":{"swoosh":0,"spark":1,"charge":2},"settings":self.settings,"moves":rows,"cancel_table":d.data.cancel_table,"resources":d.data.character.resources,"character":d.data.character,"pack_bytes":d.bytes.len(),"format":"FSPK v2","rules":if self.editable{authoring::baseline()["framesmith.rules.json"].clone()}else{Value::Null},"trials":[{"name":"First link","route":[1,2]},{"name":"Hit-confirm cancel","route":[2,3]},{"name":"Spend it","route":[3,4]},{"name":"The full route","route":[1,2,3,4]}]})
     }
 }
-
-#[cfg(target_arch = "wasm32")]
-mod wasm {
-    use super::*;
-    use wasm_bindgen::prelude::*;
-    fn integer(v: f64, max: u32) -> Result<u32, JsValue> {
-        if !v.is_finite() || v.fract() != 0.0 || v < 0.0 || v > f64::from(max) {
-            return Err(JsValue::from_str("Expected a bounded unsigned integer"));
-        }
-        Ok(v as u32)
-    }
-    fn js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(value).map_err(|e| JsValue::from_str(&e.to_string()))
-    }
-    #[wasm_bindgen]
-    pub struct Arena {
-        game: Game,
-    }
-    #[wasm_bindgen]
-    impl Arena {
-        #[wasm_bindgen(constructor)]
-        pub fn new(player: &[u8], opponent: &[u8], seed: f64, mode: f64) -> Result<Arena, JsValue> {
-            let game = Game::new(
-                player,
-                opponent,
-                integer(seed, u32::MAX)?,
-                integer(mode, 1)? as u8,
+// Caller-supplied geometry queries, deliberately separate from the fighter's AABB windows.
+fn geometry_data(kind: u8, gap: i32) -> Value {
+    use framesmith_runtime::collision::{
+        aabb_circle_overlap, capsule_overlap, circle_overlap, Aabb, Capsule, Circle,
+    };
+    let circle = Circle {
+        x: gap,
+        y: -50,
+        r: 24,
+    };
+    let (overlap, shapes) = match kind {
+        1 => {
+            let a = Circle {
+                x: 25,
+                y: -50,
+                r: 32,
+            };
+            (
+                circle_overlap(&a, &circle),
+                json!([{"kind":"circle","x":a.x,"y":a.y,"r":a.r},{"kind":"circle","x":circle.x,"y":circle.y,"r":circle.r}]),
             )
-            .map_err(|e| JsValue::from_str(&e))?;
-            Ok(Self { game })
         }
-        pub fn step(&mut self, input: f64) -> Result<JsValue, JsValue> {
-            self.game
-                .step(integer(input, u32::from(INPUT_BITS))? as u16)
-                .map_err(|e| JsValue::from_str(&e))?;
-            js(&self.game.view())
+        2 => {
+            let a = Capsule {
+                x1: 10,
+                y1: -50,
+                x2: 85,
+                y2: -50,
+                r: 10,
+            };
+            let b = Capsule {
+                x1: gap,
+                y1: -80,
+                x2: gap,
+                y2: -20,
+                r: 16,
+            };
+            (
+                capsule_overlap(&a, &b),
+                json!([{"kind":"capsule","x1":a.x1,"y1":a.y1,"x2":a.x2,"y2":a.y2,"r":a.r},{"kind":"capsule","x1":b.x1,"y1":b.y1,"x2":b.x2,"y2":b.y2,"r":b.r}]),
+            )
         }
-        pub fn view(&self) -> Result<JsValue, JsValue> {
-            js(&self.game.view())
+        _ => {
+            let a = Aabb {
+                x: 10,
+                y: -70,
+                w: 70,
+                h: 40,
+            };
+            (
+                aabb_circle_overlap(&a, &circle),
+                json!([{"kind":"aabb","x":a.x,"y":a.y,"w":a.w,"h":a.h},{"kind":"circle","x":circle.x,"y":circle.y,"r":circle.r}]),
+            )
         }
-        pub fn checkpoint(&mut self) -> Result<JsValue, JsValue> {
-            self.game.checkpoint();
-            self.view()
+    };
+    json!({"overlap":overlap,"shapes":shapes,"owner":"Caller inputs → FrameSmith geometry helper; not a fighter combat run"})
+}
+
+fn integer(value: f64, min: i32, max: i32) -> Result<i32, String> {
+    if !value.is_finite() || value.fract() != 0. || value < min as f64 || value > max as f64 {
+        Err(format!("Expected an integer in {min}..={max}"))
+    } else {
+        Ok(value as i32)
+    }
+}
+#[cfg(target_arch = "wasm32")]
+fn js(value: Value) -> Result<JsValue, JsError> {
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl Lab {
+    #[wasm_bindgen(constructor)]
+    pub fn new(bytes: &[u8]) -> Result<Lab, JsError> {
+        Self::create(bytes.to_vec()).map_err(|e| JsError::new(&e))
+    }
+    pub fn view(&self) -> Result<JsValue, JsError> {
+        js(self.view_value())
+    }
+    pub fn metadata(&self) -> Result<JsValue, JsError> {
+        js(self.metadata_value())
+    }
+    pub fn step(&mut self, command: f64) -> Result<JsValue, JsError> {
+        let c = integer(command, 0, 7).map_err(|e| JsError::new(&e))?;
+        self.tick(c as u8).map_err(|e| JsError::new(&e))?;
+        self.view()
+    }
+    pub fn reset(&mut self) -> Result<JsValue, JsError> {
+        self.reset_world(self.w.behavior, self.w.dx - self.w.px, self.w.trial);
+        self.view()
+    }
+    pub fn edit(&mut self, key: &str, value: &str) -> Result<JsValue, JsError> {
+        if !self.editable || self.w.trial >= 0 {
+            return Err(JsError::new(
+                "Rules are locked: leave the trial or reload the editable example",
+            ));
         }
-        pub fn restore(&mut self) -> Result<JsValue, JsValue> {
-            self.game.restore();
-            self.view()
+        let mut s = self.settings.clone();
+        s.edit(key, value).map_err(|e| JsError::new(&e))?;
+        self.apply(s).map_err(|e| JsError::new(&e))?;
+        self.metadata()
+    }
+    pub fn dummy(&mut self, mode: f64, distance: f64) -> Result<JsValue, JsError> {
+        if self.w.trial >= 0 {
+            return Err(JsError::new("Trial spacing and dummy are locked"));
         }
-        pub fn verify_replay(&self) -> Result<usize, JsValue> {
-            self.game.verify_replay().map_err(|e| JsValue::from_str(&e))
+        let m = integer(mode, 0, 3).map_err(|e| JsError::new(&e))?;
+        let x = integer(distance, 20, 220).map_err(|e| JsError::new(&e))?;
+        self.reset_world(m as u8, x, -1);
+        self.view()
+    }
+    pub fn trial(&mut self, id: f64) -> Result<JsValue, JsError> {
+        let i = integer(id, -1, 3).map_err(|e| JsError::new(&e))?;
+        self.set_trial_inner(i as i8)
+            .map_err(|e| JsError::new(&e))?;
+        self.view()
+    }
+    pub fn demonstrate(&mut self, kind: f64) -> Result<JsValue, JsError> {
+        let k = integer(kind, 0, 4).map_err(|e| JsError::new(&e))?;
+        self.start_demo(k as u8).map_err(|e| JsError::new(&e))?;
+        self.view()
+    }
+    pub fn checkpoint(&mut self) -> Result<JsValue, JsError> {
+        self.checkpoint = Some((self.w, self.tape.len()));
+        self.view()
+    }
+    pub fn restore(&mut self) -> Result<JsValue, JsError> {
+        let (w, n) = self
+            .checkpoint
+            .ok_or_else(|| JsError::new("Save a checkpoint first"))?;
+        self.w = w;
+        self.tape.truncate(n);
+        self.samples.truncate(n);
+        self.view()
+    }
+    pub fn back(&mut self) -> Result<JsValue, JsError> {
+        self.tape.pop();
+        self.samples.pop();
+        self.w = self.tape.last().map_or(self.initial, |(_, w)| *w);
+        self.checkpoint = None;
+        self.view()
+    }
+    pub fn verify(&self) -> Result<usize, JsError> {
+        self.replay().map_err(|e| JsError::new(&e))
+    }
+    pub fn export_pack(&self) -> Vec<u8> {
+        self.def.bytes.clone()
+    }
+    pub fn export_project(&self) -> Result<String, JsError> {
+        if !self.editable {
+            return Err(JsError::new(
+                "Imported pack has no authoring overlay source; export its binary instead",
+            ));
         }
-        pub fn pack_info(&self) -> Result<JsValue, JsValue> {
-            js(&self.game.pack_info())
+        // JSON numbers are typed event arguments. Do not let JS parse/stringify
+        // turn f32 18.0 into i64 18 before the project reaches the CLI.
+        let files: std::collections::BTreeMap<_, _> = self
+            .settings
+            .files()
+            .into_iter()
+            .map(|(path, value)| serde_json::to_string_pretty(&value).map(|text| (path, text)))
+            .collect::<Result<_, _>>()
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        serde_json::to_string(&files).map_err(|e| JsError::new(&e.to_string()))
+    }
+    pub fn resolved_json(&self) -> String {
+        serde_json::to_string_pretty(&self.def.pack.view().payload().unwrap().root().to_json())
+            .unwrap()
+    }
+    pub fn geometry(&self, kind: f64, gap: f64) -> Result<JsValue, JsError> {
+        let k = integer(kind, 1, 3).map_err(|e| JsError::new(&e))?;
+        let x = integer(gap, 20, 220).map_err(|e| JsError::new(&e))?;
+        js(geometry_data(k as u8, x))
+    }
+    pub fn validation_example(&self) -> String {
+        let mut files = self.settings.files();
+        files.get_mut("characters/relay/states/jab.json").unwrap()["on_hit"]["resource_deltas"]
+            [0]["name"] = "undefined_resource".into();
+        match authoring::compile(&files) {
+            Ok(_) => "ERROR: validation accepted an undefined resource".into(),
+            Err(e) => format!("REJECTED by the shared validator: {e}. Current pack unchanged."),
         }
     }
 }
@@ -1409,197 +981,205 @@ mod wasm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn pack(id: &str) -> Vec<u8> {
-        std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("dist/packs/{id}.fspk")),
-        )
-        .expect("run build.py --packs-only")
+    fn lab() -> Lab {
+        Lab::create(include_bytes!("../dist/packs/lab.fspk").to_vec()).unwrap()
     }
-    fn game(a: &str, b: &str, mode: u8) -> Game {
-        Game::new(&pack(a), &pack(b), 0xf5a17, mode).unwrap()
-    }
-    fn tick(g: &mut Game, input: u8, n: usize) {
+    fn run(g: &mut Lab, n: usize) {
         for _ in 0..n {
-            g.step(u16::from(input)).unwrap();
+            g.tick(0).unwrap();
         }
     }
-    fn approach(g: &mut Game, gap: i32) {
-        for _ in 0..120 {
-            if g.world.actors[1].x - g.world.actors[0].x <= gap * SCALE {
-                break;
-            }
-            tick(g, RIGHT, 1);
-        }
-        tick(g, 0, 1);
-    }
-    fn settle(g: &mut Game) {
-        for _ in 0..100 {
-            if g.world.actors[0].platform >= 0 {
-                break;
-            }
-            tick(g, 0, 1);
-        }
+    fn demo(g: &mut Lab) {
+        g.start_demo(0).unwrap();
+        run(g, 180);
     }
     #[test]
-    fn free_movement_crossovers_double_jump_and_platforms() {
-        for name in ["relay", "bulwark", "sable", "zip"] {
-            let mut g = game(name, "bulwark", 1);
-            let x = g.world.actors[0].x;
-            let other = g.world.actors[1].x;
-            tick(&mut g, LEFT, 10);
-            assert!(g.world.actors[0].x < x);
-            assert_eq!(g.world.actors[1].x, other);
-            let x = g.world.actors[0].x;
-            tick(&mut g, 0, 10);
-            assert_eq!(g.world.actors[0].x, x);
-            tick(&mut g, RIGHT, 95);
-            assert!(g.world.actors[0].x > other, "{name}");
-            assert_eq!(g.world.actors[1].x, other);
-            assert!(g.verify_replay().is_ok());
-            let mut g = game(name, "relay", 1);
-            tick(&mut g, JUMP_BUTTON, 1);
-            tick(&mut g, 0, 8);
-            tick(&mut g, JUMP_BUTTON, 1);
-            assert_eq!(g.world.actors[0].jumps, 2);
-            assert!(g.world.actors[0].vy < 0);
-            tick(&mut g, 0, 1);
-            let vy = g.world.actors[0].vy;
-            tick(&mut g, JUMP_BUTTON, 1);
-            assert!(g.world.actors[0].vy > vy, "no third jump");
-            settle(&mut g);
-            assert_eq!(g.world.actors[0].platform, 1, "{name}");
-            assert_eq!(g.world.actors[0].jumps, 0);
-            tick(&mut g, 0, 5);
-            tick(&mut g, DOWN | JUMP_BUTTON, 1);
-            assert_eq!(g.world.actors[0].platform, -1);
-            settle(&mut g);
-            assert_eq!(g.world.actors[0].platform, 0);
-            assert!(g.verify_replay().is_ok());
-        }
-        let mut g = game("relay", "bulwark", 1);
-        for expected in [1, 3, 2] {
-            tick(&mut g, JUMP_BUTTON, 1);
-            if expected != 1 {
-                let target = if expected == 3 {
-                    400 * SCALE
+    fn cli_browser_export_parity_and_atomic_edits() {
+        let mut g = lab();
+        assert!(g.editable);
+        assert_eq!(
+            authoring::compile(&authoring::baseline()).unwrap(),
+            g.def.bytes
+        );
+        let bytes = g.def.bytes.clone();
+        let w = g.w;
+        let mut s = g.settings.clone();
+        assert!(s.edit("recovery", "-1").is_err());
+        assert_eq!(g.w, w);
+        assert_eq!(g.def.bytes, bytes);
+        s = g.settings.clone();
+        s.recovery = 4;
+        g.apply(s).unwrap();
+        assert_ne!(g.def.bytes, bytes);
+        assert!(g
+            .def
+            .data
+            .moves
+            .iter()
+            .any(|m| m.id.as_deref() == Some("special~charged")));
+        assert_eq!(g.def.state(g.def.ids[0]).recovery, 4);
+    }
+    #[test]
+    fn actual_links_cancels_resources_and_no_false_combo() {
+        let mut g = lab();
+        demo(&mut g);
+        assert!(
+            g.w.blocks > 0,
+            "bad link must let the dummy guard: {:?}",
+            g.view_value()
+        );
+        assert_eq!(g.w.max_combo, 1);
+        let mut s = g.settings.clone();
+        s.recovery = 4;
+        g.apply(s).unwrap();
+        demo(&mut g);
+        assert_eq!(g.w.max_combo, 4, "{}", g.view_value());
+        assert!(g.w.links > 0 && g.w.cancels >= 2);
+        assert_eq!(g.w.p.resources[g.def.energy], 10);
+        assert_eq!(g.w.p.resources[g.def.ammo], 1);
+        assert!(g.w.event_count > 0);
+        assert_eq!(g.replay().unwrap(), 180);
+        g.reset_world(1, 74, -1);
+        demo(&mut g);
+        assert_eq!(g.w.max_combo, 0);
+        assert_eq!(g.w.hits, 0);
+        assert!(g.w.blocks > 0);
+    }
+    #[test]
+    fn trial_credit_is_hits_not_buttons_or_autoplay() {
+        let mut g = lab();
+        g.set_trial_inner(3).unwrap();
+        demo(&mut g);
+        assert_eq!(g.w.max_combo, 4);
+        assert!(!g.w.trial_clear);
+        g.set_trial_inner(3).unwrap();
+        let mut at = 0;
+        for _ in 0..180 {
+            let targets = route(3).0;
+            let cmd = if at < targets.len() {
+                let c = targets[at];
+                let allow = if at == 1 {
+                    g.w.p.current_state == g.def.idle
                 } else {
-                    540 * SCALE
+                    can_cancel_to(&g.w.p, &g.def.pack.view(), g.def.ids[c as usize - 1])
+                        && (at == 0 || g.w.p.hit_confirmed)
                 };
-                for _ in 0..70 {
-                    if g.world.actors[0].x >= target {
-                        break;
-                    }
-                    tick(&mut g, RIGHT, 1);
+                if allow {
+                    at += 1;
+                    c
+                } else {
+                    0
                 }
-            }
-            settle(&mut g);
-            assert_eq!(g.world.actors[0].platform, expected, "{:?}", g.world);
-            tick(&mut g, 0, 5);
+            } else {
+                0
+            };
+            g.tick(cmd).unwrap();
         }
+        assert!(g.w.trial_clear, "{}", g.view_value());
+        assert_eq!(g.w.trial_progress, 4);
+        g.set_trial_inner(0).unwrap();
+        g.tick(2).unwrap();
+        run(&mut g, 80);
+        assert!(g.w.trial_failed);
+        assert!(!g.w.trial_clear);
+        g.set_trial_inner(0).unwrap();
+        g.tick(1).unwrap();
+        run(&mut g, 80);
+        g.tick(2).unwrap();
+        run(&mut g, 40);
+        assert!(!g.w.trial_clear);
     }
     #[test]
-    fn percentage_knockback_and_three_stocks() {
-        let mut g = game("relay", "bulwark", 1);
-        approach(&mut g, 55);
-        tick(&mut g, NORMAL, 1);
-        tick(&mut g, 0, 12);
-        assert!(g.world.actors[1].damage > 0);
-        assert!(g.world.actors[1].vx > 0);
-        assert_eq!(g.world.actors[1].stocks, 3);
-        let mut falls = game("relay", "bulwark", 1);
-        for _ in 0..900 {
-            tick(&mut falls, LEFT, 1);
-            if falls.world.winner != 0 {
-                break;
-            }
+    fn measured_advantage_geometry_and_reload() {
+        for recovery in [0, 4, 12, 30] {
+            let mut g = lab();
+            let mut settings = g.settings.clone();
+            settings.recovery = recovery;
+            g.apply(settings).unwrap();
+            g.reset_world(0, 74, -1);
+            g.start_demo(4).unwrap();
+            run(&mut g, 120);
+            let p = g
+                .tape
+                .iter()
+                .find(|(_, w)| w.last_action == 1 && w.p.current_state == g.def.idle)
+                .unwrap()
+                .1
+                .tick;
+            let q = g
+                .tape
+                .iter()
+                .find(|(_, w)| w.hits > 0 && w.d.current_state == g.def.idle)
+                .unwrap()
+                .1
+                .tick;
+            let row = g.metadata_value()["moves"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["id"] == "jab")
+                .unwrap()
+                .clone();
+            assert_eq!(i64::from(q) - i64::from(p), row["on_hit"].as_i64().unwrap());
         }
-        assert_eq!(falls.world.actors[0].stocks, 0);
-        assert_eq!(falls.world.winner, 2);
-        assert_eq!(falls.world.stats.kos[1], 3);
-        assert!(falls.verify_replay().is_ok());
-        let end = falls.world;
-        tick(&mut falls, NORMAL, 1);
-        assert_eq!(falls.world, end);
+        let mut close = lab();
+        close.reset_world(3, 20, -1);
+        close.tick(0).unwrap();
+        assert!(close.w.dx - close.w.px >= 36);
+        assert!(close.w.px <= 0);
+        assert_eq!(close.replay().unwrap(), 1);
+        for kind in 1..=3 {
+            assert_eq!(geometry_data(kind, 74)["overlap"], true);
+            assert_eq!(geometry_data(kind, 220)["overlap"], false);
+        }
+        let mut g = lab();
+        g.start_demo(3).unwrap();
+        assert_eq!(g.w.p.resources[g.def.ammo], 0);
+        run(&mut g, 60);
+        assert_eq!(g.w.p.resources[g.def.ammo], 3);
+        assert_eq!(g.w.hits, 0);
+        assert!(!g.w.notices.iter().any(|n| n.kind == WHIFF));
+        assert_eq!(g.replay().unwrap(), 60);
     }
+
     #[test]
-    fn projectile_checkpoint_recovery_and_invalid_inputs() {
-        let mut g = game("sable", "relay", 1);
-        tick(&mut g, SPECIAL, 1);
-        tick(&mut g, 0, 18);
-        assert!(g.world.projectiles.iter().any(|p| p.live));
-        g.checkpoint();
-        let saved = g.world;
-        tick(&mut g, 0, 90);
-        let end = g.world;
-        assert!(g.world.stats.hits[0] > 0);
-        assert!(g.verify_replay().is_ok());
-        g.restore();
-        assert_eq!(g.world, saved);
-        tick(&mut g, 0, 90);
-        assert_eq!(g.world, end);
-        let before = g.world;
-        assert!(g.step(128).is_err());
-        assert_eq!(g.world, before);
-        for name in ["relay", "bulwark", "sable", "zip"] {
-            let mut g = game(name, "relay", 1);
-            tick(&mut g, LEFT, 45);
-            tick(&mut g, 0, 1);
-            tick(&mut g, UP | SPECIAL, 1);
-            assert!(g.world.actors[0].recovery_used, "{name}");
-            assert!(g.world.actors[0].vy < 0);
-            let count = g.world.actors[0].serial;
-            tick(&mut g, 0, 50);
-            tick(&mut g, UP | SPECIAL, 1);
-            assert_eq!(
-                g.world.actors[0].serial, count,
-                "recovery cannot loop: {name}"
-            );
-        }
-    }
-    #[test]
-    fn all_matchups_use_real_binary_moves_and_replay() {
-        let mut count = 0;
-        for name in ["relay", "bulwark", "sable", "zip"] {
-            for rival in ["relay", "bulwark", "sable", "zip"] {
-                let mut g = game(name, rival, 0);
-                assert_eq!(g.pack_info()[0].2, 19);
-                for n in 0..1800 {
-                    let a = g.world.actors[0];
-                    let b = g.world.actors[1];
-                    let dir = direction(a.x, b.x);
-                    let input = if a.platform < 0 && (a.x < 150 * SCALE || a.x > 650 * SCALE) {
-                        direction(a.x, 400 * SCALE)
-                            | if a.jumps < 2 && n % 18 == 0 {
-                                JUMP_BUTTON
-                            } else if !a.recovery_used && a.vy > 0 {
-                                UP | SPECIAL
-                            } else {
-                                0
-                            }
-                    } else if n % 24 == 0 {
-                        dir | SPECIAL
-                    } else if n % 12 == 0 {
-                        dir | NORMAL
-                    } else if (a.x - b.x).abs() > 65 * SCALE {
-                        dir
-                    } else {
-                        0
-                    };
-                    tick(&mut g, input, 1);
-                    if g.world.winner != 0 {
-                        break;
-                    }
-                }
-                assert!(g.world.stats.hits.iter().sum::<u32>() > 0, "{name}/{rival}");
-                assert!(g
-                    .world
-                    .actors
-                    .iter()
-                    .all(|a| a.damage >= 0 && a.stocks <= STOCKS));
-                assert!(g.verify_replay().is_ok());
-                count += 1;
-            }
-        }
-        assert_eq!(count, 16);
+    fn windows_tags_costs_multihit_and_pack_reimport() {
+        let mut g = lab();
+        let mut s = g.settings.clone();
+        s.recovery = 4;
+        s.deny = true;
+        g.apply(s.clone()).unwrap();
+        demo(&mut g);
+        assert!(g.w.max_combo < 4);
+        s.deny = false;
+        s.tagged = false;
+        g.apply(s.clone()).unwrap();
+        demo(&mut g);
+        assert!(g.w.max_combo < 4);
+        s.tagged = true;
+        s.ammo = 0;
+        g.apply(s.clone()).unwrap();
+        let before = g.w.p.resources;
+        g.tick(4).unwrap();
+        run(&mut g, 10);
+        assert_eq!(g.w.p.resources, before);
+        s.ammo = 3;
+        s.gain = 0;
+        g.apply(s).unwrap();
+        demo(&mut g);
+        assert!(g.w.max_combo < 4);
+        g.reset_world(0, 74, -1);
+        g.start_demo(1).unwrap();
+        run(&mut g, 100);
+        assert_eq!(g.w.hits, 2);
+        assert_eq!(g.w.damage, 40);
+        let mut imported = Lab::create(g.def.bytes.clone()).unwrap();
+        assert!(!imported.editable);
+        imported.reset_world(0, 74, -1);
+        imported.start_demo(1).unwrap();
+        run(&mut imported, 100);
+        assert_eq!(g.w, imported.w);
+        assert!(integer(f64::NAN, 0, 7).is_err());
+        assert!(integer(0.5, 0, 7).is_err());
     }
 }

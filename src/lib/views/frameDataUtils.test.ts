@@ -77,32 +77,16 @@ describe('getTotal', () => {
   });
 });
 
-describe('getAdvantageHit', () => {
-  it('returns positive advantage when hitstun > recovery', () => {
-    const move = makeState({ input: '5L', name: 'Light', hitstun: 17, recovery: 8 });
-    expect(getAdvantageHit(move)).toBe(9);
-  });
-
-  it('returns negative advantage when recovery > hitstun', () => {
-    const move = makeState({ input: '5H', name: 'Heavy', hitstun: 5, recovery: 20 });
-    expect(getAdvantageHit(move)).toBe(-15);
-  });
-
-  it('returns zero when equal', () => {
-    const move = makeState({ input: '5M', name: 'Medium', hitstun: 10, recovery: 10 });
-    expect(getAdvantageHit(move)).toBe(0);
-  });
-});
-
-describe('getAdvantageBlock', () => {
-  it('returns blockstun minus recovery', () => {
-    const move = makeState({ input: '5L', name: 'Light', blockstun: 11, recovery: 8 });
-    expect(getAdvantageBlock(move)).toBe(3);
-  });
-
-  it('returns negative when unsafe', () => {
-    const move = makeState({ input: '5H', name: 'Heavy', blockstun: 5, recovery: 20 });
-    expect(getAdvantageBlock(move)).toBe(-15);
+describe('frame advantage', () => {
+  it('includes remaining active frames and matches training on hit and block', () => {
+    const move = makeState({ input:'5L', name:'Light', active:3, recovery:8, hitstun:17, blockstun:11 });
+    expect(getAdvantageHit(move)).toBe(7);
+    expect(getAdvantageBlock(move)).toBe(1);
+    const oneActive = {...move, active:1};
+    expect(getAdvantageHit(oneActive)).toBe(9);
+    expect(getAdvantageBlock(oneActive)).toBe(3);
+    expect(getAdvantageHit({...move, hitstun:10})).toBe(0);
+    expect(getAdvantageBlock({...move, blockstun:5})).toBe(-5);
   });
 });
 

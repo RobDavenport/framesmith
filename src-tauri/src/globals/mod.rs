@@ -223,6 +223,17 @@ pub fn resolve_globals(
         None => return Ok((Vec::new(), Vec::new())),
     };
 
+    resolve_global_manifest(&manifest, local_inputs, |name| {
+        load_global_state(project_dir, name)
+    })
+}
+
+/// Resolve the same includes/overrides from a caller-provided store (e.g. WASM).
+pub fn resolve_global_manifest(
+    manifest: &GlobalsManifest,
+    local_inputs: &HashSet<String>,
+    mut load: impl FnMut(&str) -> Result<State, GlobalsError>,
+) -> Result<(Vec<State>, Vec<String>), GlobalsError> {
     let mut resolved = Vec::new();
     let mut warnings = Vec::new();
     let mut seen_aliases = HashSet::new();
@@ -244,7 +255,7 @@ pub fn resolve_globals(
         }
 
         // Load the global state
-        let base_state = load_global_state(project_dir, &include.state)?;
+        let base_state = load(&include.state)?;
 
         // Validate override fields and collect warnings
         if let Some(ref overrides) = include.overrides {

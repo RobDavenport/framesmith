@@ -1,0 +1,24 @@
+{
+  "tag_rules": [
+    {
+      "from": "ready",
+      "to": "any",
+      "on": "always"
+    },
+    {
+      "from": "chainable",
+      "to": "special",
+      "on": "hit",
+      "after_frame": 0,
+      "before_frame": 255
+    },
+    {
+      "from": "special",
+      "to": "super",
+      "on": "hit",
+      "after_frame": 0,
+      "before_frame": 255
+    }
+  ],
+  "deny": {}
+}

@@ -1,156 +1,87 @@
 import { test, expect, type Page } from '@playwright/test';
-
-const snapshot = (page: Page) => page.evaluate(() => (window as any).framesmith.snapshot());
-async function ready(page: Page, practice = true) {
-  await page.goto('./');
-  await expect(page.locator('#play')).toBeEnabled();
-  if (practice) await page.selectOption('#mode', '1');
-  await page.locator('#play').click();
-}
-async function ticks(page: Page, n: number) {
-  const start = (await snapshot(page)).tick;
-  await page.waitForFunction(([start,n]) => {
-    const s=(window as any).framesmith.snapshot();return s.tick>=start+n||s.winner;
-  }, [start,n]);
-}
-async function tap(page: Page, key: string) { await page.keyboard.press(key);await ticks(page,2); }
-async function until(page: Page, predicate: (s: any) => boolean) {
-  await expect.poll(async () => predicate(await snapshot(page)), { intervals: [16], timeout: 15_000 }).toBe(true);
-}
-async function fit(page: Page) {
-  expect(await page.evaluate(() => {
-    const d=document.documentElement;
-    const controls=[...document.querySelectorAll('.controls button,.toolbar button,.toolbar select')];
-    return {overflow:d.scrollHeight>innerHeight||d.scrollWidth>innerWidth,
-      clipped:controls.some(e=>{const r=e.getBoundingClientRect();return r.bottom>innerHeight||r.right>innerWidth||r.left<0||r.top<0;})};
-  })).toEqual({overflow:false,clipped:false});
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+const snapshot=(page:Page)=>page.evaluate(()=>(window as any).framesmith.snapshot());
+const metadata=(page:Page)=>page.evaluate(()=>(window as any).framesmith.metadata());
+async function ready(page:Page){await page.goto('./');await expect(page.locator('#run')).toBeEnabled();await expect(page.locator('#error')).toBeHidden();}
+async function until(page:Page, fn:(s:any)=>boolean){await expect.poll(async()=>fn(await snapshot(page)),{intervals:[16],timeout:12000}).toBe(true);}
+async function done(page:Page){await page.waitForFunction(()=>{const f=(window as any).framesmith,s=f.snapshot();return f.paused()&&s.tick>0&&!s.auto;});}
+async function demo(page:Page){await page.locator('#run').click();await done(page);return snapshot(page);}
+async function knob(page:Page,key:string,value:number){await page.locator(`#edit-${key}`).evaluate((el:any,v)=>{el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},value);}
+async function fit(page:Page){expect(await page.evaluate(()=>{const d=document.documentElement;return{overflow:d.scrollWidth>innerWidth||d.scrollHeight>innerHeight,clipped:[...document.querySelectorAll('#arena,#run,#retry,#moves button,#knobs input,#knobs select,#experiment')].some(e=>{const r=e.getBoundingClientRect();return r.bottom>innerHeight||r.top<0||r.right>innerWidth||r.left<0;})};})).toEqual({overflow:false,clipped:false});}
+async function manualRoute(page:Page,commands:number[],touch=false){
+ await page.locator('#retry').click();await page.locator('#arena').focus();
+ for(let i=0;i<commands.length;i++){
+  const command=commands[i];await until(page,s=>s.trial_progress===i&&s.available.find((a:any)=>a.command===command).allowed);
+  if(touch)await page.locator(`[data-command="${command}"]`).tap();else await page.keyboard.press(`Digit${command}`);
+  await until(page,s=>s.trial_progress>i||s.trial_failed);expect((await snapshot(page)).trial_failed).toBe(false);
+ }
+ await until(page,s=>s.trial_clear);await expect(page.locator('#trial-call')).toContainText('TRIAL CLEAR');
 }
 
-test('cold Pages subpath, real binary assets and two-button surface', async ({page}) => {
-  const errors:string[]=[],requests:string[]=[];
-  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
-  await ready(page);
-  const s=await snapshot(page);
-  expect(s.platforms).toEqual([{left:120,right:680,top:0},{left:190,right:320,top:-95},{left:480,right:610,top:-95},{left:335,right:465,top:-190}]);
-  expect(s.actors.map((a:any)=>a.stocks)).toEqual([3,3]);
-  await expect(page.locator('.attacks button')).toHaveCount(2);
-  await expect(page.getByRole('button',{name:'Normal attack, J'})).toBeVisible();
-  await fit(page);
-  const path=new URL(page.url()).pathname;
-  expect(path).toMatch(/\/framesmith\/$/);
-  const urls=requests.map(u=>new URL(u));
-  expect(urls.filter(u=>u.pathname.endsWith('.fspk'))).toHaveLength(4);
-  expect(urls.some(u=>u.pathname.endsWith('.wasm'))).toBe(true);
-  expect(urls.filter(u=>u.pathname.endsWith('.json')).map(u=>u.pathname.split('/').pop())).toEqual(['build-info.json']);
-  const info=await page.evaluate(async()=> (await fetch('./build-info.json',{cache:'no-store'})).json());
-  expect(info.files).toBeTruthy();
-  await ticks(page,80);
-  await page.screenshot({path:test.info().outputPath('desktop-platform.png')});
-  expect(errors).toEqual([]);
+test('cold repository subpath, real binary-only runtime and asset identity',async({page})=>{
+ const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));await ready(page);await fit(page);
+ expect(new URL(page.url()).pathname).toBe('/framesmith/');expect((await snapshot(page)).tick).toBe(0);
+ const paths=requests.map(x=>new URL(x).pathname);expect(paths.filter(x=>x.endsWith('.fspk'))).toHaveLength(1);expect(paths.some(x=>x.endsWith('.wasm'))).toBe(true);expect(paths.filter(x=>x.endsWith('.json')).map(x=>x.split('/').at(-1))).toEqual(['build-info.json']);
+ const checked=await page.evaluate(async()=>{const info=await(await fetch('./build-info.json',{cache:'no-store'})).json();const mismatches=[];for(const [name,expected]of Object.entries(info.files)){const response=await fetch('./'+name,{cache:'no-store'});const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await response.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');if(!response.ok||hash!==expected)mismatches.push(name);}return{mismatches,count:Object.keys(info.files).length};});expect(checked.mismatches).toEqual([]);expect(checked.count).toBeGreaterThan(5);expect(errors).toEqual([]);
 });
 
-test('real movement crosses rival, two jumps land on triangle and drop through', async ({page}) => {
-  await ready(page);
-  const initial=await snapshot(page);
-  await page.keyboard.down('ArrowLeft');await ticks(page,10);await page.keyboard.up('ArrowLeft');
-  let s=await snapshot(page);expect(s.actors[0].x).toBeLessThan(initial.actors[0].x-30);expect(s.actors[1].x).toBe(initial.actors[1].x);
-  await page.keyboard.down('ArrowRight');await until(page,s=>s.actors[0].x>s.actors[1].x+15);await page.keyboard.up('ArrowRight');
-  s=await snapshot(page);expect(s.actors[1].x).toBe(initial.actors[1].x);
-  await page.locator('#reset').click();await ticks(page,2);
-  await tap(page,'Space');await until(page,s=>s.actors[0].platform===1);
-  s=await snapshot(page);expect(s.actors[0].y).toBe(-95);expect(s.actors[0].jumps_remaining).toBe(2);
-  await ticks(page,8);
-  await page.keyboard.down('ArrowRight');await tap(page,'Space');await until(page,s=>s.actors[0].x>=390);await page.keyboard.up('ArrowRight');
-  await until(page,s=>s.actors[0].platform===3);expect((await snapshot(page)).actors[0].y).toBe(-190);
-  await ticks(page,8);
-  await page.keyboard.down('ArrowRight');await tap(page,'Space');await until(page,s=>s.actors[0].x>=530);await page.keyboard.up('ArrowRight');
-  await until(page,s=>s.actors[0].platform===2);await ticks(page,8);
-  await page.keyboard.down('ArrowDown');await tap(page,'Space');await page.keyboard.up('ArrowDown');
-  await until(page,s=>s.actors[0].platform===0);
-  await ticks(page,8);await tap(page,'Space');await ticks(page,6);await tap(page,'Space');
-  s=await snapshot(page);expect(s.actors[0].jumps_remaining).toBe(0);const vy=s.actors[0].vy;
-  await tap(page,'Space');expect((await snapshot(page)).actors[0].vy).toBeGreaterThan(vy);
+test('broken route → real keyboard authoring edit → uninterrupted link and cancels',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await ready(page);let s=await demo(page);expect(s.max_combo).toBe(1);expect(s.blocks).toBe(1);await expect(page.locator('#reason')).toContainText('recovered first');
+ // Real range-key input, not a simulation-state mutation.
+ await page.locator('#edit-recovery').press('Home');for(let i=0;i<4;i++)await page.locator('#edit-recovery').press('ArrowRight');await page.locator('#edit-recovery').press('Tab');expect((await metadata(page)).moves.find((m:any)=>m.id==='jab').recovery).toBe(4);
+ s=await demo(page);expect([s.max_combo,s.links,s.cancels,s.energy,s.ammo]).toEqual([4,1,2,10,1]);expect(s.blocks).toBe(0);expect(s.events).toBeGreaterThan(0);
+ await page.locator('#inspect').click();await expect(page.locator('#frame-rows tr')).toHaveCount(10);await page.locator('#filter').fill('chainable');await expect(page.locator('#frame-rows tr')).toHaveCount(2);await page.selectOption('#sort','startup');await expect(page.locator('#graph')).toContainText('chainable');await page.getByRole('button',{name:'Close data inspector'}).click();
+ await page.screenshot({path:test.info().outputPath('desktop-solved.png')});expect(errors).toEqual([]);
 });
 
-test('all four fighters can recover offstage with up Special; quick modifiers survive release', async ({page}) => {
-  await ready(page);
-  for(const fighter of ['relay','bulwark','sable','zip']){
-    await page.selectOption('#fighter',fighter);await page.locator('#play').click();
-    await page.keyboard.down('ArrowLeft');await until(page,s=>s.actors[0].x<110);await page.keyboard.up('ArrowLeft');
-    await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowUp');await page.keyboard.press('KeyK');await page.keyboard.up('ArrowUp');
-    await ticks(page,4);let s=await snapshot(page);
-    expect(s.actors[0].recovery_ready).toBe(false);expect(s.actors[0].vy).toBeLessThan(0);
-    await until(page,s=>s.actors[0].x>235);await page.keyboard.up('ArrowRight');
-    await until(page,s=>s.actors[0].platform>=0);
-    s=await snapshot(page);expect(s.actors[0].stocks).toBe(3);expect(s.actors[0].recovery_ready).toBe(true);
-  }
+test('real tag, deny, window, confirmation, resource, geometry and validation boundaries',async({page})=>{
+ await ready(page);await page.selectOption('#speed','1');await page.selectOption('#experiment','3');await page.locator('#edit-tagged').uncheck();let s=await demo(page);expect(s.cancels).toBe(0);expect(s.max_combo).toBe(2);
+ await page.locator('#edit-tagged').check();await page.locator('#edit-deny').check();s=await demo(page);expect(s.cancels).toBe(0);await expect(page.locator('#reason')).toContainText('deny');await page.locator('#edit-deny').uncheck();
+ await page.selectOption('#experiment','1');await page.locator('#edit-window_end').fill('0');await page.locator('#edit-window_end').press('Tab');s=await demo(page);expect(s.cancels).toBe(0);await expect(page.locator('#reason')).toContainText('window');await page.locator('#edit-window_end').fill('255');await page.locator('#edit-window_end').press('Tab');await page.selectOption('#edit-condition','block');s=await demo(page);expect(s.cancels).toBe(0);
+ await page.selectOption('#experiment','4');await knob(page,'distance',20);await page.locator('#arena').focus();await page.keyboard.press('Period');expect((await snapshot(page)).distance).toBeGreaterThanOrEqual(36);await expect(page.locator('#reason')).toContainText('Pushboxes');await knob(page,'distance',74);await page.selectOption('#edit-dummy','1');s=await demo(page);expect(s.max_combo).toBe(0);expect(s.blocks).toBeGreaterThan(0);expect(s.cancels).toBe(1);
+ for(const kind of ['1','2','3']){await page.selectOption('#geometry',kind);await expect(page.locator('#reason')).toContainText('OVERLAP');await knob(page,'distance',220);await expect(page.locator('#reason')).toContainText('SEPARATE');await knob(page,'distance',74);}
+ await knob(page,'distance',220);s=await demo(page);expect(s.hits).toBe(0);await expect(page.locator('#reason')).toContainText('Whiff');
+ await page.selectOption('#edit-dummy','3');await knob(page,'distance',74);await page.selectOption('#experiment','1');await page.selectOption('#edit-condition','hit');
+ await page.selectOption('#experiment','2');await knob(page,'energy',100);await knob(page,'ammo',0);await page.locator('#arena').focus();await page.keyboard.press('Digit4');await until(page,s=>s.tick>7);await page.keyboard.press('KeyP');s=await snapshot(page);expect([s.energy,s.ammo,s.hits]).toEqual([100,0,0]);
+ await page.selectOption('#experiment','7');const before=await snapshot(page);await page.locator('#invalid').click();await expect(page.locator('#edit-message')).toContainText('REJECTED');expect(await snapshot(page)).toEqual(before);
 });
 
-test('Normal and Special cause real hits, percentage launch, spending and replay', async ({page}) => {
-  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  await ready(page);
-  await page.keyboard.down('ArrowRight');await until(page,s=>s.actors[0].x>=495);await page.keyboard.up('ArrowRight');await ticks(page,2);
-  await tap(page,'KeyJ');await until(page,s=>s.stats.hits[0]>0);
-  let s=await snapshot(page);expect(s.actors[1].damage).toBeGreaterThan(0);expect(s.actors[1].vx).toBeGreaterThan(0);
-  await page.locator('#reset').click();await tap(page,'KeyK');await until(page,s=>s.projectiles.length>0);
-  await page.locator('#pause').click();await page.locator('#diagnostics summary').click();
-  await page.locator('#save').click();const saved=await snapshot(page);
-  for(let i=0;i<4;i++)await page.locator('#step').click();
-  const advanced=await snapshot(page);expect(advanced.tick).toBe(saved.tick+4);
-  await page.locator('#restore').click();expect(await snapshot(page)).toEqual(saved);
-  await page.locator('#verify').click();await expect(page.locator('#replay')).toContainText('empty replay');
-  for(let i=0;i<4;i++)await page.locator('#step').click();
-  expect(await snapshot(page)).toEqual(advanced);
-  await page.locator('#verify').click();await expect(page.locator('#replay')).toContainText('PASS');
-  await page.locator('#diagnostics summary').click();await page.locator('#pause').click();
-  await until(page,s=>s.stats.hits[0]>0);s=await snapshot(page);expect(s.actors[1].damage).toBeGreaterThan(0);
-  await page.locator('#reset').click();await page.keyboard.down('ArrowDown');await tap(page,'KeyK');await page.keyboard.up('ArrowDown');
-  await until(page,s=>s.stats.spent[0]===50);
-  await until(page,s=>s.actors[0].id==='idle');await page.getByRole('button',{name:'Normal attack, J'}).focus();await tap(page,'Space');
-  expect((await snapshot(page)).actors[0].id).toBe('light');
-  expect(errors).toEqual([]);
+test('four actual manual trials; demo, wrong order and missed timing cannot earn credit',async({page})=>{
+ await ready(page);await page.locator('[data-mode="trials"]').click();expect((await snapshot(page)).editable).toBe(false);
+ const routes=[[1,2],[2,3],[3,4],[1,2,3,4]];
+ for(let trial=0;trial<routes.length;trial++){
+  await page.selectOption('#experiment',String(trial));await page.selectOption('#speed','1');let s=await demo(page);expect(s.trial_clear).toBe(false);expect(s.manual).toBe(false);expect(s.max_combo).toBe(routes[trial].length);
+  await page.selectOption('#speed','0.25');await manualRoute(page,routes[trial]);s=await snapshot(page);expect(s.max_combo).toBe(routes[trial].length);expect(s.manual).toBe(true);
+ }
+ await expect(page.locator('#clear-count')).toHaveText('4/4');await page.screenshot({path:test.info().outputPath('trial-clear.png')});
+ await page.selectOption('#experiment','0');await page.locator('#arena').focus();await page.keyboard.press('Digit2');await until(page,s=>s.trial_failed);expect((await snapshot(page)).trial_clear).toBe(false);
+ await page.locator('#retry').click();await page.selectOption('#speed','1');await page.locator('#arena').focus();await page.keyboard.press('Digit1');await until(page,s=>s.trial_progress===1&&s.actors[1].phase===0);await page.keyboard.press('Digit2');await until(page,s=>s.trial_failed);expect((await snapshot(page)).trial_clear).toBe(false);
+ await page.locator('[data-mode="guided"]').click();expect((await metadata(page)).settings.recovery).toBe(12); // trial presets did not overwrite the design draft
 });
 
-test('ring-outs, protected respawn, complete stock match and rematch through controls', async ({page}) => {
-  await ready(page);
-  await page.keyboard.down('ArrowLeft');await until(page,s=>s.actors[0].stocks===2);await page.keyboard.up('ArrowLeft');
-  let s=await snapshot(page);expect(s.actors[0].damage).toBe(0);expect(s.actors[0].respawn).toBeGreaterThan(0);
-  await expect(page.locator('#p1-stocks')).toHaveAttribute('aria-label','2 stocks remaining');
-  await until(page,s=>s.actors[0].respawn===0);expect((await snapshot(page)).actors[0].invulnerable).toBeGreaterThan(0);
-  await page.keyboard.down('ArrowLeft');await until(page,s=>s.winner===2);await page.keyboard.up('ArrowLeft');
-  await expect(page.locator('#overlay')).toBeVisible();await expect(page.locator('#overlay-title')).toContainText('Bulwark wins.');
-  s=await snapshot(page);expect(s.actors[0].stocks).toBe(0);expect(s.stats.kos[1]).toBe(3);
-  await page.locator('#play').click();s=await snapshot(page);expect(s.actors.map((a:any)=>a.stocks)).toEqual([3,3]);expect(s.winner).toBe(0);
+test('multi-hit, inherited variant, refill, event property, checkpoint, rewind and exact replay',async({page})=>{
+ await ready(page);await page.selectOption('#speed','1');await page.selectOption('#experiment','6');let s=await demo(page);expect([s.hits,s.max_combo,s.damage]).toEqual([2,2,40]);
+ await page.locator('#tools summary').click();await page.locator('#save').click();const saved=await snapshot(page);for(let n=0;n<3;n++)await page.locator('#step').click();const advanced=await snapshot(page);expect(advanced.tick).toBe(saved.tick+3);await page.locator('#restore').click();expect(await snapshot(page)).toEqual(saved);for(let n=0;n<3;n++)await page.locator('#step').click();expect(await snapshot(page)).toEqual(advanced);await page.locator('#back').click();expect((await snapshot(page)).tick).toBe(advanced.tick-1);await page.locator('#verify').click();await expect(page.locator('#replay')).toContainText('PASS');await page.locator('#tools summary').click();
+ await page.selectOption('#variant','2');s=await demo(page);expect(s.damage).toBe((await metadata(page)).moves.find((m:any)=>m.id==='special~charged').damage);
+ await page.selectOption('#variant','3');s=await demo(page);expect(s.ammo).toBe(3);expect(s.notices.some((n:any)=>n.kind===10&&n.value===3)).toBe(true);expect(s.hits).toBe(0);
+ await page.selectOption('#experiment','5');await knob(page,'spark_size',32);await knob(page,'notify_frame',2);s=await demo(page);const m=await metadata(page);expect(m.character.properties.spark_size).toBe(32);expect(s.notices.some((n:any)=>n.kind===m.trace_kinds.event&&n.aux===0&&n.tick===3)).toBe(true);expect(s.notices.some((n:any)=>n.kind===m.trace_kinds.event&&n.aux===m.event_kinds.spark)).toBe(true);
+ await page.locator('#inspect').click();await page.selectOption('#data-kind','source');await page.selectOption('#data-item','characters/relay/states/special~charged.json');await expect(page.locator('#json')).toContainText('"base": "special"');await page.selectOption('#data-item','characters/relay/globals.json');await expect(page.locator('#json')).toContainText('override');expect((await metadata(page)).moves.find((m:any)=>m.id==='idle').name).toBe('Relay Ready');
 });
 
-test('CPU navigates, attacks, and reproduces exact full-state replay', async ({page}) => {
-  await ready(page,false);
-  await until(page,s=>s.stats.hits[1]>0);
-  const s=await snapshot(page);expect(s.actors[1].x).not.toBe(540);expect(s.actors[0].damage+s.stats.kos[1]).toBeGreaterThan(0);
-  await page.locator('#pause').click();await page.locator('#diagnostics summary').click();await page.locator('#verify').click();
-  await expect(page.locator('#replay')).toContainText('PASS');
+test('edited project ZIP recompiles identically in the CLI; exported pack reloads and bad input preserves state',async({page})=>{
+ await ready(page);await knob(page,'recovery',4);await page.selectOption('#experiment','7');
+ const packWait=page.waitForEvent('download');await page.locator('#download-pack').click();const pack=await packWait,packPath=test.info().outputPath('relay.fspk');await pack.saveAs(packPath);
+ const zipWait=page.waitForEvent('download');await page.locator('#download-project').click();const archive=await zipWait,zipPath=test.info().outputPath('project.zip');await archive.saveAs(zipPath);
+ expect(readFileSync(packPath).subarray(0,4).toString()).toBe('FSPK');
+ const out=test.info().outputPath('unzipped');execFileSync('python',['-c','import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert all(not n.startswith("/") and ".." not in n.split("/") for n in z.namelist()); z.extractall(sys.argv[2])',zipPath,out]);
+ const cli=fileURLToPath(new URL('../../src-tauri/target/debug/'+(process.platform==='win32'?'framesmith-cli.exe':'framesmith-cli'),import.meta.url));const rebuilt=test.info().outputPath('cli.fspk');execFileSync(cli,['export','--project',join(out,'framesmith-lab'),'--character','relay','--adapter','fspk','--out',rebuilt]);expect(readFileSync(rebuilt).equals(readFileSync(packPath))).toBe(true);
+ const expected=await demo(page);await page.locator('#import-pack').setInputFiles(packPath);await expect(page.locator('#edit-message')).toContainText('Imported binary');expect((await snapshot(page)).editable).toBe(false);const imported=await demo(page);expect(imported).toEqual({...expected,editable:false});
+ await page.locator('#import-pack').setInputFiles({name:'bad.fspk',mimeType:'application/octet-stream',buffer:Buffer.from('not a pack')});await page.waitForFunction(()=>!(document.querySelector('#import-pack') as HTMLInputElement).value);await expect(page.locator('#edit-message')).toContainText('Invalid FSPK');expect(await snapshot(page)).toEqual(imported);await expect(page.locator('#error')).toBeHidden();
 });
 
-test('phone real multi-touch, pointer release, two attack buttons and complete layout', async ({browser}, info) => {
-  const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true,baseURL:info.project.use.baseURL});
-  const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await ready(page);
-  await fit(page);await expect(page.locator('.attacks button')).toHaveCount(2);
-  const cdp=await context.newCDPSession(page);
-  const point=async(input:number,id:number)=>{const b=await page.locator(`[data-input="${input}"]`).boundingBox();return {x:b!.x+b!.width/2,y:b!.y+b!.height/2,id};};
-  const left=await point(1,1),jump=await point(16,2);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[left]});await ticks(page,4);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[left,jump]});await ticks(page,5);
-  await expect(page.locator('[data-input="1"]')).toHaveAttribute('aria-pressed','true');
-  await expect(page.locator('[data-input="16"]')).toHaveAttribute('aria-pressed','true');
-  let s=await snapshot(page);expect(s.actors[0].x).toBeLessThan(245);expect(s.actors[0].y).toBeLessThan(0);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await ticks(page,3);
-  const x=(await snapshot(page)).actors[0].x;await ticks(page,5);expect((await snapshot(page)).actors[0].x).toBe(x);
-  expect(await page.locator('[aria-pressed="true"]').count()).toBe(0);
-  await page.locator('#reset').click();const up=await point(4,1),special=await point(64,2);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[up]});
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[up,special]});
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await ticks(page,4);
-  s=await snapshot(page);expect(s.actors[0].vy).toBeLessThan(0);expect(s.actors[0].recovery_ready).toBe(false);
-  await fit(page);await page.screenshot({path:info.outputPath('phone-platform-active.png')});await page.locator('#pause').click();
-  expect(errors).toEqual([]);await context.close();
+test('phone first-run layout and real touch can clear a trial without console errors',async({browser},info)=>{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,baseURL:info.project.use.baseURL});try{const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await ready(page);await fit(page);await page.screenshot({path:info.outputPath('phone-first.png')});await page.locator('[data-mode="trials"]').tap();await fit(page);await manualRoute(page,[1,2],true);await page.screenshot({path:info.outputPath('phone-clear.png')});await page.locator('#retry').tap();expect((await snapshot(page)).trial_clear).toBe(false);expect((await snapshot(page)).tick).toBe(0);expect(errors).toEqual([]);}finally{await context.close();}
 });

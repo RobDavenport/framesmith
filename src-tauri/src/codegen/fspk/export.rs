@@ -15,7 +15,7 @@ use crate::codegen::fspk_format::{
     SECTION_STATE_PROPS, SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE,
     STATE_EXTRAS72_SIZE, STRREF_SIZE,
 };
-use crate::commands::CharacterData;
+use crate::schema::CharacterData;
 use crate::rules::MergedRules;
 
 use super::builders::{align_up, SectionData, SectionHeader, StringTable};

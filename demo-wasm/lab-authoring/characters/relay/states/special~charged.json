@@ -1,0 +1,68 @@
+{
+  "input": "special",
+  "base": "special",
+  "name": "Charged Arc",
+  "damage": 95,
+  "startup": 8,
+  "active": 4,
+  "recovery": 22,
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        11
+      ],
+      "box": {
+        "x": 10,
+        "y": -70,
+        "w": 125,
+        "h": 45
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 28.0,
+            "tone": "violet"
+          }
+        }
+      ]
+    }
+  ],
+  "properties": {
+    "charged": true
+  }
+}

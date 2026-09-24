@@ -541,6 +541,14 @@ pub struct CancelTable {
 // Advanced Move Data Types
 // ============================================================================
 
+/// Complete resolved authoring handoff, independent of the desktop commands.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CharacterData {
+    pub character: Character,
+    pub moves: Vec<State>,
+    pub cancel_table: CancelTable,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

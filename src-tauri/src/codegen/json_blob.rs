@@ -1,4 +1,4 @@
-use crate::commands::CharacterData;
+use crate::schema::CharacterData;
 
 /// Export character data as a single minified JSON blob
 pub fn export_json_blob(character_data: &CharacterData) -> Result<String, String> {

@@ -1,0 +1,23 @@
+{
+  "id": "relay",
+  "name": "Relay",
+  "properties": {
+    "archetype": "Lab fighter",
+    "color": "#55e1ca",
+    "height": 88,
+    "width": 36,
+    "spark_size": 18
+  },
+  "resources": [
+    {
+      "name": "energy",
+      "start": 0,
+      "max": 100
+    },
+    {
+      "name": "ammo",
+      "start": 3,
+      "max": 3
+    }
+  ]
+}

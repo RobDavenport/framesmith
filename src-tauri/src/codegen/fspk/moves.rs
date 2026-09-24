@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::codegen::fspk_format::KEY_NONE;
-use crate::commands::CharacterData;
+use crate::schema::CharacterData;
 use crate::schema::State;
 
 use super::packing::{

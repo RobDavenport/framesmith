@@ -9,6 +9,13 @@ zero-copy payloads or [`framesmith-runtime`](crates/framesmith-runtime/README.md
 for optional deterministic frame/cancel/resource/collision helpers. Neither
 requires Tauri or a game engine. See the [handoff/migration policy](docs/production-handoff-decision.md).
 
+## Try the combat-design lab
+
+[Open the live Combo Lab](https://robdavenport.github.io/framesmith/): repair a
+link, change cancel rules and resources, then try four combo trials. Live edits
+use the real Rust validator/exporter and WASM runtime; download the edited project
+or its FSPK. See [the lab source and ownership boundaries](demo-wasm/README.md).
+
 ## Core capabilities
 
 - Frame-data table with filtering and sorting

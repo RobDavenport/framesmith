@@ -137,12 +137,7 @@ pub(super) fn load_character_files(
     Ok((char_path, character, moves, cancel_table))
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct CharacterData {
-    pub character: Character,
-    pub moves: Vec<State>,
-    pub cancel_table: CancelTable,
-}
+pub use crate::schema::CharacterData;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CharacterSummary {

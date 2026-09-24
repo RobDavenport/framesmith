@@ -10,7 +10,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 framesmith-runtime = { path = "../crates/framesmith-runtime", features = ["std"] }
-framesmith-fspack = { path = "../crates/framesmith-fspack", features = ["std"] }
+framesmith-fspack = { path = "../crates/framesmith-fspack", features = ["builder"] }
+framesmith-authoring = { path = "../crates/framesmith-authoring" }
+serde_json = { version = "=1.0.149", features = ["float_roundtrip"] }
 serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

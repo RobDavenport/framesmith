@@ -1,0 +1,101 @@
+{
+  "input": "jab",
+  "name": "Quick Jab",
+  "type": "normal",
+  "tags": [
+    "normal",
+    "attack",
+    "chainable"
+  ],
+  "startup": 5,
+  "active": 3,
+  "recovery": 12,
+  "damage": 30,
+  "hitstun": 18,
+  "blockstun": 10,
+  "hitstop": 3,
+  "guard": "mid",
+  "animation": "jab",
+  "hitboxes": [
+    {
+      "frames": [
+        5,
+        7
+      ],
+      "box": {
+        "x": 10,
+        "y": -70,
+        "w": 70,
+        "h": 45
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        19
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        19
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 5,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ]
+}
