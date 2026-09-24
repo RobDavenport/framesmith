@@ -2,10 +2,11 @@
   import { getCurrentCharacter, getRulesRegistry, selectMove } from "$lib/stores/character.svelte";
   import CreateMoveModal from "$lib/components/CreateMoveModal.svelte";
   import type { State } from "$lib/types";
+  import { getStateKey } from "$lib/utils";
   import { getTotal, getAdvantageHit, getAdvantageBlock, formatAdvantage, sortMoves, filterMoves, buildFilterOptions, type SortableColumn } from "./frameDataUtils";
 
   interface Props {
-    onEditMove: (input: string) => void;
+    onEditMove: (key: string) => void;
   }
 
   let { onEditMove }: Props = $props();
@@ -33,8 +34,9 @@
   }
 
   function handleRowClick(move: State) {
-    selectMove(move.input);
-    onEditMove(move.input);
+    const key = getStateKey(move);
+    selectMove(key);
+    onEditMove(key);
   }
 
   function handleMoveCreated(input: string) {
@@ -98,7 +100,11 @@
               {#if move.type === 'system'}
                 <span class="origin-badge global" title="From global state">🌐</span>
               {/if}
-              {move.input}
+              {#if getStateKey(move) === move.input}
+                {move.input}
+              {:else}
+                {getStateKey(move)} <span class="variant-input">({move.input})</span>
+              {/if}
             </td>
             <td>{move.name}</td>
             <td class="num">{move.startup}</td>
@@ -197,6 +203,11 @@
     font-family: monospace;
     font-weight: 600;
     color: var(--accent);
+  }
+
+  .variant-input {
+    color: var(--text-secondary);
+    font-weight: 400;
   }
 
   .origin-badge {

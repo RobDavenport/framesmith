@@ -40,7 +40,7 @@ impl<'a> MeshKeysView<'a> {
     /// Returns `None` if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<(u32, u16)> {
         let base = index.checked_mul(STRREF_SIZE)?;
-        if base + STRREF_SIZE > self.data.len() {
+        if base.checked_add(STRREF_SIZE)? > self.data.len() {
             return None;
         }
         let off = read_u32_le(self.data, base)?;
@@ -78,7 +78,7 @@ impl<'a> KeyframesKeysView<'a> {
     /// Returns `None` if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<(u32, u16)> {
         let base = index.checked_mul(STRREF_SIZE)?;
-        if base + STRREF_SIZE > self.data.len() {
+        if base.checked_add(STRREF_SIZE)? > self.data.len() {
             return None;
         }
         let off = read_u32_le(self.data, base)?;

@@ -13,6 +13,10 @@
   let saving = $state(false);
   let saveError = $state<string | null>(null);
 
+  function cloneState(state: State): State {
+    return $state.snapshot(state) as State;
+  }
+
   const currentState = $derived(getCurrentGlobalState());
   const selectedId = $derived(getSelectedGlobalId());
   const storeError = $derived(getError());
@@ -20,7 +24,7 @@
   // Sync local state when selection changes
   $effect(() => {
     if (currentState) {
-      editingState = structuredClone(currentState);
+      editingState = cloneState(currentState);
       hasChanges = false;
       saveError = null;
     } else {
@@ -53,7 +57,7 @@
 
   function handleRevert() {
     if (currentState) {
-      editingState = structuredClone(currentState);
+      editingState = cloneState(currentState);
       hasChanges = false;
       saveError = null;
     }

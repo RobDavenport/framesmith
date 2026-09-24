@@ -1,0 +1,100 @@
+{
+  "id": "medium",
+  "name": "Drive Strike",
+  "type": "normal",
+  "input": "medium",
+  "tags": [
+    "attack",
+    "chain_1"
+  ],
+  "startup": 8,
+  "active": 4,
+  "recovery": 18,
+  "damage": 52,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        11
+      ],
+      "box": {
+        "x": 8,
+        "y": -72,
+        "w": 86,
+        "h": 44
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        29
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        29
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "medium",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "medium"
+          }
+        }
+      ]
+    }
+  ]
+}

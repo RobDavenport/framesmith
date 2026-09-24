@@ -1,0 +1,22 @@
+{
+  "id": "zip",
+  "name": "Zip",
+  "properties": {
+    "style": "rushdown",
+    "color": "#ff688b",
+    "walk_speed": 5.75,
+    "jump_speed": 12,
+    "gravity": 0.625,
+    "width": 30,
+    "height": 82,
+    "counter_bonus": 10,
+    "weight": 85
+  },
+  "resources": [
+    {
+      "name": "meter",
+      "start": 50,
+      "max": 100
+    }
+  ]
+}

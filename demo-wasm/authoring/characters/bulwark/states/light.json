@@ -1,0 +1,100 @@
+{
+  "id": "light",
+  "name": "Quick Jab",
+  "type": "normal",
+  "input": "light",
+  "tags": [
+    "attack",
+    "chain_0"
+  ],
+  "startup": 7,
+  "active": 4,
+  "recovery": 15,
+  "damage": 42,
+  "hitstun": 24,
+  "blockstun": 13,
+  "hitstop": 5,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        7,
+        10
+      ],
+      "box": {
+        "x": 8,
+        "y": -72,
+        "w": 64,
+        "h": 44
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        25
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        25
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 7,
+    "block": 5
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "light",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 7,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "light"
+          }
+        }
+      ]
+    }
+  ]
+}

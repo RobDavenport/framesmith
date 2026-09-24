@@ -1,6 +1,6 @@
 [package]
 name = "framesmith-runtime-wasm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "WebAssembly bindings for framesmith-runtime"
 license = "MIT OR Apache-2.0"
@@ -9,8 +9,8 @@ license = "MIT OR Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-framesmith-runtime = { path = "../framesmith-runtime", features = ["std"] }
-framesmith-fspack = { path = "../framesmith-fspack", features = ["std"] }
+framesmith-runtime = { version = "0.2.0", path = "../framesmith-runtime", features = ["std"] }
+framesmith-fspack = { version = "0.2.0", path = "../framesmith-fspack", features = ["std"] }
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"

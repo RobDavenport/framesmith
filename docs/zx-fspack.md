@@ -1,11 +1,11 @@
-# ZX FSPK Export Format
+# FSPK Binary Format (v2 and legacy tables)
 
 **Status:** Active
-**Last reviewed:** 2026-01-30
+**Last reviewed:** 2026-05-22
 
 ## Overview
 
-FSPK (Framesmith Pack) is a compact binary format for storing fighting game character data. It is designed specifically for the Nethercore ZX runtime, which operates in a `no_std` WebAssembly environment with strict memory constraints.
+FSPK (Framesmith Pack) is an engine-independent binary format with `no_std`, unaligned-safe Rust views. Its historical ZX name and adapter alias do not make Nethercore a dependency. No third-party engine adapter is shipped or certified here.
 
 ### Why FSPK?
 
@@ -16,16 +16,50 @@ FSPK (Framesmith Pack) is a compact binary format for storing fighting game char
 
 ### Components
 
-- **Framesmith export adapter** (`zx-fspack`): Converts character JSON to FSPK binary
+- **Framesmith export adapter** (`fspk`): Converts character JSON to FSPK binary
 - **`framesmith-fspack` crate**: `no_std` Rust library for reading FSPK files at runtime
+
+## Canonical v2 Payload
+
+Crates 0.2.0 accept v1 (header flags 0) and v2 (flags 2). Unknown flags are
+rejected. v2 requires sections 25 (`PAYLOAD_NODES`, alignment 4) and 26
+(`PAYLOAD_STRINGS`, alignment 1); at most 32 sections are accepted. The writer
+preserves the full resolved character, states and cancel table here. Existing
+fixed legacy tables below remain convenience caches, not a full-fidelity source.
+
+A payload node is 32 little-endian bytes: kind u8 plus three zero bytes, key
+string offset u32, key length u32, first child index u32, child count u32, depth
+u32, and scalar bits u64. Kinds 0..7 are null, bool, i64, u64, f64, string, array,
+object. Strings use scalar low-u32 offset/high-u32 length into the UTF-8 pool.
+Containers use breadth-first contiguous child ranges; object keys are sorted
+and unique, array order is preserved. Root depth is 0, maximum depth is 64.
+The validator rejects cycles/aliases, unreachable nodes, malformed ranges,
+invalid UTF-8, non-finite floats and invalid kind/boolean/reserved fields.
+
+`PackView::payload()?.root()` yields typed `get`, `at`, `children`, and `as_*`
+accessors with no heap or JSON parsing. `state_data(index)` selects a resolved
+state; `state_id(index)` distinguishes variants with the same input. Literal
+keys, nested/empty containers and scalar precision survive; legacy dot-path
+property caches still flatten and quantize. Generic payload-only packs need no
+fighting-game state tables at all.
+
+Runnable, engine-neutral examples (repository root):
+
+```bash
+cargo run --manifest-path crates/framesmith-fspack/Cargo.toml --features builder --example engine_payloads
+cargo run --manifest-path crates/framesmith-runtime/Cargo.toml --example headless -- exports/test_char.fspk
+```
+
+See [migration and handoff policy](production-handoff-decision.md). The legacy
+layout sections below describe sections 1..24, still readable in both versions.
 
 ## Exporting from Framesmith
 
-Use the `zx-fspack` adapter when exporting a character.
+Use the `fspk` adapter when exporting a character.
 
-- In the app UI: Character Overview -> Export -> "ZX FSPK (Binary)"
-- In the CLI: `cd src-tauri && cargo run --bin framesmith -- export --project .. --character test_char --out ../exports/test_char.fspk`
-- Programmatically: call the `export_character` command with `adapter = "zx-fspack"`
+- In the app UI: Character Overview -> Export -> "FSPK (Binary)"
+- In the CLI: `cd src-tauri && cargo run --bin framesmith-cli -- export --project .. --character test_char --out ../exports/test_char.fspk`
+- Programmatically: call the `export_character` command with `adapter = "fspk"`
 
 ```rust
 // Tauri command signature (Rust side)
@@ -33,18 +67,27 @@ Use the `zx-fspack` adapter when exporting a character.
 export_character(
     "<project>/characters".to_string(),
     "test_char".to_string(),
-    "zx-fspack".to_string(),
+    "fspk".to_string(),
     "exports/test_char.fspk".to_string(),
     false,
 )?;
 ```
+
+`zx-fspack` is accepted as a legacy adapter alias for older integrations, but
+`fspk` is canonical.
 
 This produces a `.fspk` binary file containing:
 - Character state data (frame counts, damage, hitstun, etc.)
 - Hitbox and hurtbox geometry
 - Asset key references (mesh and animation keys)
 
-## Runtime Usage (ZX Games)
+## Illustrative ZX Integration (Not an Executable Adapter)
+
+The following SDK snippets are pseudocode: `rom_data_len`, `alloc_buffer`,
+`rom_mesh`, `MeshHandle` and similar names stand for engine-owned integration.
+They are not provided by FrameSmith. Use the executable Rust examples above for
+verified standalone consumption; do not copy these snippets as a complete game.
+
 
 Games load FSPK files during initialization and resolve asset keys to runtime handles.
 
@@ -145,7 +188,7 @@ if let Some(states) = pack.states() {
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 4 | magic | `"FSPK"` (bytes: 0x46, 0x53, 0x50, 0x4B) |
-| 4 | 4 | flags | Reserved (currently `0`) |
+| 4 | 4 | flags | `0` for v1; `2` for v2; other values rejected |
 | 8 | 4 | total_len | Total size of the pack in bytes |
 | 12 | 4 | section_count | Number of sections following the header |
 

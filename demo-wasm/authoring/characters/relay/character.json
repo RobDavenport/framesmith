@@ -1,0 +1,22 @@
+{
+  "id": "relay",
+  "name": "Relay",
+  "properties": {
+    "style": "shoto",
+    "color": "#63edcf",
+    "walk_speed": 4.75,
+    "jump_speed": 11,
+    "gravity": 0.5,
+    "width": 36,
+    "height": 88,
+    "counter_bonus": 10,
+    "weight": 100
+  },
+  "resources": [
+    {
+      "name": "meter",
+      "start": 50,
+      "max": 100
+    }
+  ]
+}

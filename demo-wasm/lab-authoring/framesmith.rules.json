@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "registry": {
+    "resources": [
+      "energy",
+      "ammo"
+    ],
+    "events": {
+      "swoosh": {
+        "contexts": [
+          "notify",
+          "on_use",
+          "on_hit",
+          "on_block"
+        ],
+        "args": {
+          "size": {
+            "type": "f32",
+            "min": 1.0,
+            "max": 64.0
+          },
+          "tone": {
+            "type": "string"
+          }
+        }
+      },
+      "spark": {
+        "contexts": [
+          "notify",
+          "on_use",
+          "on_hit",
+          "on_block"
+        ],
+        "args": {
+          "size": {
+            "type": "f32",
+            "min": 1.0,
+            "max": 64.0
+          },
+          "tone": {
+            "type": "string"
+          }
+        }
+      },
+      "charge": {
+        "contexts": [
+          "notify",
+          "on_use",
+          "on_hit",
+          "on_block"
+        ],
+        "args": {
+          "size": {
+            "type": "f32",
+            "min": 1.0,
+            "max": 64.0
+          },
+          "tone": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

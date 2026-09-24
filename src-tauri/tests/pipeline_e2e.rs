@@ -8,11 +8,8 @@ use framesmith_lib::{codegen, commands};
 #[test]
 fn full_pipeline_load_export_parse_verify() {
     // Step 1: Load real test_char
-    let char_data = commands::load_character(
-        "../characters".to_string(),
-        "test_char".to_string(),
-    )
-    .expect("load test_char");
+    let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
+        .expect("load test_char");
 
     // Verify loaded data is non-trivial
     assert!(!char_data.moves.is_empty(), "test_char should have moves");
@@ -70,9 +67,7 @@ fn full_pipeline_load_export_parse_verify() {
     );
 
     // Verify resources section
-    let resources = pack
-        .resource_defs()
-        .expect("resource defs should exist");
+    let resources = pack.resource_defs().expect("resource defs should exist");
     assert!(
         resources.len() >= 2,
         "test_char should have at least 2 resources, got {}",
@@ -82,11 +77,8 @@ fn full_pipeline_load_export_parse_verify() {
 
 #[test]
 fn pipeline_all_moves_have_valid_extras() {
-    let char_data = commands::load_character(
-        "../characters".to_string(),
-        "test_char".to_string(),
-    )
-    .expect("load test_char");
+    let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
+        .expect("load test_char");
 
     let bytes = codegen::export_fspk(&char_data, None).expect("export FSPK");
     let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse FSPK");
@@ -94,11 +86,7 @@ fn pipeline_all_moves_have_valid_extras() {
     let states = pack.states().expect("states section");
     let extras = pack.state_extras().expect("state extras section");
 
-    assert_eq!(
-        states.len(),
-        extras.len(),
-        "every state should have extras"
-    );
+    assert_eq!(states.len(), extras.len(), "every state should have extras");
 
     // Verify each move's input can be read from extras
     for i in 0..extras.len() {
@@ -117,11 +105,8 @@ fn pipeline_all_moves_have_valid_extras() {
 
 #[test]
 fn pipeline_tags_survive_full_chain() {
-    let char_data = commands::load_character(
-        "../characters".to_string(),
-        "test_char".to_string(),
-    )
-    .expect("load test_char");
+    let char_data = commands::load_character("../characters".to_string(), "test_char".to_string())
+        .expect("load test_char");
 
     // Count moves with tags
     let moves_with_tags: Vec<_> = char_data

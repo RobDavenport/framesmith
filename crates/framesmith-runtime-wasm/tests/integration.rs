@@ -6,34 +6,31 @@
 
 use framesmith_runtime_wasm::{CharacterState, DummyState, HitResult};
 
-/// Test that we can load the real glitch.fspk and parse it.
+const TEST_CHAR_FSPK: &[u8] = include_bytes!("../../../exports/test_char.fspk");
+
+/// Test that we can load the generated test_char.fspk and parse it.
 #[test]
 fn can_parse_real_fspk() {
     use framesmith_fspack::PackView;
 
-    // Load the real test file
-    let fspk_data = include_bytes!("../../../exports/glitch.fspk");
-    let pack = PackView::parse(fspk_data);
+    let pack = PackView::parse(TEST_CHAR_FSPK);
 
-    assert!(pack.is_ok(), "Should parse glitch.fspk successfully");
+    assert!(pack.is_ok(), "Should parse test_char.fspk successfully");
 
     let pack = pack.unwrap();
     // Verify it has states
     assert!(pack.states().is_some(), "Should have states section");
     let states = pack.states().unwrap();
-    assert!(states.len() > 0, "Should have at least one state");
+    assert!(!states.is_empty(), "Should have at least one state");
 }
 
 /// Test runtime simulation with real FSPK data.
 #[test]
 fn simulate_with_real_fspk() {
     use framesmith_fspack::PackView;
-    use framesmith_runtime::{
-        init_resources, next_frame, CharacterState as RtState, FrameInput,
-    };
+    use framesmith_runtime::{init_resources, next_frame, CharacterState as RtState, FrameInput};
 
-    let fspk_data = include_bytes!("../../../exports/glitch.fspk");
-    let pack = PackView::parse(fspk_data).unwrap();
+    let pack = PackView::parse(TEST_CHAR_FSPK).unwrap();
 
     // Initialize state
     let mut state = RtState::default();
@@ -47,7 +44,10 @@ fn simulate_with_real_fspk() {
     }
 
     // State should have advanced
-    assert!(state.frame > 0 || state.current_state > 0, "State should have progressed");
+    assert!(
+        state.frame > 0 || state.current_state > 0,
+        "State should have progressed"
+    );
 }
 
 #[test]
@@ -67,6 +67,7 @@ fn character_state_conversion_roundtrip() {
 
     assert_eq!(js_state.current_state, 5);
     assert_eq!(js_state.frame, 10);
+    assert_eq!(js_state.instance_duration, 0);
     assert!(js_state.hit_confirmed);
     assert!(!js_state.block_confirmed);
     assert_eq!(js_state.resources, vec![100, 50, 25, 0, 0, 0, 0, 0]);
@@ -93,6 +94,7 @@ fn hit_result_conversion_roundtrip() {
 
     assert_eq!(js_hit.attacker_move, 3);
     assert_eq!(js_hit.window_index, 1);
+    assert!(!js_hit.blocked);
     assert_eq!(js_hit.damage, 100);
     assert_eq!(js_hit.chip_damage, 10);
     assert_eq!(js_hit.hitstun, 20);

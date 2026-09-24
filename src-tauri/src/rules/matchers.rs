@@ -123,7 +123,10 @@ pub fn matches_move(spec: &MatchSpec, mv: &crate::schema::State) -> bool {
     }
 
     if let Some(tags) = &spec.tags {
-        if !tags.iter().all(|t| mv.tags.iter().any(|tag| tag.as_str() == t)) {
+        if !tags
+            .iter()
+            .all(|t| mv.tags.iter().any(|tag| tag.as_str() == t))
+        {
             return false;
         }
     }
@@ -156,10 +159,12 @@ mod tests {
 
     #[test]
     fn test_matches_move_or_within_field_and_across_fields() {
-        let mut mv = crate::schema::State::default();
-        mv.input = "2L".to_string();
-        mv.move_type = Some("command_normal".to_string());
-        mv.guard = crate::schema::GuardType::Unblockable;
+        let mv = crate::schema::State {
+            input: "2L".to_string(),
+            move_type: Some("command_normal".to_string()),
+            guard: crate::schema::GuardType::Unblockable,
+            ..Default::default()
+        };
 
         // OR within a field
         let spec = MatchSpec {
@@ -191,8 +196,10 @@ mod tests {
 
     #[test]
     fn test_matches_move_button_extraction() {
-        let mut mv = crate::schema::State::default();
-        mv.input = "j.H".to_string();
+        let mut mv = crate::schema::State {
+            input: "j.H".to_string(),
+            ..Default::default()
+        };
 
         let spec = MatchSpec {
             r#type: None,
@@ -218,12 +225,14 @@ mod tests {
 
     #[test]
     fn test_matches_move_tags_and() {
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.tags = vec![
-            crate::schema::Tag::new("starter").unwrap(),
-            crate::schema::Tag::new("reversal").unwrap(),
-        ];
+        let mv = crate::schema::State {
+            input: "5L".to_string(),
+            tags: vec![
+                crate::schema::Tag::new("starter").unwrap(),
+                crate::schema::Tag::new("reversal").unwrap(),
+            ],
+            ..Default::default()
+        };
 
         let spec = MatchSpec {
             r#type: None,

@@ -2,7 +2,8 @@ import type { ButtonName } from './InputBuffer';
 import type { MoveDefinition, MoveList } from './MoveResolver';
 
 export interface CanonicalMoveRef {
-  input: string;
+  input?: string | null;
+  name?: string | null;
   type?: string;
 }
 
@@ -14,7 +15,7 @@ const NEVER_MATCHING_INPUT: MoveDefinition['input'] = {
 };
 
 function isButtonName(value: string): value is ButtonName {
-  return value === 'L' || value === 'M' || value === 'H' || value === 'P' || value === 'K' || value === 'S';
+  return value === 'L' || value === 'M' || value === 'H' || value === 'P' || value === 'K' || value === 'S' || value === 'T';
 }
 
 export function buildMoveList(moves?: CanonicalMoveRef[] | null): MoveList {
@@ -27,14 +28,18 @@ export function buildMoveList(moves?: CanonicalMoveRef[] | null): MoveList {
 
   for (let index = 0; index < moves.length; index++) {
     const move = moves[index];
-    const parsed = parseInputNotation(move.input);
+    const input = typeof move?.input === 'string' ? move.input : '';
+    const name = input || (typeof move?.name === 'string' ? move.name : `move_${index}`);
+    const parsed = input ? parseInputNotation(input) : null;
 
     defs.push({
-      name: move.input,
+      name,
       input: parsed ?? NEVER_MATCHING_INPUT,
       priority: getMoveTypePriority(move.type),
     });
-    moveNameToIndex.set(move.input, index);
+    if (input) {
+      moveNameToIndex.set(input, index);
+    }
   }
 
   return { moves: defs, moveNameToIndex };
@@ -59,7 +64,7 @@ function getMoveTypePriority(type: string | undefined): number {
 }
 
 function parseInputNotation(input: string): MoveDefinition['input'] | null {
-  const simpleMatch = input.match(/^([1-9])([LMHPKS])$/);
+  const simpleMatch = input.match(/^([1-9])([LMHPKST])$/);
   if (simpleMatch) {
     const button = simpleMatch[2];
     if (!isButtonName(button)) {
@@ -73,7 +78,7 @@ function parseInputNotation(input: string): MoveDefinition['input'] | null {
   }
 
   // Reject any digits outside 1-9 (e.g. 0) to avoid parsing invalid motions.
-  const motionMatch = input.match(/^([1-9]{3,})([LMHPKS])$/);
+  const motionMatch = input.match(/^([1-9]{3,})([LMHPKST])$/);
   if (motionMatch) {
     const button = motionMatch[2];
     if (!isButtonName(button)) {

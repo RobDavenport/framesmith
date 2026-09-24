@@ -1,0 +1,27 @@
+[package]
+name = "framesmith-arena"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Playable binary-only FrameSmith validation consumer"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+framesmith-runtime = { path = "../crates/framesmith-runtime", features = ["std"] }
+framesmith-fspack = { path = "../crates/framesmith-fspack", features = ["builder"] }
+framesmith-authoring = { path = "../crates/framesmith-authoring" }
+serde_json = { version = "=1.0.149", features = ["float_roundtrip"] }
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

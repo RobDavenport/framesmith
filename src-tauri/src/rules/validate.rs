@@ -384,8 +384,8 @@ pub fn get_builtin_validations() -> Vec<BuiltinValidation> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::matchers::StringOrVec;
+    use super::*;
 
     const RULES_VERSION: u32 = 1;
 
@@ -401,11 +401,12 @@ mod tests {
     }
 
     fn make_valid_move() -> crate::schema::State {
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.startup = 1;
-        mv.active = 1;
-        mv
+        crate::schema::State {
+            input: "5L".to_string(),
+            startup: 1,
+            active: 1,
+            ..Default::default()
+        }
     }
 
     #[test]

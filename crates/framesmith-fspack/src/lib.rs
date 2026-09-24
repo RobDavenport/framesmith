@@ -6,6 +6,9 @@ extern crate alloc;
 pub mod bytes;
 pub mod error;
 pub mod fixed;
+pub mod payload;
+#[cfg(feature = "alloc")]
+pub use view::OwnedPack;
 pub mod view;
 
 pub use error::Error;

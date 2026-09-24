@@ -15,7 +15,9 @@ fn is_default_value(v: &serde_json::Value) -> bool {
         Value::String(s) => s.is_empty(),
         Value::Array(arr) => arr.is_empty(),
         Value::Object(obj) => obj.is_empty(),
-        Value::Number(n) => n.as_u64() == Some(0) || n.as_i64() == Some(0) || n.as_f64() == Some(0.0),
+        Value::Number(n) => {
+            n.as_u64() == Some(0) || n.as_i64() == Some(0) || n.as_f64() == Some(0.0)
+        }
         Value::Bool(_) => false, // bools are never considered default (false is meaningful)
     }
 }
@@ -54,10 +56,20 @@ pub fn resolve_variant(base: &State, overlay: &State, resolved_id: &str) -> Stat
     let mut merged = deep_merge(base_json, overlay_json);
 
     if let serde_json::Value::Object(ref mut map) = merged {
-        map.insert("id".to_string(), serde_json::Value::String(resolved_id.to_string()));
+        map.insert(
+            "id".to_string(),
+            serde_json::Value::String(resolved_id.to_string()),
+        );
         map.remove("base");
-        if map.get("input").map(|v| v.as_str() == Some("")).unwrap_or(true) {
-            map.insert("input".to_string(), serde_json::Value::String(base.input.clone()));
+        if map
+            .get("input")
+            .map(|v| v.as_str() == Some(""))
+            .unwrap_or(true)
+        {
+            map.insert(
+                "input".to_string(),
+                serde_json::Value::String(base.input.clone()),
+            );
         }
     }
 
@@ -88,10 +100,7 @@ pub fn is_variant_filename(name: &str) -> bool {
 }
 
 /// Validate variant states have existing bases and matching base fields.
-pub fn validate_variants(
-    states: &[(String, State)],
-    base_names: &HashSet<String>,
-) -> Vec<String> {
+pub fn validate_variants(states: &[(String, State)], base_names: &HashSet<String>) -> Vec<String> {
     let mut errors = Vec::new();
 
     for (name, state) in states {
@@ -187,7 +196,10 @@ pub fn flatten_variants(states: Vec<(String, State)>) -> Result<Vec<State>, Stri
     for (name, overlay) in variants {
         let base_name = overlay.base.as_ref().unwrap();
         let base = base_map.get(base_name).ok_or_else(|| {
-            format!("Base state '{}' not found for variant '{}'", base_name, name)
+            format!(
+                "Base state '{}' not found for variant '{}'",
+                base_name, name
+            )
         })?;
         let resolved = resolve_variant(base, &overlay, &name);
         result.push(resolved);
@@ -300,14 +312,24 @@ mod tests {
         let base = State {
             hitboxes: vec![FrameHitbox {
                 frames: (8, 12),
-                r#box: Rect { x: 0, y: -50, w: 40, h: 20 },
+                r#box: Rect {
+                    x: 0,
+                    y: -50,
+                    w: 40,
+                    h: 20,
+                },
             }],
             ..Default::default()
         };
         let overlay = State {
             hitboxes: vec![FrameHitbox {
                 frames: (8, 14),
-                r#box: Rect { x: 0, y: -55, w: 50, h: 25 },
+                r#box: Rect {
+                    x: 0,
+                    y: -55,
+                    w: 50,
+                    h: 25,
+                },
             }],
             ..Default::default()
         };
@@ -336,9 +358,13 @@ mod tests {
 
     #[test]
     fn validate_base_exists() {
-        let states = vec![
-            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
-        ];
+        let states = vec![(
+            "5H~level1".to_string(),
+            State {
+                base: Some("5H".to_string()),
+                ..Default::default()
+            },
+        )];
         let base_names: std::collections::HashSet<_> = std::iter::empty().collect();
 
         let errors = validate_variants(&states, &base_names);
@@ -349,10 +375,15 @@ mod tests {
 
     #[test]
     fn validate_base_field_matches_filename() {
-        let states = vec![
-            ("5H~level1".to_string(), State { base: Some("2H".to_string()), ..Default::default() }),
-        ];
-        let base_names: std::collections::HashSet<_> = ["5H".to_string(), "2H".to_string()].into_iter().collect();
+        let states = vec![(
+            "5H~level1".to_string(),
+            State {
+                base: Some("2H".to_string()),
+                ..Default::default()
+            },
+        )];
+        let base_names: std::collections::HashSet<_> =
+            ["5H".to_string(), "2H".to_string()].into_iter().collect();
 
         let errors = validate_variants(&states, &base_names);
 
@@ -363,11 +394,24 @@ mod tests {
     #[test]
     fn validate_no_chained_inheritance() {
         let states = vec![
-            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
-            ("5H~level1~enhanced".to_string(), State { base: Some("5H~level1".to_string()), ..Default::default() }),
+            (
+                "5H~level1".to_string(),
+                State {
+                    base: Some("5H".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "5H~level1~enhanced".to_string(),
+                State {
+                    base: Some("5H~level1".to_string()),
+                    ..Default::default()
+                },
+            ),
         ];
         let base_names: std::collections::HashSet<_> = ["5H".to_string()].into_iter().collect();
-        let variant_names: std::collections::HashSet<_> = ["5H~level1".to_string()].into_iter().collect();
+        let variant_names: std::collections::HashSet<_> =
+            ["5H~level1".to_string()].into_iter().collect();
 
         let errors = validate_variants_no_chain(&states, &base_names, &variant_names);
 
@@ -377,9 +421,13 @@ mod tests {
 
     #[test]
     fn validate_passes_for_valid_variant() {
-        let states = vec![
-            ("5H~level1".to_string(), State { base: Some("5H".to_string()), ..Default::default() }),
-        ];
+        let states = vec![(
+            "5H~level1".to_string(),
+            State {
+                base: Some("5H".to_string()),
+                ..Default::default()
+            },
+        )];
         let base_names: std::collections::HashSet<_> = ["5H".to_string()].into_iter().collect();
 
         let errors = validate_variants(&states, &base_names);
@@ -416,15 +464,24 @@ mod tests {
 
         assert_eq!(flattened.len(), 3);
 
-        let base_resolved = flattened.iter().find(|s| s.id.as_deref() == Some("5H")).unwrap();
+        let base_resolved = flattened
+            .iter()
+            .find(|s| s.id.as_deref() == Some("5H"))
+            .unwrap();
         assert_eq!(base_resolved.damage, 50);
 
-        let v1 = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level1")).unwrap();
+        let v1 = flattened
+            .iter()
+            .find(|s| s.id.as_deref() == Some("5H~level1"))
+            .unwrap();
         assert_eq!(v1.input, "5H");
         assert_eq!(v1.damage, 60);
         assert!(v1.base.is_none());
 
-        let v2 = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level2")).unwrap();
+        let v2 = flattened
+            .iter()
+            .find(|s| s.id.as_deref() == Some("5H~level2"))
+            .unwrap();
         assert_eq!(v2.damage, 75);
     }
 
@@ -436,9 +493,7 @@ mod tests {
             ..Default::default()
         };
 
-        let states = vec![
-            ("5H~level1".to_string(), variant),
-        ];
+        let states = vec![("5H~level1".to_string(), variant)];
 
         let result = flatten_variants(states);
         assert!(result.is_err());
@@ -464,16 +519,16 @@ mod tests {
         let base: State = serde_json::from_str(base_json).unwrap();
         let variant: State = serde_json::from_str(variant_json).unwrap();
 
-        let states = vec![
-            ("5H".to_string(), base),
-            ("5H~level1".to_string(), variant),
-        ];
+        let states = vec![("5H".to_string(), base), ("5H~level1".to_string(), variant)];
 
         let flattened = flatten_variants(states).unwrap();
 
         assert_eq!(flattened.len(), 2);
 
-        let resolved = flattened.iter().find(|s| s.id.as_deref() == Some("5H~level1")).unwrap();
+        let resolved = flattened
+            .iter()
+            .find(|s| s.id.as_deref() == Some("5H~level1"))
+            .unwrap();
         assert_eq!(resolved.input, "5H");
         assert_eq!(resolved.damage, 80);
         assert_eq!(resolved.hitstun, 20);

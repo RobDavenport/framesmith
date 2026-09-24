@@ -1,3 +1,4 @@
+import { calculateFrameAdvantage } from "$lib/training/FrameAdvantage";
 import type { State } from "$lib/types";
 
 // Registry type subset needed for these utils
@@ -53,14 +54,14 @@ export function getTotal(move: State): number {
   return move.startup + move.active + move.recovery;
 }
 
-/** Frame advantage on hit = hitstun - recovery */
+/** First-active-frame advantage, shared with training. */
 export function getAdvantageHit(move: State): number {
-  return move.hitstun - move.recovery;
+  return calculateFrameAdvantage(move).onHit;
 }
 
-/** Frame advantage on block = blockstun - recovery */
+/** First-active-frame block advantage, shared with training. */
 export function getAdvantageBlock(move: State): number {
-  return move.blockstun - move.recovery;
+  return calculateFrameAdvantage(move).onBlock;
 }
 
 /** Format advantage with +/- prefix */

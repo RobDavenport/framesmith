@@ -1,7 +1,7 @@
 # Framesmith Runtime API Reference
 
 **Status:** Active
-**Last reviewed:** 2026-02-01
+**Last reviewed:** 2026-05-22
 
 Complete API documentation for `framesmith-runtime`.
 
@@ -18,10 +18,10 @@ pub struct CharacterState {
     pub current_state: u16,
 
     /// Current frame within the state (0-indexed).
-    pub frame: u8,
+    pub frame: u16,
 
     /// Instance-specific duration override. 0 = use state's default total().
-    pub instance_duration: u8,
+    pub instance_duration: u16,
 
     /// State connected with a hit (opens on-hit cancel windows).
     pub hit_confirmed: bool,
@@ -34,12 +34,12 @@ pub struct CharacterState {
 }
 ```
 
-**Size:** 22 bytes
+**Size:** 24 bytes
 
 **Notes:**
 - `Copy` trait enables zero-cost state saving/restoration for rollback
 - `current_state` is an index into the character's state array
-- `frame` saturates at 255 if not transitioned
+- `frame` saturates at 65535 if not transitioned
 - When `instance_duration > 0`, it overrides the state's default duration
 
 ---
@@ -60,7 +60,7 @@ pub struct FrameInput {
 **Notes:**
 - Set to `None` to continue the current state
 - Set to `Some(state_id)` to request a cancel/transition
-- For action cancels, use `state_id = move_count + ACTION_*`
+- Only valid state indices may be requested. Query legacy action flags separately with `can_cancel_action`; action constants are not state indices.
 
 ---
 
@@ -153,6 +153,28 @@ impl CheckHitsResult {
 ```
 
 **Capacity:** 8 hits maximum (`MAX_HIT_RESULTS`)
+
+---
+
+### PushboxResult
+
+Deterministic horizontal separation for overlapping pushboxes.
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PushboxResult {
+    /// Separation to apply to player 1.
+    pub p1_dx: i32,
+
+    /// Separation to apply to player 2.
+    pub p2_dx: i32,
+}
+```
+
+**Notes:**
+- Negative `dx` means move left; positive `dx` means move right.
+- The engine applies these deltas after its own floor, wall, corner, and stage
+  boundary policy.
 
 ---
 
@@ -260,10 +282,7 @@ pub const ACTION_JUMP: u16 = 3;
 **Usage:**
 
 ```rust
-let move_count = pack.states().map(|s| s.len()).unwrap_or(0) as u16;
-let jump_action = move_count + ACTION_JUMP;
-
-if can_cancel_to(&state, &pack, jump_action) {
+if can_cancel_action(&state, &pack, ACTION_JUMP)
     // Jump cancel is allowed
 }
 ```
@@ -326,18 +345,17 @@ pub fn can_cancel_to(
 **Arguments:**
 - `state` - Current character state
 - `pack` - Character data pack
-- `target` - Target state ID (or action ID if `>= move_count`)
+- `target` - Valid compiled state index; out-of-range indices return false
 
 **Returns:** `true` if the cancel is valid right now.
 
 **Evaluation order:**
-1. If `target >= move_count`: Check action cancel flags
+1. Reject an invalid current state or target index
 2. Check explicit denies (always blocks if present)
-3. Check explicit chain cancels from state extras
-4. Check tag-based cancel rules
+3. Check tag-based cancel rules
 
 **Notes:**
-- Resource preconditions are checked for both explicit chains and tag rules
+- Resource preconditions and the ability to pay all costs are checked before accepting a transition
 - Frame range conditions are checked for tag rules
 - Hit/block conditions are checked for tag rules
 
@@ -364,7 +382,8 @@ pub fn available_cancels(
 **Notes:**
 - Requires the `alloc` feature
 - Filters by resource preconditions
-- Returns explicit chain cancel targets only (not tag-based matches)
+- Enumerates regular move/state targets accepted by `can_cancel_to`
+- Does not enumerate game-defined action cancel IDs above `move_count`
 
 ---
 
@@ -424,6 +443,39 @@ pub fn check_hits(
 2. Iterates defender's hurt windows active this frame
 3. Checks shape overlaps between hitboxes and hurtboxes
 4. Returns one hit per hit window maximum
+
+---
+
+### check_pushbox
+
+Check active pushboxes for two characters and calculate horizontal separation.
+
+```rust
+#[must_use]
+pub fn check_pushbox(
+    p1_state: &CharacterState,
+    p1_pack: &PackView,
+    p1_pos: (i32, i32),
+    p2_state: &CharacterState,
+    p2_pack: &PackView,
+    p2_pos: (i32, i32),
+) -> Option<PushboxResult>
+```
+
+**Arguments:**
+- `p1_state` - Player 1's current state
+- `p1_pack` - Player 1's character pack
+- `p1_pos` - Player 1 position `(x, y)` in pixels
+- `p2_state` - Player 2's current state
+- `p2_pack` - Player 2's character pack
+- `p2_pos` - Player 2 position `(x, y)` in pixels
+
+**Returns:** `Some(PushboxResult)` when exported active pushboxes overlap,
+otherwise `None`.
+
+**Notes:**
+- The function computes separation only; it does not mutate world positions.
+- Stage bounds, corner behavior, and push priority are engine-owned.
 
 ---
 
@@ -601,7 +653,7 @@ pub fn apply_resource_costs(
 
 **Returns:** `true` if all costs were paid, `false` if any resource was insufficient.
 
-**Effect:** Deducts costs from state using `saturating_sub` (costs are still deducted even if insufficient).
+**Effect:** Pays all costs atomically. Unknown resources, malformed records and insufficient total balances return false without changing any resource; repeated costs accumulate.
 
 **Note:** Called automatically by `next_frame()` on successful transitions.
 

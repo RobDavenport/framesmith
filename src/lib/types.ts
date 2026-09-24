@@ -319,24 +319,27 @@ export interface MeterGain {
 
 /**
  * A dynamic character property value.
- * Matches the Rust enum: Number(f64) | Bool(bool) | String(String)
+ * Matches the Rust enum:
+ * Number(f64) | Bool(bool) | String(String) | Array | Object.
  */
-export type PropertyValue = number | boolean | string;
+export type PropertyValue =
+  | number
+  | boolean
+  | string
+  | PropertyValue[]
+  | { [key: string]: PropertyValue };
+
+export interface CharacterResource {
+  name: string;
+  start: number;
+  max: number;
+}
 
 export interface Character {
   id: string;
   name: string;
-  archetype: string;
-  // Legacy fixed fields (deprecated - use properties map instead)
-  health: number;
-  walk_speed: number;
-  back_walk_speed: number;
-  jump_height: number;
-  jump_duration: number;
-  dash_distance: number;
-  dash_duration: number;
-  // Dynamic properties map (preferred over fixed fields)
-  properties?: Record<string, PropertyValue>;
+  properties: Record<string, PropertyValue>;
+  resources: CharacterResource[];
 }
 
 // =============================================================================
@@ -404,17 +407,32 @@ export interface State {
   on_use?: OnUse;
   on_hit?: OnHit;
   on_block?: OnBlock;
+
+  // Flexible per-state properties map for engine-specific data.
+  properties?: Record<string, PropertyValue>;
+
+  // Variant resolution fields.
+  base?: string;
+  id?: string;
 }
 
 // =============================================================================
 // Cancel Table and Character Data
 // =============================================================================
 
+export type CancelCondition = "always" | "hit" | "block" | "whiff" | Array<"hit" | "block" | "whiff">;
+
+export interface CancelTagRule {
+  from: string;
+  to: string;
+  on?: CancelCondition;
+  after_frame?: number;
+  before_frame?: number;
+}
+
 export interface CancelTable {
-  chains: Record<string, string[]>;
-  special_cancels: string[];
-  super_cancels: string[];
-  jump_cancels: string[];
+  tag_rules: CancelTagRule[];
+  deny: Record<string, string[]>;
 }
 
 export interface CharacterData {
@@ -426,7 +444,7 @@ export interface CharacterData {
 export interface CharacterSummary {
   id: string;
   name: string;
-  archetype: string;
+  archetype?: string;
   move_count: number;
 }
 

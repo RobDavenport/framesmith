@@ -1,0 +1,100 @@
+{
+  "id": "heavy",
+  "name": "Power Blow",
+  "type": "normal",
+  "input": "heavy",
+  "tags": [
+    "attack",
+    "chain_2"
+  ],
+  "startup": 9,
+  "active": 5,
+  "recovery": 20,
+  "damage": 62,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        9,
+        13
+      ],
+      "box": {
+        "x": 8,
+        "y": -72,
+        "w": 94,
+        "h": 44
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        33
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "heavy",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 9,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "heavy"
+          }
+        }
+      ]
+    }
+  ]
+}

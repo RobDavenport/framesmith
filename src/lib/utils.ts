@@ -2,11 +2,10 @@
  * Shared utility functions for Framesmith
  */
 
-import type { Character } from './types';
+import type { Character, State } from './types';
 
 /**
  * Get a character property with fallback.
- * Prefers the dynamic properties map, falls back to legacy fixed fields, then the default.
  *
  * @param char - The character object
  * @param key - Property key (e.g., 'health', 'walk_speed')
@@ -14,11 +13,17 @@ import type { Character } from './types';
  * @returns The property value or fallback
  */
 export function getCharProp(char: Character, key: string, fallback: number): number {
-  // Prefer properties map
-  const val = char.properties?.[key];
+  const val = char.properties[key];
   if (typeof val === 'number') return val;
-  // Fall back to legacy fixed fields (cast through unknown to avoid type error)
-  const legacyVal = (char as unknown as Record<string, unknown>)[key];
-  if (typeof legacyVal === 'number') return legacyVal;
   return fallback;
+}
+
+/** Stable authoring/editor key for states that may be resolved variants. */
+export function getStateKey(state: State): string {
+  return state.id ?? state.input;
+}
+
+/** True when a loaded state is a resolved overlay variant rather than a base state. */
+export function isResolvedVariantState(state: State): boolean {
+  return typeof state.id === 'string' && state.id.length > 0 && state.id !== state.input;
 }

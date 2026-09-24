@@ -1,0 +1,103 @@
+{
+  "id": "air_medium",
+  "name": "Skyward Strike",
+  "type": "normal",
+  "input": "air_up",
+  "tags": [
+    "attack",
+    "air_attack",
+    "air_chain_1"
+  ],
+  "startup": 6,
+  "active": 5,
+  "recovery": 15,
+  "damage": 45,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "high",
+  "hitboxes": [
+    {
+      "frames": [
+        6,
+        10
+      ],
+      "box": {
+        "x": -20,
+        "y": -140,
+        "w": 70,
+        "h": 72
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        25
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        25
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "air_up",
+  "properties": {
+    "launch": -12
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 6,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "air_medium"
+          }
+        }
+      ]
+    }
+  ]
+}

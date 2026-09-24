@@ -30,9 +30,9 @@
   import { pickAnimationKey } from '$lib/training/pickAnimationKey';
   import { buildMoveList } from '$lib/training/buildMoveList';
   import { TrainingLoop } from './training/TrainingLoop';
-  import { getCurrentCharacter, getTrainingSync } from '$lib/stores/character.svelte';
+  import { getCharacterList, getCurrentCharacter, getTrainingSync } from '$lib/stores/character.svelte';
   import { getProjectPath } from '$lib/stores/project.svelte';
-  import type { CharacterAssets } from '$lib/types';
+  import type { CharacterAssets, CharacterData } from '$lib/types';
   import type { ActorSpec, Facing } from '$lib/rendercore/types';
   import { buildActorSpecForMoveAnimation, getMoveForStateIndex } from '$lib/training/renderMapping';
 
@@ -47,6 +47,8 @@
   let trainingLoop: TrainingLoop | null = $state(null);
   let dummyController: DummyController | null = $state(null);
   let moveResolver: MoveResolver | null = $state(null);
+  let dummyCharacterData = $state<CharacterData | null>(null);
+  let selectedDummyCharacterId = $state<string | null>(null);
   let isInitializing = $state(true);
   let initError = $state<string | null>(null);
 
@@ -96,6 +98,16 @@
     return currentCharacter?.character.id ?? null;
   });
 
+  const characterList = $derived(getCharacterList());
+
+  const dummyCharacterId = $derived.by((): string | null => {
+    return selectedDummyCharacterId ?? characterId;
+  });
+
+  const activeDummyCharacter = $derived.by(() => {
+    return dummyCharacterData ?? currentCharacter;
+  });
+
   // Default input configuration
   const defaultInputConfig: TrainingInputConfig = {
     directions: {
@@ -111,6 +123,7 @@
       P: 'KeyJ',
       K: 'KeyK',
       S: 'KeyL',
+      T: 'KeyP',
     },
   };
 
@@ -125,6 +138,21 @@
     } catch {
       return String(e);
     }
+  }
+
+  function decodeBase64Bytes(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function handleDummyCharacterChange(nextCharacterId: string) {
+    if (!characterId || nextCharacterId === dummyCharacterId) return;
+    selectedDummyCharacterId = nextCharacterId === characterId ? null : nextCharacterId;
+    void initialize();
   }
 
   $effect(() => {
@@ -191,24 +219,36 @@
 
       const charactersDir = `${projectPath}/characters`;
       const characterId = currentCharacter.character.id;
+      const nextDummyCharacterId = selectedDummyCharacterId ?? characterId;
 
       // Get FSPK bytes from Tauri
-      const fspkBase64 = await invoke<string>('get_character_fspk', {
+      const playerFspkBase64 = await invoke<string>('get_character_fspk', {
         charactersDir,
         characterId,
       });
 
       if (destroyed || seq !== initSeq) return;
 
-      // Decode base64 to Uint8Array
-      const binaryString = atob(fspkBase64);
-      const fspkBytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        fspkBytes[i] = binaryString.charCodeAt(i);
-      }
+      const [nextDummyCharacter, dummyFspkBase64] = nextDummyCharacterId === characterId
+        ? [currentCharacter, playerFspkBase64]
+        : await Promise.all([
+            invoke<CharacterData>('load_character', {
+              charactersDir,
+              characterId: nextDummyCharacterId,
+            }),
+            invoke<string>('get_character_fspk', {
+              charactersDir,
+              characterId: nextDummyCharacterId,
+            }),
+          ]);
 
-      // Create training session (using same character for player and dummy)
-      const session = await TrainingSession.create(fspkBytes, fspkBytes);
+      if (destroyed || seq !== initSeq) return;
+
+      const playerFspkBytes = decodeBase64Bytes(playerFspkBase64);
+      const dummyFspkBytes = decodeBase64Bytes(dummyFspkBase64);
+
+      // Create training session with independently loaded player and dummy packs.
+      const session = await TrainingSession.create(playerFspkBytes, dummyFspkBytes);
 
       if (destroyed || seq !== initSeq) {
         session.free();
@@ -229,6 +269,7 @@
 
       moveResolver = nextMoveResolver;
       dummyController = nextDummyController;
+      dummyCharacterData = nextDummyCharacter;
 
       // Create training loop
       const loop = new TrainingLoop({
@@ -238,6 +279,7 @@
         moveResolver: nextMoveResolver,
         dummyController: nextDummyController,
         character: currentCharacter.character,
+        dummyCharacter: nextDummyCharacter.character,
         moves: currentCharacter.moves,
         onError: (error) => {
           initError = error;
@@ -308,7 +350,7 @@
       return;
     }
     if (event.code === 'Comma') {
-      // Step back (not implemented - would need state history)
+      trainingLoop.stepBack();
       return;
     }
     // Box overlay toggles
@@ -345,6 +387,7 @@
     trainingLoop = null;
     moveResolver = null;
     dummyController = null;
+    dummyCharacterData = null;
   }
 
   // Lifecycle
@@ -369,7 +412,8 @@
     const specs: ActorSpec[] = [];
 
     const assets = renderAssets;
-    const char = currentCharacter;
+    const playerChar = currentCharacter;
+    const dummyChar = activeDummyCharacter;
     const state = loopState;
 
     if (!assets) {
@@ -377,11 +421,11 @@
       else if (renderAssetsError) errs.push(`Assets error: ${renderAssetsError}`);
     }
 
-    if (!assets || !char || !state?.playerState || !state?.dummyState) {
+    if (!assets || !playerChar || !dummyChar || !state?.playerState || !state?.dummyState) {
       return { actors: specs, error: errs.length ? errs.join('\n') : null };
     }
 
-    const resolveOne = (actorId: string, charState: CharacterState, pos: { x: number; y: number }, facing: Facing) => {
+    const resolveOne = (actorId: string, char: CharacterData, charState: CharacterState, pos: { x: number; y: number }, facing: Facing) => {
       const move = getMoveForStateIndex(char.moves, charState.current_state);
       if (!move) {
         errs.push(`${actorId}: State index out of bounds: ${charState.current_state}`);
@@ -403,8 +447,8 @@
       if (built.spec) specs.push(built.spec);
     };
 
-    resolveOne('p1', state.playerState, { x: state.playerX, y: state.playerY }, 'right');
-    resolveOne('cpu', state.dummyState, { x: state.dummyX, y: state.dummyY }, 'left');
+    resolveOne('p1', playerChar, state.playerState, { x: state.playerX, y: state.playerY }, 'right');
+    resolveOne('cpu', dummyChar, state.dummyState, { x: state.dummyX, y: state.dummyY }, 'left');
 
     return { actors: specs, error: errs.length ? errs.join('\n') : null };
   });
@@ -430,7 +474,7 @@
     if (!state) return { health: 0, maxHealth: 0, resources: [] };
     return {
       health: state.dummyHealth,
-      maxHealth: state.maxHealth,
+      maxHealth: state.dummyMaxHealth,
       resources: state.dummyState?.resources
         ? state.dummyState.resources.slice(0, 2).map((v, i) => ({
             name: i === 0 ? 'Meter' : 'Heat',
@@ -510,8 +554,8 @@
 
   const dummyHitboxData = $derived.by(() => {
     const state = loopState;
-    const move = state?.dummyState && currentCharacter
-      ? getMoveForStateIndex(currentCharacter.moves, state.dummyState.current_state)
+    const move = state?.dummyState && activeDummyCharacter
+      ? getMoveForStateIndex(activeDummyCharacter.moves, state.dummyState.current_state)
       : null;
     return {
       move,
@@ -601,7 +645,10 @@
         {#if dummyController}
           <DummySettings
             config={dummyController.config}
-            availableMoves={currentCharacter?.moves.map(m => m.input) ?? []}
+            availableMoves={activeDummyCharacter?.moves.map(m => m.input) ?? []}
+            availableCharacters={characterList}
+            selectedCharacterId={dummyCharacterId ?? ''}
+            onCharacterChange={handleDummyCharacterChange}
             onStateChange={(state) => dummyController?.setState(state)}
             onRecoveryChange={(recovery) => dummyController?.setRecovery(recovery)}
             onReversalMoveChange={(move) => dummyController?.setReversalMove(move)}
@@ -619,7 +666,7 @@
         isPlaying={loopState?.isPlaying ?? false}
         speed={loopState?.playbackSpeed ?? 1}
         onPlayPause={() => trainingLoop?.togglePlayPause()}
-        onStepBack={() => {}}
+        onStepBack={() => trainingLoop?.stepBack()}
         onStepForward={() => trainingLoop?.stepForward()}
         onSpeedChange={(speed) => trainingLoop?.setPlaybackSpeed(speed)}
       />
@@ -637,7 +684,7 @@
         </div>
         <div class="control-group">
           <span class="control-label">Attacks:</span>
-          <span class="control-keys">U I O / J K L</span>
+          <span class="control-keys">U I O / J K L / P</span>
         </div>
         <div class="control-group">
           <span class="control-label">Boxes:</span>

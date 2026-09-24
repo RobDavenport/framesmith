@@ -1,7 +1,20 @@
 # Framesmith
 
-Framesmith is an engine-agnostic fighting game character authoring tool.
-It manages portable character data on disk (JSON) and exports runtime-specific formats.
+Framesmith is a frame-based, binary-first fighting-game helper with engine-independent
+Rust crates and an optional character editor. JSON is editable authoring data;
+FSPK v2 is the full-fidelity runtime handoff, without a JSON sidecar.
+
+Start with [`framesmith-fspack`](crates/framesmith-fspack/README.md) for generic
+zero-copy payloads or [`framesmith-runtime`](crates/framesmith-runtime/README.md)
+for optional deterministic frame/cancel/resource/collision helpers. Neither
+requires Tauri or a game engine. See the [handoff/migration policy](docs/production-handoff-decision.md).
+
+## Try the combat-design lab
+
+[Open the live Combo Lab](https://robdavenport.github.io/framesmith/): repair a
+link, change cancel rules and resources, then try four combo trials. Live edits
+use the real Rust validator/exporter and WASM runtime; download the edited project
+or its FSPK. See [the lab source and ownership boundaries](demo-wasm/README.md).
 
 ## Core capabilities
 
@@ -9,7 +22,7 @@ It manages portable character data on disk (JSON) and exports runtime-specific f
 - State editor with sprite and GLTF preview
 - Cancel graph view for route visualization
 - Rules system for defaults and validation
-- Export adapters (`json-blob`, `zx-fspack`)
+- Export adapters (`json-blob`, `fspk`)
 - MCP server for scripted and LLM-assisted workflows
 
 ## Framesmith project format
@@ -73,7 +86,7 @@ See `docs/mcp-server.md` for tools, resources, and integration details.
 
 ```bash
 cd src-tauri
-cargo run --bin framesmith -- export --project .. --all --out-dir ../exports
+cargo run --bin framesmith-cli -- export --project .. --all --out-dir ../exports
 ```
 
 See `docs/cli.md` for full CLI reference.
@@ -89,8 +102,8 @@ See `docs/cli.md` for full CLI reference.
 - `docs/mcp-server.md`: MCP server setup and tool list
 - `docs/global-states.md`: global state authoring and behavior
 - `docs/character-authoring-guide.md`: practical authoring workflow
-- `AGENTS.md`: contributor and code-map reference
-- `CLAUDE.md`: repo constraints and invariants
+- `AGENTS.md`: canonical agent workflow, invariants, code map, and targeted checks
+- `CLAUDE.md`: compatibility import of `AGENTS.md`
 
 ## Repo map
 

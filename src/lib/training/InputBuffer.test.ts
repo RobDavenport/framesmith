@@ -44,6 +44,30 @@ describe('InputBuffer', () => {
     it('should return null for latest when empty', () => {
       expect(buffer.latest()).toBeNull();
     });
+
+    it('should snapshot and restore input history', () => {
+      buffer.push({ direction: 2, buttons: ['L'] });
+      buffer.push({ direction: 3, buttons: ['M'] });
+
+      const snapshot = buffer.snapshot();
+      buffer.clear();
+      buffer.push({ direction: 6, buttons: ['H'] });
+      buffer.restore(snapshot);
+
+      expect(buffer.length).toBe(2);
+      expect(buffer.latest()).toEqual({ direction: 3, buttons: ['M'] });
+    });
+
+    it('should not share mutable button arrays with snapshots', () => {
+      const input: InputSnapshot = { direction: 5, buttons: ['L'] };
+      buffer.push(input);
+
+      const snapshot = buffer.snapshot();
+      input.buttons.push('M');
+      snapshot[0].buttons.push('H');
+
+      expect(buffer.latest()).toEqual({ direction: 5, buttons: ['L'] });
+    });
   });
 
   describe('numpad direction values', () => {

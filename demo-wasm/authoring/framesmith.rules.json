@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "registry": {
+    "resources": [
+      "meter"
+    ],
+    "events": {
+      "strike": {
+        "contexts": [
+          "notify"
+        ],
+        "args": {
+          "move": {
+            "type": "string"
+          }
+        }
+      },
+      "projectile": {
+        "contexts": [
+          "notify"
+        ],
+        "args": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

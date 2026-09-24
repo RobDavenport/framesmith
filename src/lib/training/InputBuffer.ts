@@ -6,7 +6,7 @@
  */
 
 /** Button names used in the input system. */
-export type ButtonName = 'L' | 'M' | 'H' | 'P' | 'K' | 'S';
+export type ButtonName = 'L' | 'M' | 'H' | 'P' | 'K' | 'S' | 'T';
 
 /**
  * A snapshot of input state at a single frame.
@@ -24,6 +24,9 @@ export interface InputSnapshot {
   /** Buttons currently pressed this frame. */
   buttons: ButtonName[];
 }
+
+/** Serializable copy of the input buffer contents. */
+export type InputBufferSnapshot = InputSnapshot[];
 
 /**
  * Pattern for detecting motion inputs (quarter circles, dragon punches, etc.)
@@ -103,7 +106,10 @@ export class InputBuffer {
     if (this.buffer.length >= this.capacity) {
       this.buffer.shift();
     }
-    this.buffer.push(snapshot);
+    this.buffer.push({
+      direction: snapshot.direction,
+      buttons: [...snapshot.buttons],
+    });
   }
 
   /**
@@ -121,6 +127,26 @@ export class InputBuffer {
    */
   clear(): void {
     this.buffer = [];
+  }
+
+  /**
+   * Capture the current buffer contents for deterministic rewind.
+   */
+  snapshot(): InputBufferSnapshot {
+    return this.buffer.map(snapshot => ({
+      direction: snapshot.direction,
+      buttons: [...snapshot.buttons],
+    }));
+  }
+
+  /**
+   * Restore a previous buffer snapshot.
+   */
+  restore(snapshot: InputBufferSnapshot): void {
+    this.buffer = snapshot.slice(-this.capacity).map(input => ({
+      direction: input.direction,
+      buttons: [...input.buttons],
+    }));
   }
 
   /**

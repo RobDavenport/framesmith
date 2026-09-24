@@ -8,9 +8,9 @@
  * 1. MoveResolver - determines which move the player input matches
  * 2. WASM Runtime (can_cancel_to) - determines if that move is allowed from current state
  *
- * Key insight: MoveResolver allows all moves when availableCancels is empty,
- * but the WASM runtime still needs tag_rules to permit the transition.
- * Without tag_rules for "system -> any", the player stays stuck in idle.
+ * Key insight: MoveResolver filters against the state indices returned by
+ * available_cancels(), while the WASM runtime remains the authority for
+ * tag-rule cancel validity.
  */
 import { describe, it, expect } from 'vitest';
 import { MoveResolver, type MoveList } from './MoveResolver';
@@ -20,15 +20,12 @@ import { InputBuffer } from './InputBuffer';
  * Mock cancel table structure matching characters/test_char/cancel_table.json
  */
 interface CancelTable {
-  tag_rules?: Array<{
+  tag_rules: Array<{
     from: string;
     to: string;
-    on: 'always' | 'hit' | 'block' | 'whiff';
+    on: 'always' | 'hit' | 'block' | 'whiff' | Array<'hit' | 'block' | 'whiff'>;
   }>;
-  chains: Record<string, string[]>;
-  special_cancels: string[];
-  super_cancels: string[];
-  jump_cancels: string[];
+  deny: Record<string, string[]>;
 }
 
 /**
@@ -119,18 +116,11 @@ describe('Cancel System Integration', () => {
       const validCancelTable: CancelTable = {
         tag_rules: [
           { from: 'system', to: 'any', on: 'always' },
-          { from: 'normal', to: 'special', on: 'hit' },
-          { from: 'normal', to: 'super', on: 'hit' },
-          { from: 'special', to: 'super', on: 'hit' },
+          { from: 'normal', to: 'special', on: ['hit', 'block'] },
+          { from: 'normal', to: 'super', on: ['hit', 'block'] },
+          { from: 'special', to: 'super', on: ['hit', 'block'] },
         ],
-        chains: {
-          '5L': ['5L', '5M', '2L'],
-          '5M': ['5H'],
-          '2L': ['2L', '5M'],
-        },
-        special_cancels: ['5L', '5M', '5H', '2L', '6M'],
-        super_cancels: ['5H', '236P'],
-        jump_cancels: ['5H', '6M'],
+        deny: {},
       };
 
       // tag_rules must exist and include system -> any rule
@@ -142,25 +132,14 @@ describe('Cancel System Integration', () => {
       });
     });
 
-    it('documents the asymmetry between available_cancels and can_cancel_to', () => {
+    it('documents available_cancels as the enumerated can_cancel_to state targets', () => {
       /**
-       * This test documents an important asymmetry in the runtime:
+       * available_cancels() enumerates regular move/state targets accepted by
+       * can_cancel_to() under the current tag-rule model.
        *
-       * - available_cancels() only returns EXPLICIT chain cancels from state_extras
-       *   (e.g., 5L can chain to 5L, 5M, 2L as defined in the chains table)
-       *
-       * - can_cancel_to() checks BOTH explicit chains AND tag-based rules
-       *   (e.g., system states can cancel to ANY move via tag_rules)
-       *
-       * This means the HUD's "available cancels" list may not show all options,
-       * but the actual game logic will still allow transitions based on tag rules.
-       *
-       * For idle (state 0, type "system"):
-       * - available_cancels() returns [] (no explicit chains)
-       * - can_cancel_to(5L) returns true (via "system -> any" tag rule)
-       *
-       * The MoveResolver handles this by treating empty availableCancels as
-       * "allow all moves" which lets the WASM runtime make the final decision.
+       * For idle (state 0, type "system"), a "system -> any" rule should make
+       * the attack state indices available. MoveResolver then restricts input
+       * matching to that explicit list instead of relying on legacy chain fields.
        */
 
       const resolver = new MoveResolver(createTestMoveList());
@@ -169,8 +148,8 @@ describe('Cancel System Integration', () => {
       // Simulate player in idle pressing L
       buffer.push({ direction: 5, buttons: ['L'] });
 
-      // Empty availableCancels (what idle would return)
-      const availableCancels: number[] = [];
+      // Idle can cancel to all attack states through the system -> any tag rule.
+      const availableCancels: number[] = [2, 3, 4, 5, 6, 7];
 
       // MoveResolver allows the input to be resolved
       const resolved = resolver.resolve(buffer, ['L'], availableCancels);
@@ -227,7 +206,7 @@ describe('Cancel System Integration', () => {
 
       buffer.push({ direction: 5, buttons: ['L'] });
 
-      // During 5L, can only cancel to explicit chains (5L, 5M, 2L)
+      // During 5L, can only cancel to the runtime's enumerated tag-rule targets.
       // Indices: 5L=2, 5M=3, 2L=5
       const result = resolver.resolve(buffer, ['L'], [2, 3, 5]);
 
@@ -241,7 +220,7 @@ describe('Cancel System Integration', () => {
 
       buffer.push({ direction: 5, buttons: ['H'] });
 
-      // During 5L, 5H is not in the chain list
+      // During 5L, 5H is not in the available cancel list.
       // Only allow indices 2, 3, 5 (5L, 5M, 2L)
       const result = resolver.resolve(buffer, ['H'], [2, 3, 5]);
 

@@ -115,8 +115,9 @@ pub(super) fn load_character_files(
                         e
                     )
                 })?;
-                let mv: State = serde_json::from_str(&content)
-                    .map_err(|e| format!("Invalid state file {:?}: {}", state_path.file_name(), e))?;
+                let mv: State = serde_json::from_str(&content).map_err(|e| {
+                    format!("Invalid state file {:?}: {}", state_path.file_name(), e)
+                })?;
                 moves.push((state_name, mv));
             }
         }
@@ -136,12 +137,7 @@ pub(super) fn load_character_files(
     Ok((char_path, character, moves, cancel_table))
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct CharacterData {
-    pub character: Character,
-    pub moves: Vec<State>,
-    pub cancel_table: CancelTable,
-}
+pub use crate::schema::CharacterData;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CharacterSummary {
@@ -215,7 +211,7 @@ pub fn load_character(
     }
 
     // Canonicalize move ordering so indices are deterministic and match exporter/runtime.
-    resolved_moves.sort_by(|a, b| a.input.cmp(&b.input));
+    resolved_moves.sort_by(|a, b| (&a.input, &a.id).cmp(&(&b.input, &b.id)));
 
     Ok(CharacterData {
         character,
@@ -292,6 +288,15 @@ pub fn save_move(characters_dir: String, character_id: String, mv: State) -> Res
         return Err("Invalid move input".to_string());
     }
 
+    if let Some(id) = mv.id.as_deref() {
+        if id != mv.input {
+            return Err(
+                "Resolved variant states are read-only via save_move; edit the overlay file directly until overlay-aware editing is implemented."
+                    .to_string(),
+            );
+        }
+    }
+
     let char_path = Path::new(&characters_dir).join(&character_id);
 
     // Load rules for registry-aware validation.
@@ -321,7 +326,8 @@ pub fn save_move(characters_dir: String, character_id: String, mv: State) -> Res
         .map_err(|e| format!("Invalid {}: {}", char_file.display(), e))?;
 
     let registry = crate::rules::merged_registry(project_rules.as_ref(), character_rules.as_ref());
-    let mut issues = crate::rules::validate_character_resources_with_registry(&character, &registry);
+    let mut issues =
+        crate::rules::validate_character_resources_with_registry(&character, &registry);
     for issue in issues.iter_mut() {
         issue.field = format!("character.{}", issue.field);
     }
@@ -344,9 +350,7 @@ pub fn save_move(characters_dir: String, character_id: String, mv: State) -> Res
         return Err(format!("Validation errors: {}", errors.join("; ")));
     }
 
-    let state_path = char_path
-        .join("states")
-        .join(format!("{}.json", mv.input));
+    let state_path = char_path.join("states").join(format!("{}.json", mv.input));
 
     let content = serde_json::to_string_pretty(&mv)
         .map_err(|e| format!("Failed to serialize move: {}", e))?;
@@ -402,7 +406,7 @@ pub fn create_character(
     fs::create_dir_all(char_path.join("states"))
         .map_err(|e| format!("Failed to create states directory: {}", e))?;
 
-    // Create cancel_table.json with empty chains
+    // Create cancel_table.json with empty tag rules.
     let cancel_table = CancelTable::default();
 
     let cancel_json = serde_json::to_string_pretty(&cancel_table)
@@ -488,8 +492,7 @@ pub fn delete_character(characters_dir: String, character_id: String) -> Result<
     }
 
     // Delete the character directory recursively
-    fs::remove_dir_all(&char_path)
-        .map_err(|e| format!("Failed to delete character: {}", e))?;
+    fs::remove_dir_all(&char_path).map_err(|e| format!("Failed to delete character: {}", e))?;
 
     Ok(())
 }
@@ -514,9 +517,7 @@ pub fn validate_move_input(input: &str) -> Result<(), String> {
             || c == '_'
             || c == '-'
     }) {
-        return Err(
-            "Move input can only contain letters, numbers, +, [], ., -, and _".to_string(),
-        );
+        return Err("Move input can only contain letters, numbers, +, [], ., -, and _".to_string());
     }
 
     Ok(())
@@ -571,7 +572,10 @@ pub fn create_move(
         hitboxes: vec![],
         hurtboxes: vec![],
         pushback: crate::schema::Pushback { hit: 5, block: 8 },
-        meter_gain: crate::schema::MeterGain { hit: 100, whiff: 20 },
+        meter_gain: crate::schema::MeterGain {
+            hit: 100,
+            whiff: 20,
+        },
         animation: input.clone(),
         move_type: None,
         trigger: None,
@@ -605,10 +609,7 @@ pub fn create_move(
 ///
 /// Returns the FSPK data as base64-encoded string.
 #[tauri::command]
-pub fn get_character_fspk(
-    characters_dir: String,
-    character_id: String,
-) -> Result<String, String> {
+pub fn get_character_fspk(characters_dir: String, character_id: String) -> Result<String, String> {
     let (char_path, character, named_moves, cancel_table) =
         load_character_files(&characters_dir, &character_id)?;
 

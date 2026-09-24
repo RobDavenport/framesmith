@@ -8,7 +8,8 @@
   import MoveAnimationPreview from "$lib/components/MoveAnimationPreview.svelte";
   import PreconditionEditor from "$lib/views/editor/PreconditionEditor.svelte";
   import CostEditor from "$lib/views/editor/CostEditor.svelte";
-  import type { State, TriggerType, Precondition, Cost, HitboxShape, StatusEffect } from "$lib/types";
+  import type { State, TriggerType, Precondition, Cost } from "$lib/types";
+  import { getStateKey, isResolvedVariantState } from "$lib/utils";
 
   // Common move types - custom types can be entered directly
   const commonMoveTypes = ["normal", "command_normal", "special", "super", "movement", "throw", "ex", "rekka"];
@@ -16,10 +17,13 @@
 
   // Use reactive getters from characterStore for proper dependency tracking
   const characterData = $derived(characterStore.currentCharacter);
-  const selectedMoveInputValue = $derived(characterStore.selectedMoveInput);
-  const selectedMoveValue = $derived(characterStore.selectedMove);
+  const selectedMoveKeyValue = $derived(characterStore.selectedMoveKey);
 
   const moves = $derived(characterData?.moves ?? []);
+  const selectedMoveValue = $derived.by(() => {
+    if (!selectedMoveKeyValue) return null;
+    return moves.find((m) => getStateKey(m) === selectedMoveKeyValue) ?? null;
+  });
   const characterId = $derived(characterData?.character.id ?? null);
   const assets = $derived(getAssets());
   const assetsLoading = $derived(isAssetsLoading());
@@ -28,16 +32,20 @@
   // Local editing state - copy of the state data
   let editingMove = $state<State | null>(null);
 
+  function cloneState(state: State): State {
+    return $state.snapshot(state) as State;
+  }
+
   // Collapsible section states
   let showPushboxes = $state(false);
 
   // Watch for selected move changes and create a local copy
   $effect(() => {
     if (selectedMoveValue) {
-      editingMove = structuredClone(selectedMoveValue);
-    } else if (moves.length > 0 && !selectedMoveInputValue) {
+      editingMove = cloneState(selectedMoveValue);
+    } else if (moves.length > 0 && !selectedMoveKeyValue) {
       // Auto-select first move if none selected
-      selectMove(moves[0].input);
+      selectMove(getStateKey(moves[0]));
     }
   });
 
@@ -59,6 +67,7 @@
     if (!editingMove || !selectedMoveValue) return false;
     return JSON.stringify(editingMove) !== JSON.stringify(selectedMoveValue);
   });
+  const isReadOnlyVariant = $derived(editingMove ? isResolvedVariantState(editingMove) : false);
 
   function handleMoveSelect(event: Event) {
     const target = event.target as HTMLSelectElement;
@@ -75,6 +84,10 @@
 
   async function handleSave() {
     if (!editingMove) return;
+    if (isReadOnlyVariant) {
+      saveStatus = "Resolved variants are read-only here.";
+      return;
+    }
 
     saveStatus = null;
     try {
@@ -167,19 +180,24 @@
       editingMove.pushboxes = undefined;
     }
   }
+
+  function formatMoveOption(move: State): string {
+    const key = getStateKey(move);
+    return key === move.input ? `${move.input} - ${move.name}` : `${key} - ${move.name} (${move.input})`;
+  }
 </script>
 
 <div class="move-editor-container">
   <!-- Move Selector - always visible so users can select a move -->
   <div class="move-selector">
     <label for="move-select">Move:</label>
-    <select id="move-select" value={selectedMoveInputValue ?? ""} onchange={handleMoveSelect}>
+    <select id="move-select" value={selectedMoveKeyValue ?? ""} onchange={handleMoveSelect}>
       {#if moves.length === 0}
         <option value="">No moves available</option>
       {:else}
         <option value="" disabled>Select a move...</option>
         {#each moves as move}
-          <option value={move.input}>{move.input} - {move.name}</option>
+          <option value={getStateKey(move)}>{formatMoveOption(move)}</option>
         {/each}
       {/if}
     </select>
@@ -192,6 +210,12 @@
     <div class="editor-layout">
       <!-- Left Panel: Form Fields -->
       <div class="form-panel">
+        {#if isReadOnlyVariant}
+          <div class="variant-readonly-notice" role="status">
+            Resolved variants are read-only here. Edit the overlay JSON directly until overlay-aware editing is implemented.
+          </div>
+        {/if}
+
         <!-- Basic Section -->
         <section class="form-section">
           <h3 class="section-title">Basic</h3>
@@ -637,7 +661,7 @@
         </section>
 
         <div class="form-actions">
-          <button class="save-btn" onclick={handleSave}>Save Move</button>
+          <button class="save-btn" onclick={handleSave} disabled={isReadOnlyVariant}>Save Move</button>
           {#if saveStatus}
             <span class="save-status" class:error={saveStatus.includes("Error")}>
               {saveStatus}
@@ -650,7 +674,7 @@
       <div class="preview-panel">
         <MoveAnimationPreview
           characterId={characterId}
-          selectionKey={selectedMoveInputValue}
+          selectionKey={selectedMoveKeyValue}
           move={editingMove}
           onMoveChange={(m) => (editingMove = m)}
           assets={assets}
@@ -692,6 +716,16 @@
     color: var(--warning);
     font-size: 12px;
     font-weight: 500;
+  }
+
+  .variant-readonly-notice {
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--warning);
+    border-radius: 4px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    font-size: 13px;
   }
 
   .editor-layout {
@@ -830,6 +864,16 @@
   .save-btn:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
+  }
+
+  .save-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .save-btn:disabled:hover {
+    background: var(--accent);
+    border-color: var(--accent);
   }
 
   .save-status {

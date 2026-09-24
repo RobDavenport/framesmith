@@ -1,0 +1,154 @@
+{
+  "tag_rules": [
+    {
+      "from": "neutral",
+      "to": "neutral",
+      "on": "always"
+    },
+    {
+      "from": "neutral",
+      "to": "attack",
+      "on": "always"
+    },
+    {
+      "from": "neutral",
+      "to": "jump",
+      "on": "always"
+    },
+    {
+      "from": "air_ready",
+      "to": "air_attack",
+      "on": "always"
+    },
+    {
+      "from": "chain_0",
+      "to": "chain_1",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_0",
+      "to": "chain_2",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_1",
+      "to": "chain_2",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_0",
+      "to": "special",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_1",
+      "to": "special",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_2",
+      "to": "special",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_0",
+      "to": "super",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_1",
+      "to": "super",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "chain_2",
+      "to": "super",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "special",
+      "to": "super",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "air_0",
+      "to": "air_1",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "air_1",
+      "to": "air_2",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "air_2",
+      "to": "air_finisher",
+      "on": [
+        "hit",
+        "block"
+      ]
+    },
+    {
+      "from": "launcher",
+      "to": "jump",
+      "on": "hit"
+    },
+    {
+      "from": "air_ready",
+      "to": "jump",
+      "on": "always"
+    },
+    {
+      "from": "air_ready",
+      "to": "special",
+      "on": "always"
+    },
+    {
+      "from": "air_attack",
+      "to": "jump",
+      "on": "hit"
+    },
+    {
+      "from": "air_attack",
+      "to": "special",
+      "on": "hit"
+    }
+  ],
+  "deny": {}
+}

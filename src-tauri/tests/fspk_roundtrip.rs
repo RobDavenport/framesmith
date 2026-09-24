@@ -6,7 +6,10 @@ fn make_test_character(id: &str) -> framesmith_lib::schema::Character {
     use std::collections::BTreeMap;
 
     let mut properties = BTreeMap::new();
-    properties.insert("archetype".to_string(), PropertyValue::String("test".to_string()));
+    properties.insert(
+        "archetype".to_string(),
+        PropertyValue::String("test".to_string()),
+    );
     properties.insert("health".to_string(), PropertyValue::Number(1000.0));
     properties.insert("walk_speed".to_string(), PropertyValue::Number(3.0));
     properties.insert("back_walk_speed".to_string(), PropertyValue::Number(3.0));
@@ -52,6 +55,41 @@ fn fspk_export_roundtrips_through_reader() {
         !keyframes_keys.is_empty(),
         "expected at least one keyframes key"
     );
+}
+
+#[test]
+fn fspk_mesh_keys_include_character_id_and_animation() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
+
+    let char_data = CharacterData {
+        character: make_test_character("test_char"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test Jab".to_string(),
+            guard: GuardType::Mid,
+            animation: "stand_light".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+
+    let mesh_keys = pack.mesh_keys().expect("mesh keys");
+    let (mesh_off, mesh_len) = mesh_keys.get(0).expect("mesh key 0");
+    let mesh_key = pack.string(mesh_off, mesh_len).expect("mesh key string");
+    assert_eq!(mesh_key, "test_char.stand_light");
+
+    let keyframes_keys = pack.keyframes_keys().expect("keyframes keys");
+    let (keyframes_off, keyframes_len) = keyframes_keys.get(0).expect("keyframes key 0");
+    let keyframes_key = pack
+        .string(keyframes_off, keyframes_len)
+        .expect("keyframes key string");
+    assert_eq!(keyframes_key, "stand_light");
 }
 
 #[test]
@@ -294,7 +332,8 @@ fn fspk_exports_resources_and_events_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
         CancelTable, CharacterResource, Cost, EventArgValue, EventEmit, GuardType, MeterGain,
-        StateNotify, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State, TriggerType,
+        OnBlock, OnHit, OnUse, Precondition, Pushback, ResourceDelta, State, StateNotify,
+        TriggerType,
     };
     use std::collections::BTreeMap;
 
@@ -367,6 +406,31 @@ fn fspk_exports_resources_and_events_sections() {
         ..Default::default()
     };
 
+    // Move 3: on_block event emit + resource delta
+    let mut block_args = BTreeMap::new();
+    block_args.insert(
+        "surface".to_string(),
+        EventArgValue::String("guard".to_string()),
+    );
+    let mv3 = State {
+        input: "5H".to_string(),
+        name: "Block event".to_string(),
+        guard: GuardType::Mid,
+        animation: "stand_heavy".to_string(),
+        on_block: Some(OnBlock {
+            events: vec![EventEmit {
+                id: "sfx.block".to_string(),
+                args: block_args,
+            }],
+            resource_deltas: vec![ResourceDelta {
+                name: "heat".to_string(),
+                delta: 2,
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
     let mut character = make_test_character("t");
     character.resources = vec![CharacterResource {
         name: "heat".to_string(),
@@ -392,6 +456,11 @@ fn fspk_exports_resources_and_events_sections() {
                 meter_gain: MeterGain { hit: 0, whiff: 0 },
                 ..mv2
             },
+            State {
+                pushback: Pushback { hit: 0, block: 0 },
+                meter_gain: MeterGain { hit: 0, whiff: 0 },
+                ..mv3
+            },
         ],
         cancel_table: CancelTable::default(),
     };
@@ -414,7 +483,7 @@ fn fspk_exports_resources_and_events_sections() {
 
     // Per-move extras exist and point into backing arrays
     let extras = pack.state_extras().expect("expected MOVE_EXTRAS section");
-    assert_eq!(extras.len(), 3);
+    assert_eq!(extras.len(), 4);
 
     let emits = pack.event_emits().expect("expected EVENT_EMITS section");
     let args = pack.event_args().expect("expected EVENT_ARGS section");
@@ -430,6 +499,10 @@ fn fspk_exports_resources_and_events_sections() {
     let idx_236p = pack
         .find_state_by_input("236P")
         .expect("state 236P should exist")
+        .0;
+    let idx_5h = pack
+        .find_state_by_input("5H")
+        .expect("state 5H should exist")
         .0;
 
     // 5L: on_hit emit -> id + args
@@ -509,6 +582,31 @@ fn fspk_exports_resources_and_events_sections() {
         d0.trigger(),
         framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_USE
     );
+
+    // 5H: on_block emit + resource delta
+    let ex_5h = extras.get(idx_5h).expect("extras 5H");
+    let (on_block_off, on_block_len) = ex_5h.on_block_emits();
+    assert_eq!(on_block_len, 1);
+    let block_emit = emits.get_at(on_block_off, 0).expect("5H on_block emit 0");
+    let block_id = pack
+        .string(block_emit.id_off(), block_emit.id_len())
+        .expect("on_block emit id");
+    assert_eq!(block_id, "sfx.block");
+
+    let (block_delta_off, block_delta_len) = ex_5h.resource_deltas();
+    assert_eq!(block_delta_len, 1);
+    let block_delta = deltas
+        .get_at(block_delta_off, 0)
+        .expect("on_block resource delta");
+    let block_delta_name = pack
+        .string(block_delta.name_off(), block_delta.name_len())
+        .expect("on_block delta name");
+    assert_eq!(block_delta_name, "heat");
+    assert_eq!(block_delta.delta(), 2);
+    assert_eq!(
+        block_delta.trigger(),
+        framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_BLOCK
+    );
 }
 
 #[test]
@@ -559,11 +657,102 @@ fn fspk_exports_move_input_notation() {
 }
 
 #[test]
-fn tags_survive_roundtrip() {
+fn fspk_exports_pushback_and_meter_gain_to_runtime_sections() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelTable, GuardType, MeterGain, Pushback, State, Tag,
+        CancelTable, FrameHitbox, GuardType, MeterGain, Pushback, Rect, State,
     };
+
+    let char_data = CharacterData {
+        character: make_test_character("t"),
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test Jab".to_string(),
+            guard: GuardType::Mid,
+            hitboxes: vec![FrameHitbox {
+                frames: (5, 7),
+                r#box: Rect {
+                    x: 8,
+                    y: -52,
+                    w: 28,
+                    h: 16,
+                },
+            }],
+            hurtboxes: vec![FrameHitbox {
+                frames: (0, 14),
+                r#box: Rect {
+                    x: -14,
+                    y: -72,
+                    w: 28,
+                    h: 72,
+                },
+            }],
+            pushboxes: vec![FrameHitbox {
+                frames: (0, 14),
+                r#box: Rect {
+                    x: -15,
+                    y: -72,
+                    w: 30,
+                    h: 72,
+                },
+            }],
+            animation: "stand_light".to_string(),
+            pushback: Pushback { hit: 3, block: 6 },
+            meter_gain: MeterGain { hit: 6, whiff: 2 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data, None).expect("export zx-fspack bytes");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse exported pack");
+    let (_, state) = pack
+        .find_state_by_input("5L")
+        .expect("state 5L should exist");
+
+    let hit_windows = pack.hit_windows().expect("hit windows section");
+    let hit_window = hit_windows
+        .get_at(state.hit_windows_off(), 0)
+        .expect("first hit window");
+    assert_eq!(hit_window.hit_pushback_px(), 3);
+    assert_eq!(hit_window.block_pushback_px(), 6);
+
+    let extras = pack.state_extras().expect("state extras");
+    let (deltas_off, deltas_len) = extras
+        .get(state.state_id() as usize)
+        .expect("extras")
+        .resource_deltas();
+    assert_eq!(deltas_len, 2);
+
+    let deltas = pack.move_resource_deltas().expect("move resource deltas");
+    let first = deltas.get_at(deltas_off, 0).expect("whiff meter delta");
+    let second = deltas.get_at(deltas_off, 1).expect("hit meter delta");
+
+    let first_name = pack
+        .string(first.name_off(), first.name_len())
+        .expect("first delta name");
+    let second_name = pack
+        .string(second.name_off(), second.name_len())
+        .expect("second delta name");
+
+    assert_eq!(first_name, "meter");
+    assert_eq!(second_name, "meter");
+    assert_eq!(
+        first.trigger(),
+        framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_USE
+    );
+    assert_eq!(
+        second.trigger(),
+        framesmith_fspack::RESOURCE_DELTA_TRIGGER_ON_HIT
+    );
+    assert_eq!(first.delta(), 2);
+    assert_eq!(second.delta(), 6);
+}
+
+#[test]
+fn tags_survive_roundtrip() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State, Tag};
 
     let char_data = CharacterData {
         character: make_test_character("t"),
@@ -648,8 +837,7 @@ fn empty_tags_roundtrip() {
 fn cancel_tag_rules_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
-        CancelCondition, CancelTable, CancelTagRule, GuardType, MeterGain, Pushback,
-        State, Tag,
+        CancelCondition, CancelTable, CancelTagRule, GuardType, MeterGain, Pushback, State, Tag,
     };
 
     // Create moves with tags
@@ -784,7 +972,7 @@ fn cancel_denies_roundtrip() {
 
 #[test]
 fn test_cancel_condition_bitfield_roundtrip() {
-    use framesmith_lib::schema::{CancelCondition, CancelTable, CancelTagRule, cancel_flags};
+    use framesmith_lib::schema::{cancel_flags, CancelCondition, CancelTable, CancelTagRule};
 
     // Test string shorthand
     let json = r#"{"from": "normal", "to": "special", "on": "hit"}"#;
@@ -803,21 +991,22 @@ fn test_cancel_condition_bitfield_roundtrip() {
 
     // Test roundtrip serialization
     let table = CancelTable {
-        tag_rules: vec![
-            CancelTagRule {
-                from: "normal".to_string(),
-                to: "special".to_string(),
-                on: CancelCondition(cancel_flags::HIT | cancel_flags::BLOCK), // hit + block
-                after_frame: 0,
-                before_frame: 255,
-            },
-        ],
+        tag_rules: vec![CancelTagRule {
+            from: "normal".to_string(),
+            to: "special".to_string(),
+            on: CancelCondition(cancel_flags::HIT | cancel_flags::BLOCK), // hit + block
+            after_frame: 0,
+            before_frame: 255,
+        }],
         deny: Default::default(),
     };
 
     let json = serde_json::to_string(&table).unwrap();
     let parsed: CancelTable = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed.tag_rules[0].on.0, cancel_flags::HIT | cancel_flags::BLOCK);
+    assert_eq!(
+        parsed.tag_rules[0].on.0,
+        cancel_flags::HIT | cancel_flags::BLOCK
+    );
 }
 
 // =============================================================================
@@ -827,7 +1016,7 @@ fn test_cancel_condition_bitfield_roundtrip() {
 /// Decoded property value from FSPK binary format.
 #[derive(Debug, PartialEq)]
 enum DecodedPropValue {
-    Number(f64),   // Q24.8 converted back to f64
+    Number(f64), // Q24.8 converted back to f64
     Bool(bool),
     String(String),
 }
@@ -887,6 +1076,62 @@ fn decode_property_records(
 }
 
 #[test]
+fn character_properties_scalar_survive_roundtrip() {
+    use framesmith_lib::commands::CharacterData;
+    use framesmith_lib::schema::{
+        CancelTable, Character, GuardType, MeterGain, PropertyValue, Pushback, State,
+    };
+    use std::collections::BTreeMap;
+
+    let mut properties = BTreeMap::new();
+    properties.insert("health".to_string(), PropertyValue::Number(1200.0));
+    properties.insert("can_air_dash".to_string(), PropertyValue::Bool(true));
+    properties.insert(
+        "archetype".to_string(),
+        PropertyValue::String("rushdown".to_string()),
+    );
+
+    let char_data = CharacterData {
+        character: Character {
+            id: "test_char".to_string(),
+            name: "Test Character".to_string(),
+            properties,
+            resources: vec![],
+        },
+        moves: vec![State {
+            input: "5L".to_string(),
+            name: "Test Jab".to_string(),
+            guard: GuardType::Mid,
+            animation: "stand_light".to_string(),
+            pushback: Pushback { hit: 0, block: 0 },
+            meter_gain: MeterGain { hit: 0, whiff: 0 },
+            ..Default::default()
+        }],
+        cancel_table: CancelTable::default(),
+    };
+
+    let bytes = codegen::export_fspk(&char_data, None).expect("export");
+    let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse");
+    let props_raw = pack
+        .get_section(framesmith_fspack::SECTION_CHARACTER_PROPS)
+        .expect("CHARACTER_PROPS section");
+    let decoded = decode_property_records(props_raw, pack.string_pool());
+
+    assert_eq!(
+        decoded.get("health"),
+        Some(&DecodedPropValue::Number(1200.0))
+    );
+    assert_eq!(
+        decoded.get("can_air_dash"),
+        Some(&DecodedPropValue::Bool(true))
+    );
+    assert_eq!(
+        decoded.get("archetype"),
+        Some(&DecodedPropValue::String("rushdown".to_string()))
+    );
+}
+
+#[test]
 fn state_properties_scalar_survive_roundtrip() {
     use framesmith_lib::commands::CharacterData;
     use framesmith_lib::schema::{
@@ -897,7 +1142,10 @@ fn state_properties_scalar_survive_roundtrip() {
     let mut props = BTreeMap::new();
     props.insert("custom_startup".to_string(), PropertyValue::Number(5.0));
     props.insert("is_ex".to_string(), PropertyValue::Bool(true));
-    props.insert("effect".to_string(), PropertyValue::String("spark".to_string()));
+    props.insert(
+        "effect".to_string(),
+        PropertyValue::String("spark".to_string()),
+    );
 
     let char_data = CharacterData {
         character: make_test_character("t"),
@@ -919,7 +1167,8 @@ fn state_properties_scalar_survive_roundtrip() {
 
     // Verify STATE_PROPS section exists
     assert!(
-        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS).is_some(),
+        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS)
+            .is_some(),
         "STATE_PROPS section should exist"
     );
 
@@ -931,7 +1180,10 @@ fn state_properties_scalar_survive_roundtrip() {
     let decoded = decode_property_records(props_raw, string_pool);
 
     assert_eq!(decoded.len(), 3);
-    assert_eq!(decoded.get("custom_startup"), Some(&DecodedPropValue::Number(5.0)));
+    assert_eq!(
+        decoded.get("custom_startup"),
+        Some(&DecodedPropValue::Number(5.0))
+    );
     assert_eq!(decoded.get("is_ex"), Some(&DecodedPropValue::Bool(true)));
     assert_eq!(
         decoded.get("effect"),
@@ -950,7 +1202,10 @@ fn state_properties_nested_flattened_on_export() {
     // Create nested Object - will be flattened to "movement.distance", "movement.direction"
     let mut movement = BTreeMap::new();
     movement.insert("distance".to_string(), PropertyValue::Number(80.0));
-    movement.insert("direction".to_string(), PropertyValue::String("forward".to_string()));
+    movement.insert(
+        "direction".to_string(),
+        PropertyValue::String("forward".to_string()),
+    );
 
     // Create nested Array - will be flattened to "effects.0", "effects.1", "effects.2"
     let effects = vec![
@@ -960,7 +1215,10 @@ fn state_properties_nested_flattened_on_export() {
     ];
 
     let mut props = BTreeMap::new();
-    props.insert("movement".to_string(), PropertyValue::Object(movement.clone()));
+    props.insert(
+        "movement".to_string(),
+        PropertyValue::Object(movement.clone()),
+    );
     props.insert("effects".to_string(), PropertyValue::Array(effects.clone()));
 
     let char_data = CharacterData {
@@ -986,16 +1244,28 @@ fn state_properties_nested_flattened_on_export() {
     let decoded = decode_property_records(props_raw, string_pool);
 
     // Nested Object is flattened with dot notation
-    assert_eq!(decoded.get("movement.distance"), Some(&DecodedPropValue::Number(80.0)));
+    assert_eq!(
+        decoded.get("movement.distance"),
+        Some(&DecodedPropValue::Number(80.0))
+    );
     assert_eq!(
         decoded.get("movement.direction"),
         Some(&DecodedPropValue::String("forward".to_string()))
     );
 
     // Nested Array is flattened with index notation
-    assert_eq!(decoded.get("effects.0"), Some(&DecodedPropValue::String("spark".to_string())));
-    assert_eq!(decoded.get("effects.1"), Some(&DecodedPropValue::Number(2.0)));
-    assert_eq!(decoded.get("effects.2"), Some(&DecodedPropValue::Bool(true)));
+    assert_eq!(
+        decoded.get("effects.0"),
+        Some(&DecodedPropValue::String("spark".to_string()))
+    );
+    assert_eq!(
+        decoded.get("effects.1"),
+        Some(&DecodedPropValue::Number(2.0))
+    );
+    assert_eq!(
+        decoded.get("effects.2"),
+        Some(&DecodedPropValue::Bool(true))
+    );
 
     // Total: 2 from movement + 3 from effects = 5 flattened properties
     assert_eq!(decoded.len(), 5);
@@ -1004,9 +1274,7 @@ fn state_properties_nested_flattened_on_export() {
 #[test]
 fn state_without_properties_has_no_props_raw() {
     use framesmith_lib::commands::CharacterData;
-    use framesmith_lib::schema::{
-        CancelTable, GuardType, MeterGain, Pushback, State,
-    };
+    use framesmith_lib::schema::{CancelTable, GuardType, MeterGain, Pushback, State};
 
     // State with empty properties
     let char_data = CharacterData {
@@ -1029,7 +1297,8 @@ fn state_without_properties_has_no_props_raw() {
 
     // STATE_PROPS section should not exist when no state has properties
     assert!(
-        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS).is_none(),
+        pack.get_section(framesmith_fspack::SECTION_STATE_PROPS)
+            .is_none(),
         "STATE_PROPS section should not exist when no states have properties"
     );
 
@@ -1168,13 +1437,14 @@ fn schema_section_present_when_rules_have_property_schema() {
 
     // Verify SECTION_SCHEMA exists
     assert!(
-        pack.get_section(framesmith_fspack::SECTION_SCHEMA).is_some(),
+        pack.get_section(framesmith_fspack::SECTION_SCHEMA)
+            .is_some(),
         "SECTION_SCHEMA should be present when rules have property schema"
     );
 
     // Verify schema can be read
     let schema = pack.schema().expect("schema should be parseable");
-    assert_eq!(schema.char_prop_count(), 8);  // 8 character props
+    assert_eq!(schema.char_prop_count(), 8); // 8 character props
     assert_eq!(schema.state_prop_count(), 2); // 2 state props
     assert_eq!(schema.tag_count(), 2);
 
@@ -1212,7 +1482,8 @@ fn schema_section_absent_when_no_property_schema() {
 
     // Verify SECTION_SCHEMA is absent
     assert!(
-        pack.get_section(framesmith_fspack::SECTION_SCHEMA).is_none(),
+        pack.get_section(framesmith_fspack::SECTION_SCHEMA)
+            .is_none(),
         "SECTION_SCHEMA should be absent when no property schema"
     );
     assert!(pack.schema().is_none());
@@ -1279,7 +1550,9 @@ fn schema_based_property_records_are_8_bytes() {
     );
 
     // Verify we can read schema-based properties
-    let schema_props = pack.schema_character_props().expect("schema character props");
+    let schema_props = pack
+        .schema_character_props()
+        .expect("schema character props");
     assert_eq!(schema_props.len(), 2);
 
     // Get the schema for name lookups
@@ -1287,7 +1560,9 @@ fn schema_based_property_records_are_8_bytes() {
 
     // Read the properties
     let prop0 = schema_props.get(0).expect("prop 0");
-    let prop0_name = schema.char_prop_name(prop0.schema_id()).expect("prop 0 name");
+    let prop0_name = schema
+        .char_prop_name(prop0.schema_id())
+        .expect("prop 0 name");
     assert!(prop0_name == "health" || prop0_name == "walkSpeed");
 }
 
@@ -1335,7 +1610,10 @@ fn export_with_schema_rejects_unknown_property() {
 
     // Export should fail with helpful error
     let result = codegen::export_fspk(&char_data, Some(&merged));
-    assert!(result.is_err(), "Export should fail when property not in schema");
+    assert!(
+        result.is_err(),
+        "Export should fail when property not in schema"
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("unknownProp") || err.contains("unknown"),
