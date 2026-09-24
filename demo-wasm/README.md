@@ -1,19 +1,28 @@
-# FrameSmith Combo Lab
+# FrameSmith Training Demo
 
-[Open the lab](https://robdavenport.github.io/framesmith/).
+[Open the training demo](https://robdavenport.github.io/framesmith/).
 
-**Change the rules. See exactly why a combo works. Take the data into your game.**
+**Play the combat. Inspect what happened. Change the actual data.**
 One character, one dummy, eight guided experiments, free play, and four manual combo trials. This replaces the platform-fighter landing page; the earlier `authoring/` fixtures remain untouched.
 
-## First minute
+## Play first
 
-Run the broken sequence. The dummy guards the gap. Shorten **Jab recovery** from 12 to 4 and run again: one link, two cancels, four uninterrupted hits. Then try the trials at quarter speed.
+Practice opens running at full speed with a working timing preset, not a paused tutorial.
 
-- **1 / 2 / 3 / 4** or the move buttons: Jab / Follow-up / Arc / Finisher.
-- **P**: pause/play; **R**: retry; **.**: advance one frame.
-- Slow motion and a three-simulation-frame input buffer are allowed in trials. Autoplay never grants trial credit.
-- A trial requires ordered **actual unblocked contacts**, uninterrupted defender hitstun, and the specified link/cancel transitions. Wrong order, whiffs, blocks, expired input and gaps fail the attempt.
-- Trial presets are isolated from the workshop instance. Returning to design preserves the draft and its recording.
+- **A / D** or arrows: move; **W / Space / up**: jump. Walk backward, jump over the dummy and attack facing the other way. Touch has a direction pad and four attacks.
+- **J / K / L / I** (also **1–4**): Light / Heavy / Arc / Overdrive.
+- **R**: reset placement and attempt; **P**: pause; **.**: advance one frame.
+- **F1 / Lab tools**: the optional authoring/inspection drawer. **F2**: frame meter; **F3**: collision boxes. Speed and reset stay directly accessible.
+- Combo trials offer an on-stage route and immediate retry; a failed attempt resets after 60 simulation ticks rather than freezing the fight. A new attack or R retries immediately. Autoplay never earns a clear.
+- Trial presets remain separate from the editable practice draft. Frame-accurate inputs, real contacts, uninterrupted hitstun and the specified link/cancel transitions still determine credit.
+
+For the broken-link experiment, open Lab tools and **Reset edits** to load the original 12-frame recovery fixture. Watch once, shorten recovery to 4, and compare. Practice itself starts at 4; it does not require visitors to repair a deliberately broken move before playing.
+
+**Art:** [Martial Hero by LuizMelo](https://luizmelo.itch.io/martial-hero), CC0. Original license and source-archive hash are in `www/assets/`. The consumer selects sprite cells from native phase/frame and animation IDs. It uses a fixed feet pivot, immediate hit reaction, local contact sparks and opt-out synthesized transient cues. It is not a browser port of the editor's animation pipeline. Two attack sheets cover this small kit; there is no claim of bespoke art for every move. Exported projects contain combat authoring, not the consumer renderer/texture bundle.
+
+Replay records movement, jump and attacks along with the complete consumer state. Training continues across bounded 60-second recording segments; replay, rewind and checkpoints cover the current segment. Starting a new segment retires the old checkpoint, not the fight or reset placement. Facing is a consumer coordinate transform; compatible imported packs must keep hurt/push rectangles centered. Unsupported asymmetric body boxes are rejected without replacing the current simulation.
+
+Automated checks verify the combat, data and input paths. Animation readability and game feel still require human play review.
 
 ## Feature coverage and ownership
 
@@ -58,7 +67,7 @@ On Windows/MSYS, set TMP/TEMP/TMPDIR to a native Windows temporary directory bef
 ### Frozen acceptance (five gates)
 
 1. Cold `/framesmith/` boot loads real WASM and one FSPK, not mocked services or character JSON requests; every served asset matches `build-info.json`.
-2. The initial route fails, an actual control edit rebuilds data, and the corrected route produces measured links/cancels, resource spending and continuous hits; negative rules/conditions/spacing/costs remain negative.
+2. The original lab fixture route fails, an actual control edit rebuilds data, and the corrected route produces measured links/cancels, resource spending and continuous hits; negative rules/conditions/spacing/costs remain negative.
 3. Every manual trial clears through keyboard input; autoplay, wrong inputs, blocks and gaps cannot clear it. Phone touch clears a trial. Primary controls fit 1280×720 and 390×844.
 4. Rich hits, globals/overrides, variants, notifies and properties are observable; the ZIP recompiles byte-identically, imported data behaves identically, invalid data preserves the prior run, and checkpoint/rewind/replay reproduce full consumer state.
 5. The scoped Pages workflow builds/tests a fresh checkout; the exact public revision and hashes are read back and gameplay is exercised there. A green demo workflow does not certify unrelated repository CI or human taste.

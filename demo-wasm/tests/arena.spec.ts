@@ -5,12 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 const snapshot=(page:Page)=>page.evaluate(()=>(window as any).framesmith.snapshot());
 const metadata=(page:Page)=>page.evaluate(()=>(window as any).framesmith.metadata());
-async function ready(page:Page){await page.goto('./');await expect(page.locator('#run')).toBeEnabled();await expect(page.locator('#error')).toBeHidden();}
+async function ready(page:Page,tools=true){await page.goto('./');await expect(page.locator('#run')).toBeEnabled();await expect(page.locator('#error')).toBeHidden();if(tools){await page.locator('[data-mode=guided]').click();await page.locator('#reset-edits').click();}}
 async function until(page:Page, fn:(s:any)=>boolean){await expect.poll(async()=>fn(await snapshot(page)),{intervals:[16],timeout:12000}).toBe(true);}
 async function done(page:Page){await page.waitForFunction(()=>{const f=(window as any).framesmith,s=f.snapshot();return f.paused()&&s.tick>0&&!s.auto;});}
 async function demo(page:Page){await page.locator('#run').click();await done(page);return snapshot(page);}
 async function knob(page:Page,key:string,value:number){await page.locator(`#edit-${key}`).evaluate((el:any,v)=>{el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},value);}
-async function fit(page:Page){expect(await page.evaluate(()=>{const d=document.documentElement;return{overflow:d.scrollWidth>innerWidth||d.scrollHeight>innerHeight,clipped:[...document.querySelectorAll('#arena,#run,#retry,#moves button,#knobs input,#knobs select,#experiment')].some(e=>{const r=e.getBoundingClientRect();return r.bottom>innerHeight||r.top<0||r.right>innerWidth||r.left<0;})};})).toEqual({overflow:false,clipped:false});}
+async function fit(page:Page){expect(await page.evaluate(()=>{const d=document.documentElement;return{overflow:d.scrollWidth>innerWidth||d.scrollHeight>innerHeight,clipped:[...document.querySelectorAll('#arena,#retry,#moves button,[data-motion],#speed')].some(e=>{const r=e.getBoundingClientRect();return r.bottom>innerHeight||r.top<0||r.right>innerWidth||r.left<0;})};})).toEqual({overflow:false,clipped:false});}
 async function manualRoute(page:Page,commands:number[],touch=false){
  await page.locator('#retry').click();await page.locator('#arena').focus();
  for(let i=0;i<commands.length;i++){
@@ -22,8 +22,8 @@ async function manualRoute(page:Page,commands:number[],touch=false){
 }
 
 test('cold repository subpath, real binary-only runtime and asset identity',async({page})=>{
- const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));await ready(page);await fit(page);
- expect(new URL(page.url()).pathname).toBe('/framesmith/');expect((await snapshot(page)).tick).toBe(0);
+ const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));await ready(page,false);await fit(page);
+ expect(new URL(page.url()).pathname).toBe('/framesmith/');expect(await page.evaluate(()=>(window as any).framesmith.paused())).toBe(false);await expect(page.locator('#workbench')).toBeHidden();
  const paths=requests.map(x=>new URL(x).pathname);expect(paths.filter(x=>x.endsWith('.fspk'))).toHaveLength(1);expect(paths.some(x=>x.endsWith('.wasm'))).toBe(true);expect(paths.filter(x=>x.endsWith('.json')).map(x=>x.split('/').at(-1))).toEqual(['build-info.json']);
  const checked=await page.evaluate(async()=>{const info=await(await fetch('./build-info.json',{cache:'no-store'})).json();const mismatches=[];for(const [name,expected]of Object.entries(info.files)){const response=await fetch('./'+name,{cache:'no-store'});const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await response.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');if(!response.ok||hash!==expected)mismatches.push(name);}return{mismatches,count:Object.keys(info.files).length};});expect(checked.mismatches).toEqual([]);expect(checked.count).toBeGreaterThan(5);expect(errors).toEqual([]);
 });
@@ -53,11 +53,11 @@ test('four actual manual trials; demo, wrong order and missed timing cannot earn
  await ready(page);await page.locator('[data-mode="trials"]').click();expect((await snapshot(page)).editable).toBe(false);
  const routes=[[1,2],[2,3],[3,4],[1,2,3,4]];
  for(let trial=0;trial<routes.length;trial++){
-  await page.selectOption('#experiment',String(trial));await page.selectOption('#speed','1');let s=await demo(page);expect(s.trial_clear).toBe(false);expect(s.manual).toBe(false);expect(s.max_combo).toBe(routes[trial].length);
-  await page.selectOption('#speed','0.25');await manualRoute(page,routes[trial]);s=await snapshot(page);expect(s.max_combo).toBe(routes[trial].length);expect(s.manual).toBe(true);
+  await page.selectOption('#trial-select',String(trial));await page.keyboard.press('F1');await page.selectOption('#speed','1');let s=await demo(page);expect(s.trial_clear).toBe(false);expect(s.manual).toBe(false);expect(s.max_combo).toBe(routes[trial].length);
+  await page.locator('#close-tools').click();await page.selectOption('#speed','0.25');await manualRoute(page,routes[trial]);s=await snapshot(page);expect(s.max_combo).toBe(routes[trial].length);expect(s.manual).toBe(true);
  }
  await expect(page.locator('#clear-count')).toHaveText('4/4');await page.screenshot({path:test.info().outputPath('trial-clear.png')});
- await page.selectOption('#experiment','0');await page.locator('#arena').focus();await page.keyboard.press('Digit2');await until(page,s=>s.trial_failed);expect((await snapshot(page)).trial_clear).toBe(false);
+ await page.selectOption('#trial-select','0');await page.locator('#arena').focus();await page.keyboard.press('Digit2');await until(page,s=>s.trial_failed);expect((await snapshot(page)).trial_clear).toBe(false);
  await page.locator('#retry').click();await page.selectOption('#speed','1');await page.locator('#arena').focus();await page.keyboard.press('Digit1');await until(page,s=>s.trial_progress===1&&s.actors[1].phase===0);await page.keyboard.press('Digit2');await until(page,s=>s.trial_failed);expect((await snapshot(page)).trial_clear).toBe(false);
  await page.locator('[data-mode="guided"]').click();expect((await metadata(page)).settings.recovery).toBe(12); // trial presets did not overwrite the design draft
 });
@@ -83,5 +83,21 @@ test('edited project ZIP recompiles identically in the CLI; exported pack reload
 });
 
 test('phone first-run layout and real touch can clear a trial without console errors',async({browser},info)=>{
- const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,baseURL:info.project.use.baseURL});try{const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await ready(page);await fit(page);await page.screenshot({path:info.outputPath('phone-first.png')});await page.locator('[data-mode="trials"]').tap();await fit(page);await manualRoute(page,[1,2],true);await page.screenshot({path:info.outputPath('phone-clear.png')});await page.locator('#retry').tap();expect((await snapshot(page)).trial_clear).toBe(false);expect((await snapshot(page)).tick).toBe(0);expect(errors).toEqual([]);}finally{await context.close();}
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,baseURL:info.project.use.baseURL});try{const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await ready(page,false);await fit(page);await page.screenshot({path:info.outputPath('phone-first.png')});
+ const left=page.locator('[data-motion=left]'),box=await left.boundingBox();expect(box).not.toBeNull();
+ const cdp=await context.newCDPSession(page);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box!.x+20,y:box!.y+20}]});await until(page,s=>s.actors[0].x<=-18);await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await page.locator('#pause').tap();const stopped=await snapshot(page);await page.locator('#pause').tap();await until(page,s=>s.tick>stopped.tick+6);await page.locator('#pause').tap();expect((await snapshot(page)).actors[0].x).toBe(stopped.actors[0].x);await cdp.detach();
+ await page.locator('[data-mode="trials"]').tap();await fit(page);await page.selectOption('#speed','0.25');await manualRoute(page,[1,2],true);await page.screenshot({path:info.outputPath('phone-clear.png')});await page.locator('#retry').tap();expect((await snapshot(page)).trial_clear).toBe(false);expect((await snapshot(page)).tick).toBeLessThan(30);expect(errors).toEqual([]);}finally{await context.close();}
+});
+
+
+test('direct movement, release, jump crossing, mirrored contacts and one-touch retry',async({page})=>{
+ await ready(page,false);await page.locator('#arena').focus();
+ const start=await snapshot(page);await page.keyboard.down('KeyA');await until(page,s=>s.actors[0].x<=-24);await page.keyboard.up('KeyA');await page.keyboard.press('KeyP');
+ const back=await snapshot(page);expect(back.actors[1].x).toBe(start.actors[1].x);expect(back.actors[0].x).toBeLessThan(0);
+ await page.keyboard.press('KeyP');await until(page,s=>s.tick>back.tick+8);await page.keyboard.press('KeyP');expect((await snapshot(page)).actors[0].x).toBe(back.actors[0].x);
+ await page.keyboard.press('KeyR');await page.keyboard.down('KeyD');await until(page,s=>s.actors[0].x>=60);await page.keyboard.down('KeyW');await page.keyboard.up('KeyW');await until(page,s=>s.actors[0].x>s.actors[1].x&&s.actors[0].y<0);await page.keyboard.up('KeyD');await until(page,s=>s.actors[0].y===0);await page.keyboard.press('KeyP');
+ expect((await snapshot(page)).actors[0].facing).toBe(-1);await page.keyboard.press('KeyJ');await until(page,s=>s.hits===1);await page.keyboard.press('KeyP');await page.screenshot({path:test.info().outputPath('mirrored-contact.png')});
+ await page.keyboard.press('KeyR');expect((await snapshot(page)).distance).toBe(130);
+ await page.keyboard.down('KeyD');await until(page,s=>s.actors[0].x>6);await page.evaluate(()=>window.dispatchEvent(new Event('blur')));const blurred=await snapshot(page);expect(await page.evaluate(()=>(window as any).framesmith.paused())).toBe(true);await page.keyboard.up('KeyD');await page.keyboard.press('KeyP');await until(page,s=>s.tick>blurred.tick+8);await page.keyboard.press('KeyP');expect((await snapshot(page)).actors[0].x).toBe(blurred.actors[0].x);await page.keyboard.press('KeyR');await page.keyboard.press('F2');await expect(page.locator('#meter-panel')).toBeVisible();await page.keyboard.press('F3');expect(await page.locator('#boxes').isChecked()).toBe(true);
+ await page.locator('[data-mode=trials]').click();await page.keyboard.press('KeyK');await until(page,s=>s.trial_failed);expect(await page.evaluate(()=>(window as any).framesmith.paused())).toBe(false);await until(page,s=>!s.trial_failed&&s.hits===0);await page.screenshot({path:test.info().outputPath('play-first.png')});
 });

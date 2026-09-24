@@ -48,6 +48,7 @@ def main():
     (site / 'pkg').mkdir(exist_ok=True)
     for name in ('index.html', 'style.css', 'main.js'):
         shutil.copyfile(HERE / 'www' / name, site / name)
+    shutil.copytree(HERE / 'www' / 'assets', site / 'assets', dirs_exist_ok=True)
     for name in ('framesmith_arena.js', 'framesmith_arena_bg.wasm'):
         shutil.copyfile(HERE / 'pkg' / name, site / 'pkg' / name)
     (site / '.nojekyll').write_text('')

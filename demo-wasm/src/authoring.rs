@@ -90,7 +90,7 @@ impl Default for Settings {
             gain: 20,
             cost: 50,
             ammo: 3,
-            reach: 70,
+            reach: 140,
             notify_frame: 5,
             spark_size: 18.,
         }

@@ -90,6 +90,13 @@ impl Definition {
             return Err("Unsupported resources".into());
         }
         for (i, m) in data.moves.iter().enumerate() {
+            if m.hurtboxes
+                .iter()
+                .chain(&m.pushboxes)
+                .any(|b| 2 * i64::from(b.r#box.x) + i64::from(b.r#box.w) != 0)
+            {
+                return Err("This mirrored demo requires centered hurt/push boxes".into());
+            }
             if p.state_id(i) != Some(m.id.as_deref().unwrap_or(&m.input)) {
                 return Err("Pack state ordering differs from payload".into());
             }
@@ -212,6 +219,13 @@ struct Notice {
     value: i32,
     aux: i32,
 }
+#[derive(Clone, Copy, Debug, Default)]
+struct Controls {
+    command: u8,
+    axis: i8,
+    jump: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct World {
     tick: u32,
@@ -219,6 +233,11 @@ struct World {
     d: CharacterState,
     denied: CharacterState,
     px: i32,
+    py: i32,
+    vy: i32,
+    axis: i8,
+    facing: i32,
+    combo_damage: u32,
     dx: i32,
     behavior: u8,
     freeze: u8,
@@ -260,6 +279,11 @@ impl World {
             d: d.fresh(),
             denied: d.fresh(),
             px: 0,
+            py: 0,
+            vy: 0,
+            axis: 0,
+            facing: 1,
+            combo_damage: 0,
             dx: distance,
             behavior,
             freeze: 0,
@@ -395,7 +419,8 @@ fn fail_trial(w: &mut World, cmd: u8, reason: i32) {
         w.note(FAILED, cmd, reason, 0);
     }
 }
-fn step_world(w: &mut World, d: &Definition, command: u8) {
+fn step_world(w: &mut World, d: &Definition, input: Controls) {
+    let command = input.command;
     w.tick += 1;
     if command > 0 {
         w.buffer = command;
@@ -405,6 +430,20 @@ fn step_world(w: &mut World, d: &Definition, command: u8) {
     if w.freeze > 0 {
         w.freeze -= 1;
         return;
+    }
+    // Consumer locomotion, recorded with attacks; core timing stays engine-independent.
+    let ready = w.p.current_state == d.idle;
+    w.axis = if ready || w.py < 0 { input.axis } else { 0 };
+    if input.jump && ready && w.py == 0 {
+        w.vy = -15;
+    }
+    if w.vy != 0 || w.py < 0 {
+        w.py = (w.py + w.vy).min(0);
+        w.vy = if w.py == 0 { 0 } else { w.vy + 1 };
+    }
+    w.px = (w.px + i32::from(w.axis) * if w.py < 0 { 4 } else { 3 }).clamp(-145, 235);
+    if ready {
+        w.facing = if w.dx < w.px { -1 } else { 1 };
     }
     // Stun counts frames AFTER impact. +1 retains the impact sample at frame zero.
     let was_stunned = w.d.current_state == d.hit;
@@ -546,10 +585,10 @@ fn step_world(w: &mut World, d: &Definition, command: u8) {
     let hits = check_hits(
         &w.p,
         &d.pack.view(),
-        (w.px, 0),
+        (0, w.py),
         &w.d,
         &d.pack.view(),
-        (w.dx, 0),
+        ((w.dx - w.px) * w.facing, 0),
     );
     for h in hits.iter() {
         let mask = 1u64 << h.window_index;
@@ -602,6 +641,8 @@ fn step_world(w: &mut World, d: &Definition, command: u8) {
             report_hit(&mut w.p);
             w.hits += 1;
             w.damage += u32::from(damage);
+            w.combo_damage = if in_stun { w.combo_damage } else { 0 };
+            w.combo_damage += u32::from(damage);
             w.combo = if in_stun { w.combo + 1 } else { 1 };
             w.max_combo = w.max_combo.max(w.combo);
             w.had_hit = true;
@@ -632,13 +673,17 @@ fn step_world(w: &mut World, d: &Definition, command: u8) {
     if let Some(push) = check_pushbox(
         &w.p,
         &d.pack.view(),
-        (w.px, 0),
+        (w.px, w.py),
         &w.d,
         &d.pack.view(),
         (w.dx, 0),
     ) {
         w.px += push.p1_dx;
         w.dx += push.p2_dx;
+        // Move the pair off a wall together; clamping only one body re-overlaps it.
+        let shift = (-145 - w.px.min(w.dx)).max(0) - (w.px.max(w.dx) - 235).max(0);
+        w.px += shift;
+        w.dx += shift;
         if push.p1_dx != 0 || push.p2_dx != 0 {
             w.note(PUSH, 0, w.dx - w.px, 0);
         }
@@ -656,7 +701,8 @@ pub struct Lab {
     editable: bool,
     w: World,
     initial: World,
-    tape: Vec<(u8, World)>,
+    spawn_distance: i32,
+    tape: Vec<(Controls, World)>,
     samples: Vec<Sample>,
     checkpoint: Option<(World, usize)>,
 }
@@ -672,6 +718,7 @@ impl Lab {
             editable,
             w,
             initial: w,
+            spawn_distance: 74,
             tape: Vec::new(),
             samples: Vec::new(),
             checkpoint: None,
@@ -680,6 +727,7 @@ impl Lab {
     fn reset_world(&mut self, behavior: u8, distance: i32, trial: i8) {
         self.w = World::new(&self.def, behavior, distance, trial);
         self.initial = self.w;
+        self.spawn_distance = distance;
         self.tape.clear();
         self.samples.clear();
         self.checkpoint = None;
@@ -690,18 +738,32 @@ impl Lab {
         self.def = def;
         self.settings = settings;
         self.editable = true;
-        self.reset_world(self.w.behavior, self.w.dx - self.w.px, -1);
+        self.reset_world(
+            self.w.behavior,
+            (self.w.dx - self.w.px).abs().clamp(20, 220),
+            -1,
+        );
         Ok(())
     }
     fn tick(&mut self, cmd: u8) -> Result<(), String> {
-        if cmd > 7 {
+        self.tick_input(Controls {
+            command: cmd,
+            ..Default::default()
+        })
+    }
+    fn tick_input(&mut self, input: Controls) -> Result<(), String> {
+        if input.command > 7 || !(-1..=1).contains(&input.axis) {
             return Err("Unknown action".into());
         }
         if self.tape.len() >= MAX_FRAMES {
-            return Err("60-second recording limit; reset to continue".into());
+            // Bounded recording segments must not stop ordinary training.
+            self.initial = self.w;
+            self.tape.clear();
+            self.samples.clear();
+            self.checkpoint = None;
         }
-        step_world(&mut self.w, &self.def, cmd);
-        self.tape.push((cmd, self.w));
+        step_world(&mut self.w, &self.def, input);
+        self.tape.push((input, self.w));
         self.samples.push(sample(&self.w, &self.def));
         Ok(())
     }
@@ -732,7 +794,7 @@ impl Lab {
             }
             self.apply(s)?;
         }
-        self.reset_world(3, 74, id);
+        self.reset_world(3, 130, id);
         Ok(())
     }
     fn start_demo(&mut self, which: u8) -> Result<(), String> {
@@ -740,7 +802,7 @@ impl Lab {
             return Err("Unknown demonstration".into());
         }
         let trial = self.w.trial;
-        self.reset_world(self.w.behavior, self.w.dx - self.w.px, trial);
+        self.reset_world(self.w.behavior, self.spawn_distance, trial);
         self.w.manual = false;
         // Reload is a resource-gain experiment: start this instance empty.
         if which == 3 {
@@ -770,7 +832,7 @@ impl Lab {
         let w = &self.w;
         let actor = |s: &CharacterState, x: i32, dummy: bool| {
             let m = d.state(s.current_state);
-            json!({"id":m.id.as_deref().unwrap_or(&m.input),"command":d.command(s.current_state),"name":if dummy{"DUMMY"}else{"RELAY"},"move_name":m.name,"frame":s.frame,"startup":m.startup,"active":m.active,"recovery":m.recovery,"phase":d.phase(s),"hit_confirmed":s.hit_confirmed,"block_confirmed":s.block_confirmed,"stun_remaining":s.instance_duration.saturating_sub(s.frame),"resources":s.resources[..d.data.character.resources.len()],"x":x,"y":0,"facing":if dummy{-1}else{1},"height":88,"width":36,"color":if dummy{"#ffa76b"}else{"#55e1ca"},"hitboxes":m.hitboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"pushboxes":m.pushboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"hurtboxes":m.hurtboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>()})
+            json!({"id":m.id.as_deref().unwrap_or(&m.input),"command":d.command(s.current_state),"name":if dummy{"DUMMY"}else{"RELAY"},"move_name":m.name,"frame":s.frame,"startup":m.startup,"active":m.active,"recovery":m.recovery,"phase":d.phase(s),"hit_confirmed":s.hit_confirmed,"block_confirmed":s.block_confirmed,"stun_remaining":s.instance_duration.saturating_sub(s.frame),"resources":s.resources[..d.data.character.resources.len()],"x":x,"y":if dummy{0}else{w.py},"vy":if dummy{0}else{w.vy},"walking":!dummy&&w.axis!=0&&s.current_state==d.idle,"animation":m.animation,"facing":if dummy{if w.px>x{1}else{-1}}else{w.facing},"height":88,"width":36,"color":if dummy{"#ffa76b"}else{"#55e1ca"},"hitboxes":m.hitboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"pushboxes":m.pushboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>(),"hurtboxes":m.hurtboxes.iter().filter(|b|s.frame>=u16::from(b.frames.0)&&s.frame<=u16::from(b.frames.1)).map(|b|&b.r#box).collect::<Vec<_>>()})
         };
         let start = w.notice_count.saturating_sub(TRACE_LEN as u32);
         let notices: Vec<_> = (start..w.notice_count)
@@ -778,7 +840,7 @@ impl Lab {
             .collect();
         let available:Vec<_>=d.ids.iter().enumerate().map(|(i,id)|json!({"command":i+1,"allowed":can_cancel_to(&w.p,&d.pack.view(),*id),"reason":d.reason(&w.p,*id)})).collect();
         let reason=notices.iter().rev().find(|n|[HIT,BLOCK,WHIFF,DENIED,GAP,CLEAR,FAILED,END,PUSH].contains(&n.kind)).map(|n|match n.kind {PUSH=>format!("Pushboxes separated overlapping bodies to {} pixels.",n.value),HIT=>if n.aux>1{format!("{}-hit true combo. {} damage.",n.aux,w.damage)}else{"Hit confirmed. The dummy is in hitstun.".into()},BLOCK=>"Blocked: the defender was able to guard. This is not a combo.".into(),WHIFF=>"Whiff: the active hitbox never reached the hurtbox.".into(),DENIED=>{let s=w.denied;if n.command>0{d.reason(&s,d.ids[n.command as usize-1])}else{"Move unavailable".into()}},GAP=>format!("Link broke: the dummy was free for {} frames.",n.value),CLEAR=>"TRIAL CLEAR — every required hit connected without a gap.".into(),FAILED=>match n.value{1=>"Trial failed: the defender recovered between hits.",2=>"Trial failed: an attack missed.",3=>"Trial failed: wrong move or transition (link vs cancel).",4=>"Too early: buffered input expired before the move became available.",_=>"Trial failed: the dummy blocked."}.into(),END=>format!("Demonstration finished: best true combo {} hits. Autoplay never clears a trial.",n.value),_=>String::new()}).unwrap_or_else(||"Try the sequence, change one rule, then run it again.".into());
-        json!({"tick":w.tick,"actors":[actor(&w.p,w.px,false),actor(&w.d,w.dx,true)],"combo":w.combo,"max_combo":w.max_combo,"damage":w.damage,"hits":w.hits,"blocks":w.blocks,"links":w.links,"cancels":w.cancels,"freeze":w.freeze,"events":w.event_count,"energy":w.p.resources[d.energy],"ammo":w.p.resources[d.ammo],"available":available,"notices":notices,"reason":reason,"trial":w.trial,"trial_progress":w.trial_progress,"trial_failed":w.trial_failed,"trial_clear":w.trial_clear,"manual":w.manual,"auto":w.auto,"distance":w.dx-w.px,"dummy":w.behavior,"editable":self.editable&&w.trial<0,"recorded":self.tape.len(),"limit":MAX_FRAMES,"samples":&self.samples[self.samples.len().saturating_sub(180)..]})
+        json!({"tick":w.tick,"actors":[actor(&w.p,w.px,false),actor(&w.d,w.dx,true)],"combo":w.combo,"combo_damage":w.combo_damage,"max_combo":w.max_combo,"damage":w.damage,"hits":w.hits,"blocks":w.blocks,"links":w.links,"cancels":w.cancels,"freeze":w.freeze,"events":w.event_count,"energy":w.p.resources[d.energy],"ammo":w.p.resources[d.ammo],"available":available,"notices":notices,"reason":reason,"trial":w.trial,"trial_progress":w.trial_progress,"trial_failed":w.trial_failed,"trial_clear":w.trial_clear,"manual":w.manual,"auto":w.auto,"distance":w.dx-w.px,"dummy":w.behavior,"editable":self.editable&&w.trial<0,"recorded":self.tape.len(),"limit":MAX_FRAMES,"samples":&self.samples[self.samples.len().saturating_sub(180)..]})
     }
     fn metadata_value(&self) -> Value {
         let d = &self.def;
@@ -880,8 +942,19 @@ impl Lab {
         self.tick(c as u8).map_err(|e| JsError::new(&e))?;
         self.view()
     }
+    pub fn step_input(&mut self, command: f64, axis: f64, jump: bool) -> Result<JsValue, JsError> {
+        let command = integer(command, 0, 7).map_err(|e| JsError::new(&e))? as u8;
+        let axis = integer(axis, -1, 1).map_err(|e| JsError::new(&e))? as i8;
+        self.tick_input(Controls {
+            command,
+            axis,
+            jump,
+        })
+        .map_err(|e| JsError::new(&e))?;
+        self.view()
+    }
     pub fn reset(&mut self) -> Result<JsValue, JsError> {
-        self.reset_world(self.w.behavior, self.w.dx - self.w.px, self.w.trial);
+        self.reset_world(self.w.behavior, self.spawn_distance, self.w.trial);
         self.view()
     }
     pub fn edit(&mut self, key: &str, value: &str) -> Result<JsValue, JsError> {
@@ -992,6 +1065,70 @@ mod tests {
     fn demo(g: &mut Lab) {
         g.start_demo(0).unwrap();
         run(g, 180);
+    }
+    #[test]
+    fn locomotion_crossing_contacts_and_replay() {
+        let mut g = lab();
+        g.tick_input(Controls {
+            axis: -1,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(g.w.px, -3);
+        assert_eq!(g.w.dx, 74, "walking back must not pull the dummy");
+        run(&mut g, 3);
+        assert_eq!(g.w.px, -3, "release must stop movement");
+        g.reset_world(0, 74, -1);
+        for i in 0..31 {
+            g.tick_input(Controls {
+                axis: 1,
+                jump: i == 0,
+                command: 0,
+            })
+            .unwrap();
+        }
+        assert!(g.w.px > g.w.dx, "jump must cross the dummy: {:?}", g.w);
+        assert_eq!(g.w.py, 0);
+        assert_eq!(g.w.facing, -1);
+        g.tick(1).unwrap();
+        run(&mut g, 25);
+        assert_eq!(g.w.hits, 1, "mirrored attack must really connect");
+        assert_eq!(g.replay().unwrap(), 57);
+        g.reset_world(0, 74, -1);
+        g.tick_input(Controls {
+            axis: 0,
+            jump: true,
+            command: 1,
+        })
+        .unwrap();
+        run(&mut g, 30);
+        assert_eq!(
+            g.w.hits, 0,
+            "airborne hitboxes must not collide at floor height"
+        );
+        assert_eq!(g.replay().unwrap(), 31);
+        g.reset_world(0, 130, -1);
+        for _ in 0..150 {
+            g.tick_input(Controls {
+                axis: 1,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        assert!(g.w.px <= 235 && g.w.dx <= 235);
+        assert!(g.w.dx - g.w.px >= 36, "wall must preserve separation");
+        run(&mut g, MAX_FRAMES);
+        assert_eq!(
+            g.spawn_distance, 130,
+            "recording rollover must not change reset placement"
+        );
+        assert_eq!(g.replay().unwrap(), 150);
+        assert_eq!(g.w.tick, MAX_FRAMES as u32 + 150);
+        let mut files = g.settings.files();
+        files.get_mut("characters/relay/states/jab.json").unwrap()["hurtboxes"][0]["box"]["x"] =
+            (-10).into();
+        let bytes = authoring::compile(&files).unwrap();
+        assert!(Definition::new(bytes).err().unwrap().contains("centered"));
     }
     #[test]
     fn cli_browser_export_parity_and_atomic_edits() {
