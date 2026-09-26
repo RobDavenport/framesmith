@@ -1,32 +1,35 @@
 {
-  "input": "special",
-  "name": "5S · Light Hashogeki-inspired palm strike",
-  "type": "special",
+  "input": "2H",
+  "name": "2H · Ryu 2HP-inspired uppercut",
+  "type": "normal",
   "tags": [
-    "special",
+    "normal",
     "attack",
-    "action"
+    "action",
+    "chainable",
+    "heavy",
+    "crouching"
   ],
-  "startup": 11,
+  "startup": 8,
   "active": 6,
-  "recovery": 18,
-  "damage": 70,
-  "hitstun": 25,
+  "recovery": 22,
+  "damage": 80,
+  "hitstun": 28,
   "blockstun": 20,
-  "hitstop": 10,
+  "hitstop": 12,
   "guard": "mid",
-  "animation": "special",
+  "animation": "low_heavy",
   "hitboxes": [
     {
       "frames": [
-        11,
-        16
+        8,
+        13
       ],
       "box": {
         "x": 18,
-        "y": -73,
-        "w": 27,
-        "h": 25
+        "y": -110,
+        "w": 26,
+        "h": 62
       }
     }
   ],
@@ -34,7 +37,19 @@
     {
       "frames": [
         0,
-        34
+        35
+      ],
+      "box": {
+        "x": -12,
+        "y": -66,
+        "w": 24,
+        "h": 66
+      }
+    },
+    {
+      "frames": [
+        0,
+        35
       ],
       "box": {
         "x": -12,
@@ -48,13 +63,13 @@
     {
       "frames": [
         0,
-        34
+        35
       ],
       "box": {
         "x": -18,
-        "y": -88,
+        "y": -66,
         "w": 36,
-        "h": 88
+        "h": 66
       }
     }
   ],
@@ -68,8 +83,8 @@
   },
   "properties": {
     "reference_game": "Street Fighter 6",
-    "reference_move": "L Hashogeki",
-    "reference_input": "214LP"
+    "reference_move": "Crouching Heavy Punch",
+    "reference_input": "2HP"
   },
   "on_hit": {
     "resource_deltas": [
@@ -90,7 +105,7 @@
   },
   "notifies": [
     {
-      "frame": 11,
+      "frame": 8,
       "events": [
         {
           "id": "swoosh",
@@ -100,13 +115,6 @@
           }
         }
       ]
-    }
-  ],
-  "costs": [
-    {
-      "type": "resource",
-      "name": "ammo",
-      "amount": 1
     }
   ]
 }

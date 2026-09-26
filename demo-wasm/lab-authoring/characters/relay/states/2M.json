@@ -1,32 +1,35 @@
 {
-  "input": "special",
-  "name": "5S · Light Hashogeki-inspired palm strike",
-  "type": "special",
+  "input": "2M",
+  "name": "2M · Ryu 2MK-inspired low kick",
+  "type": "normal",
   "tags": [
-    "special",
+    "normal",
     "attack",
-    "action"
+    "action",
+    "chainable",
+    "medium",
+    "crouching"
   ],
-  "startup": 11,
-  "active": 6,
-  "recovery": 18,
-  "damage": 70,
-  "hitstun": 25,
-  "blockstun": 20,
+  "startup": 7,
+  "active": 3,
+  "recovery": 19,
+  "damage": 50,
+  "hitstun": 22,
+  "blockstun": 15,
   "hitstop": 10,
-  "guard": "mid",
-  "animation": "special",
+  "guard": "low",
+  "animation": "low_medium",
   "hitboxes": [
     {
       "frames": [
-        11,
-        16
+        7,
+        9
       ],
       "box": {
-        "x": 18,
-        "y": -73,
-        "w": 27,
-        "h": 25
+        "x": 15,
+        "y": -18,
+        "w": 35,
+        "h": 18
       }
     }
   ],
@@ -34,13 +37,13 @@
     {
       "frames": [
         0,
-        34
+        28
       ],
       "box": {
         "x": -12,
-        "y": -88,
+        "y": -66,
         "w": 24,
-        "h": 88
+        "h": 66
       }
     }
   ],
@@ -48,13 +51,13 @@
     {
       "frames": [
         0,
-        34
+        28
       ],
       "box": {
         "x": -18,
-        "y": -88,
+        "y": -66,
         "w": 36,
-        "h": 88
+        "h": 66
       }
     }
   ],
@@ -68,8 +71,8 @@
   },
   "properties": {
     "reference_game": "Street Fighter 6",
-    "reference_move": "L Hashogeki",
-    "reference_input": "214LP"
+    "reference_move": "Crouching Medium Kick",
+    "reference_input": "2MK"
   },
   "on_hit": {
     "resource_deltas": [
@@ -90,7 +93,7 @@
   },
   "notifies": [
     {
-      "frame": 11,
+      "frame": 7,
       "events": [
         {
           "id": "swoosh",
@@ -100,13 +103,6 @@
           }
         }
       ]
-    }
-  ],
-  "costs": [
-    {
-      "type": "resource",
-      "name": "ammo",
-      "amount": 1
     }
   ]
 }

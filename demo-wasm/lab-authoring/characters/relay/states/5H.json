@@ -1,32 +1,34 @@
 {
-  "input": "special",
-  "name": "5S · Light Hashogeki-inspired palm strike",
-  "type": "special",
+  "input": "5H",
+  "name": "5H · Collarbone Breaker-inspired overhead",
+  "type": "normal",
   "tags": [
-    "special",
+    "normal",
     "attack",
-    "action"
+    "action",
+    "chainable",
+    "heavy"
   ],
-  "startup": 11,
-  "active": 6,
-  "recovery": 18,
-  "damage": 70,
+  "startup": 19,
+  "active": 4,
+  "recovery": 19,
+  "damage": 60,
   "hitstun": 25,
-  "blockstun": 20,
-  "hitstop": 10,
-  "guard": "mid",
-  "animation": "special",
+  "blockstun": 19,
+  "hitstop": 12,
+  "guard": "high",
+  "animation": "heavy",
   "hitboxes": [
     {
       "frames": [
-        11,
-        16
+        19,
+        22
       ],
       "box": {
-        "x": 18,
-        "y": -73,
-        "w": 27,
-        "h": 25
+        "x": 16,
+        "y": -54,
+        "w": 28,
+        "h": 22
       }
     }
   ],
@@ -34,7 +36,7 @@
     {
       "frames": [
         0,
-        34
+        41
       ],
       "box": {
         "x": -12,
@@ -48,7 +50,7 @@
     {
       "frames": [
         0,
-        34
+        41
       ],
       "box": {
         "x": -18,
@@ -68,8 +70,9 @@
   },
   "properties": {
     "reference_game": "Street Fighter 6",
-    "reference_move": "L Hashogeki",
-    "reference_input": "214LP"
+    "reference_move": "Collarbone Breaker",
+    "reference_input": "6MP",
+    "reference_limit": "Timing copied; simplified single-hit overhead (no conditional second-hit guard property)."
   },
   "on_hit": {
     "resource_deltas": [
@@ -90,7 +93,7 @@
   },
   "notifies": [
     {
-      "frame": 11,
+      "frame": 19,
       "events": [
         {
           "id": "swoosh",
@@ -100,13 +103,6 @@
           }
         }
       ]
-    }
-  ],
-  "costs": [
-    {
-      "type": "resource",
-      "name": "ammo",
-      "amount": 1
     }
   ]
 }

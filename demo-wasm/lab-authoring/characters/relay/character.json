@@ -6,7 +6,11 @@
     "color": "#55e1ca",
     "height": 88,
     "width": 36,
-    "spark_size": 18
+    "spark_size": 18,
+    "demo_kit_version": 2,
+    "frame_data_source": "https://www.streetfighter.com/6/en-us/character/ryu/frame",
+    "frame_data_basis": "SF6 Ryu-inspired · Capcom timing subset",
+    "frame_data_snapshot": "2026-09-25"
   },
   "resources": [
     {

@@ -1,13 +1,14 @@
 {
   "input": "finisher",
-  "name": "Overdrive",
+  "name": "6S · Demo-only Overdrive barrage",
   "type": "super",
   "tags": [
     "super",
-    "attack"
+    "attack",
+    "action"
   ],
   "startup": 7,
-  "active": 5,
+  "active": 21,
   "recovery": 30,
   "damage": 130,
   "hitstun": 32,
@@ -19,13 +20,37 @@
     {
       "frames": [
         7,
-        11
+        9
       ],
       "box": {
-        "x": 10,
-        "y": -70,
-        "w": 140,
-        "h": 45
+        "x": 14,
+        "y": -67,
+        "w": 27,
+        "h": 20
+      }
+    },
+    {
+      "frames": [
+        16,
+        18
+      ],
+      "box": {
+        "x": 16,
+        "y": -62,
+        "w": 27,
+        "h": 25
+      }
+    },
+    {
+      "frames": [
+        25,
+        27
+      ],
+      "box": {
+        "x": 16,
+        "y": -82,
+        "w": 29,
+        "h": 36
       }
     }
   ],
@@ -33,12 +58,12 @@
     {
       "frames": [
         0,
-        41
+        57
       ],
       "box": {
-        "x": -18,
+        "x": -12,
         "y": -88,
-        "w": 36,
+        "w": 24,
         "h": 88
       }
     }
@@ -47,7 +72,7 @@
     {
       "frames": [
         0,
-        41
+        57
       ],
       "box": {
         "x": -18,
@@ -65,7 +90,9 @@
     "hit": 0,
     "whiff": 0
   },
-  "properties": {},
+  "properties": {
+    "reference_limit": "FrameSmith extension; not a copied Ryu move."
+  },
   "on_hit": {
     "resource_deltas": [],
     "events": [
@@ -116,5 +143,73 @@
     "darken": 0.3,
     "zoom": 1.0,
     "flash": false
-  }
+  },
+  "hits": [
+    {
+      "frames": [
+        7,
+        9
+      ],
+      "damage": 30,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 14,
+          "y": -67,
+          "w": 27,
+          "h": 20
+        }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [
+        16,
+        18
+      ],
+      "damage": 40,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 16,
+          "y": -62,
+          "w": 27,
+          "h": 25
+        }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [
+        25,
+        27
+      ],
+      "damage": 60,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 16,
+          "y": -82,
+          "w": 29,
+          "h": 36
+        }
+      ],
+      "cancels": []
+    }
+  ]
 }

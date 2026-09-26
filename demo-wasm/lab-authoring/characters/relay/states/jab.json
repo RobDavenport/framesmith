@@ -1,32 +1,34 @@
 {
   "input": "jab",
-  "name": "Quick Jab",
+  "name": "5L · Ryu 5LP-inspired jab",
   "type": "normal",
   "tags": [
     "normal",
     "attack",
-    "chainable"
+    "chainable",
+    "action",
+    "light"
   ],
-  "startup": 5,
+  "startup": 3,
   "active": 3,
-  "recovery": 12,
+  "recovery": 7,
   "damage": 30,
-  "hitstun": 18,
-  "blockstun": 10,
-  "hitstop": 3,
+  "hitstun": 13,
+  "blockstun": 8,
+  "hitstop": 8,
   "guard": "mid",
   "animation": "jab",
   "hitboxes": [
     {
       "frames": [
-        5,
-        7
+        3,
+        5
       ],
       "box": {
         "x": 10,
-        "y": -70,
-        "w": 140,
-        "h": 45
+        "y": -75,
+        "w": 28,
+        "h": 14
       }
     }
   ],
@@ -34,12 +36,12 @@
     {
       "frames": [
         0,
-        19
+        12
       ],
       "box": {
-        "x": -18,
+        "x": -12,
         "y": -88,
-        "w": 36,
+        "w": 24,
         "h": 88
       }
     }
@@ -48,7 +50,7 @@
     {
       "frames": [
         0,
-        19
+        12
       ],
       "box": {
         "x": -18,
@@ -66,7 +68,11 @@
     "hit": 0,
     "whiff": 0
   },
-  "properties": {},
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "Standing Light Punch",
+    "reference_input": "5LP"
+  },
   "on_hit": {
     "resource_deltas": [
       {
@@ -86,7 +92,7 @@
   },
   "notifies": [
     {
-      "frame": 5,
+      "frame": 3,
       "events": [
         {
           "id": "swoosh",

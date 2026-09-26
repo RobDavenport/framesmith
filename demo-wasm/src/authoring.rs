@@ -78,8 +78,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            recovery: 12,
-            follow_startup: 7,
+            recovery: 7,
+            follow_startup: 5,
             cancel: true,
             condition: "hit".into(),
             window_start: 0,
@@ -90,8 +90,8 @@ impl Default for Settings {
             gain: 20,
             cost: 50,
             ammo: 3,
-            reach: 140,
-            notify_frame: 5,
+            reach: 28,
+            notify_frame: 3,
             spark_size: 18.,
         }
     }
@@ -152,7 +152,7 @@ impl Settings {
         for k in ["jab", "follow"] {
             let s = f.get_mut(&key(k)).unwrap();
             if k == "follow" {
-                let shift = i64::from(self.follow_startup) - 7;
+                let shift = i64::from(self.follow_startup) - s["startup"].as_i64().unwrap();
                 s["startup"] = self.follow_startup.into();
                 for w in s["hitboxes"].as_array_mut().unwrap() {
                     for frame in w["frames"].as_array_mut().unwrap() {
@@ -162,10 +162,10 @@ impl Settings {
                 s["notifies"][0]["frame"] = self.follow_startup.into();
             }
             if !self.tagged {
-                s["tags"] = json!(["attack", "unlinked"]);
+                s["tags"] = json!(["attack", "action", "unlinked"]);
             }
         }
-        for k in ["jab", "follow", "special", "multi"] {
+        for k in ["jab", "follow", "special", "multi", "5H", "2L", "2M", "2H"] {
             f.get_mut(&key(k)).unwrap()["on_hit"]["resource_deltas"][0]["delta"] = self.gain.into();
         }
         for k in ["jab", "follow", "special", "finisher", "multi"] {
@@ -174,8 +174,9 @@ impl Settings {
             let total = s["startup"].as_u64().unwrap()
                 + s["active"].as_u64().unwrap()
                 + s["recovery"].as_u64().unwrap();
-            s["hurtboxes"][0]["frames"][1] = (total - 1).into();
-            s["pushboxes"][0]["frames"][1] = (total - 1).into();
+            let end = total - 1;
+            s["hurtboxes"][0]["frames"][1] = end.into();
+            s["pushboxes"][0]["frames"][1] = end.into();
         }
         let fin = f.get_mut(&key("finisher")).unwrap();
         fin["costs"][0]["amount"] = self.cost.into();

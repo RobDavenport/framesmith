@@ -1,31 +1,32 @@
 {
-  "input": "hitstun",
-  "name": "Hitstun",
+  "input": "crouch",
+  "name": "Crouch ready",
   "type": "system",
   "tags": [
-    "hitstun"
+    "ready",
+    "crouching"
   ],
   "startup": 1,
-  "active": 254,
+  "active": 1,
   "recovery": 0,
   "damage": 0,
   "hitstun": 0,
   "blockstun": 0,
   "hitstop": 0,
   "guard": "mid",
-  "animation": "hitstun",
+  "animation": "crouch",
   "hitboxes": [],
   "hurtboxes": [
     {
       "frames": [
         0,
-        254
+        1
       ],
       "box": {
         "x": -12,
-        "y": -88,
+        "y": -66,
         "w": 24,
-        "h": 88
+        "h": 66
       }
     }
   ],
@@ -33,13 +34,13 @@
     {
       "frames": [
         0,
-        254
+        1
       ],
       "box": {
         "x": -18,
-        "y": -88,
+        "y": -66,
         "w": 36,
-        "h": 88
+        "h": 66
       }
     }
   ],

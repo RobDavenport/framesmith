@@ -2,7 +2,7 @@
   "tag_rules": [
     {
       "from": "ready",
-      "to": "any",
+      "to": "action",
       "on": "always"
     },
     {
@@ -18,6 +18,28 @@
       "on": "hit",
       "after_frame": 0,
       "before_frame": 255
+    },
+    {
+      "from": "light",
+      "to": "medium",
+      "on": "hit"
+    },
+    {
+      "from": "medium",
+      "to": "heavy",
+      "on": "hit"
+    },
+    {
+      "from": "follow",
+      "to": "target_follow",
+      "on": "hit",
+      "after_frame": 6,
+      "before_frame": 9
+    },
+    {
+      "from": "chainable",
+      "to": "refill",
+      "on": "hit"
     }
   ],
   "deny": {}

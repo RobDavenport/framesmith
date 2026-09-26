@@ -1,22 +1,22 @@
 {
   "input": "special",
   "base": "special",
-  "name": "Charged Arc",
-  "damage": 95,
-  "startup": 8,
-  "active": 4,
-  "recovery": 22,
+  "name": "Medium Hashogeki-inspired variant",
+  "damage": 80,
+  "startup": 18,
+  "active": 6,
+  "recovery": 17,
   "hitboxes": [
     {
       "frames": [
-        8,
-        11
+        18,
+        23
       ],
       "box": {
-        "x": 10,
-        "y": -70,
-        "w": 125,
-        "h": 45
+        "x": 18,
+        "y": -73,
+        "w": 28,
+        "h": 25
       }
     }
   ],
@@ -24,12 +24,12 @@
     {
       "frames": [
         0,
-        33
+        40
       ],
       "box": {
-        "x": -18,
+        "x": -12,
         "y": -88,
-        "w": 36,
+        "w": 24,
         "h": 88
       }
     }
@@ -38,7 +38,7 @@
     {
       "frames": [
         0,
-        33
+        40
       ],
       "box": {
         "x": -18,
@@ -50,7 +50,7 @@
   ],
   "notifies": [
     {
-      "frame": 8,
+      "frame": 18,
       "events": [
         {
           "id": "swoosh",
@@ -63,6 +63,13 @@
     }
   ],
   "properties": {
-    "charged": true
-  }
+    "charged": true,
+    "reference_game": "Street Fighter 6",
+    "reference_move": "M Hashogeki",
+    "reference_input": "214MP"
+  },
+  "animation": "charged",
+  "hitstop": 12,
+  "blockstun": 16,
+  "hitstun": 24
 }

@@ -1,4 +1,12 @@
-# Character art
+# Active character art
+
+The current demo uses an original Blender-authored block mannequin. Editable
+geometry, rig, named actions and sprite packing live in `../../art/`; runtime
+RGBA atlases and clip bindings live in `blocks/`. No AI image/video model or
+third-party rig was used. See `../../art/README.md` for reference provenance,
+regeneration commands and the human-review boundary.
+
+## Retained earlier art (not loaded by the current renderer)
 
 Martial Hero by LuizMelo — https://luizmelo.itch.io/martial-hero
 CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/

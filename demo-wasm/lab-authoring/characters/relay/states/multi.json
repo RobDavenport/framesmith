@@ -1,10 +1,11 @@
 {
   "input": "multi",
-  "name": "Twin Pulse",
+  "name": "Demo-only Twin Pulse",
   "type": "special",
   "tags": [
     "special",
-    "attack"
+    "attack",
+    "action"
   ],
   "startup": 6,
   "active": 10,
@@ -22,10 +23,10 @@
         7
       ],
       "box": {
-        "x": 10,
-        "y": -70,
-        "w": 140,
-        "h": 45
+        "x": 14,
+        "y": -66,
+        "w": 26,
+        "h": 19
       }
     },
     {
@@ -34,10 +35,10 @@
         15
       ],
       "box": {
-        "x": 10,
-        "y": -70,
-        "w": 140,
-        "h": 45
+        "x": 16,
+        "y": -77,
+        "w": 28,
+        "h": 20
       }
     }
   ],
@@ -48,9 +49,9 @@
         33
       ],
       "box": {
-        "x": -18,
+        "x": -12,
         "y": -88,
-        "w": 36,
+        "w": 24,
         "h": 88
       }
     }
@@ -77,7 +78,9 @@
     "hit": 0,
     "whiff": 0
   },
-  "properties": {},
+  "properties": {
+    "reference_limit": "FrameSmith extension; not a copied Ryu move."
+  },
   "on_hit": {
     "resource_deltas": [
       {
@@ -119,15 +122,15 @@
       "chip_damage": 2,
       "hitstun": 18,
       "blockstun": 9,
-      "hitstop": 3,
+      "hitstop": 8,
       "guard": "mid",
       "hitboxes": [
         {
           "type": "aabb",
-          "x": 10,
-          "y": -70,
-          "w": 95,
-          "h": 45
+          "x": 14,
+          "y": -66,
+          "w": 26,
+          "h": 19
         }
       ],
       "cancels": []
@@ -141,15 +144,15 @@
       "chip_damage": 3,
       "hitstun": 24,
       "blockstun": 12,
-      "hitstop": 4,
+      "hitstop": 10,
       "guard": "mid",
       "hitboxes": [
         {
           "type": "aabb",
-          "x": 10,
-          "y": -70,
-          "w": 95,
-          "h": 45
+          "x": 16,
+          "y": -77,
+          "w": 28,
+          "h": 20
         }
       ],
       "cancels": []
