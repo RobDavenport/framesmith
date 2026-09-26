@@ -176,15 +176,17 @@ test('phone first-run layout and real touch can clear a trial without console er
 
 
 test('late target entry is continuous and super direction follows the fighter',async({page})=>{
- await ready(page);await page.selectOption('#speed','0.25');
+ await page.clock.install();await ready(page);await page.selectOption('#speed','0.25');
  await page.selectOption('#experiment','2');await knob(page,'energy',100);await page.locator('#arena').focus();
- await pressMove(page,2);await until(page,s=>s.actors[0].frame>=8&&s.actors[0].command===2);await page.keyboard.press('KeyP');
- while((await snapshot(page)).actors[0].frame<9)await page.keyboard.press('Period');
+ // Sample exact entry frames with the browser clock, not CI/CDP wall-clock timing.
+ await page.clock.pauseAt(Date.now()+1000);await pressMove(page,2);
+ for(let n=0;n<120&&(await snapshot(page)).actors[0].frame<9;n++)await page.clock.runFor(16);
  expect((await snapshot(page)).actors[0].frame).toBe(9);
  const before=await page.evaluate(()=>(window as any).framesmith.presentation()[0]);
  expect(before.clip).toBe('follow');expect(before.frame).toBeGreaterThanOrEqual(12);expect(before.frame).toBeLessThanOrEqual(17);
- await pressMove(page,12);await until(page,s=>s.actors[0].command===12);const entry=await page.evaluate(()=>(window as any).framesmith.presentation()[0]);
- expect(entry.clip).toBe('target');expect(entry.frame).toBe(0);
+ await pressMove(page,12);for(let n=0;n<10&&(await snapshot(page)).actors[0].command!==12;n++)await page.clock.runFor(16);
+ const entry=await page.evaluate(()=>(window as any).framesmith.presentation()[0]);
+ expect(entry.clip).toBe('target');expect(entry.frame).toBe(0);await page.clock.resume();
  await until(page,s=>s.hits===2);await page.locator('#pause').click();
  await page.selectOption('#speed','1');await knob(page,'energy',100);await page.locator('#arena').focus();
  await page.keyboard.down('KeyD');await page.keyboard.press('KeyW');await until(page,s=>s.actors[0].x>s.actors[1].x+24);await page.keyboard.up('KeyD');
