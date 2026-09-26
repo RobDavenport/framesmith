@@ -13,8 +13,8 @@ impl Aabb {
     /// Create an AABB from a ShapeView at a given position offset.
     pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
         Aabb {
-            x: shape.x_px() + offset_x,
-            y: shape.y_px() + offset_y,
+            x: shape.x_px().saturating_add(offset_x),
+            y: shape.y_px().saturating_add(offset_y),
             w: shape.width_px(),
             h: shape.height_px(),
         }
@@ -33,8 +33,8 @@ impl Circle {
     /// Create a Circle from a ShapeView at a given position offset.
     pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
         Circle {
-            x: shape.x_px() + offset_x,
-            y: shape.y_px() + offset_y,
+            x: shape.x_px().saturating_add(offset_x),
+            y: shape.y_px().saturating_add(offset_y),
             r: shape.radius_px(),
         }
     }
@@ -54,10 +54,10 @@ impl Capsule {
     /// Create a Capsule from a ShapeView at a given position offset.
     pub fn from_shape(shape: &ShapeView, offset_x: i32, offset_y: i32) -> Self {
         // Use typed fixed-point accessors for clarity
-        let x1 = shape.x_fixed().to_int() + offset_x;
-        let y1 = shape.y_fixed().to_int() + offset_y;
-        let x2 = shape.x2_fixed().to_int() + offset_x;
-        let y2 = shape.y2_fixed().to_int() + offset_y;
+        let x1 = shape.x_fixed().to_int().saturating_add(offset_x);
+        let y1 = shape.y_fixed().to_int().saturating_add(offset_y);
+        let x2 = shape.x2_fixed().to_int().saturating_add(offset_x);
+        let y2 = shape.y2_fixed().to_int().saturating_add(offset_y);
         let r = shape.radius_fixed().to_int().max(0) as u32;
         Capsule { x1, y1, x2, y2, r }
     }
@@ -69,12 +69,17 @@ impl Capsule {
 #[inline]
 #[must_use]
 pub fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
-    let a_right = a.x.saturating_add(a.w as i32);
-    let a_bottom = a.y.saturating_add(a.h as i32);
-    let b_right = b.x.saturating_add(b.w as i32);
-    let b_bottom = b.y.saturating_add(b.h as i32);
-
-    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+    if a.w == 0 || a.h == 0 || b.w == 0 || b.h == 0 {
+        return false;
+    }
+    let a_right = i128::from(a.x) + i128::from(a.w);
+    let a_bottom = i128::from(a.y) + i128::from(a.h);
+    let b_right = i128::from(b.x) + i128::from(b.w);
+    let b_bottom = i128::from(b.y) + i128::from(b.h);
+    i128::from(a.x) < b_right
+        && a_right > i128::from(b.x)
+        && i128::from(a.y) < b_bottom
+        && a_bottom > i128::from(b.y)
 }
 
 /// Check if two circles overlap.
@@ -83,10 +88,10 @@ pub fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
 #[must_use]
 #[inline]
 pub fn circle_overlap(a: &Circle, b: &Circle) -> bool {
-    let dx = (a.x as i64) - (b.x as i64);
-    let dy = (a.y as i64) - (b.y as i64);
+    let dx = (a.x as i128) - (b.x as i128);
+    let dy = (a.y as i128) - (b.y as i128);
     let dist_sq = dx * dx + dy * dy;
-    let radii_sum = (a.r as i64) + (b.r as i64);
+    let radii_sum = (a.r as i128) + (b.r as i128);
     dist_sq < radii_sum * radii_sum
 }
 
@@ -95,19 +100,24 @@ pub fn circle_overlap(a: &Circle, b: &Circle) -> bool {
 #[inline]
 pub fn aabb_circle_overlap(aabb: &Aabb, circle: &Circle) -> bool {
     // Find closest point on AABB to circle center
-    let closest_x = circle.x.clamp(aabb.x, aabb.x.saturating_add(aabb.w as i32));
-    let closest_y = circle.y.clamp(aabb.y, aabb.y.saturating_add(aabb.h as i32));
+    if aabb.w == 0 || aabb.h == 0 {
+        return false;
+    }
+    let closest_x =
+        i128::from(circle.x).clamp(i128::from(aabb.x), i128::from(aabb.x) + i128::from(aabb.w));
+    let closest_y =
+        i128::from(circle.y).clamp(i128::from(aabb.y), i128::from(aabb.y) + i128::from(aabb.h));
 
-    let dx = (circle.x as i64) - (closest_x as i64);
-    let dy = (circle.y as i64) - (closest_y as i64);
+    let dx = (circle.x as i128) - closest_x;
+    let dy = (circle.y as i128) - closest_y;
     let dist_sq = dx * dx + dy * dy;
-    let r = circle.r as i64;
+    let r = circle.r as i128;
 
     dist_sq < r * r
 }
 
 /// Find closest point on segment (p1, p2) to point p.
-fn closest_point_on_segment(p1: (i64, i64), p2: (i64, i64), p: (i64, i64)) -> (i64, i64) {
+fn closest_point_on_segment(p1: (i128, i128), p2: (i128, i128), p: (i128, i128)) -> (i128, i128) {
     let dx = p2.0 - p1.0;
     let dy = p2.1 - p1.1;
     let len_sq = dx * dx + dy * dy;
@@ -126,25 +136,41 @@ fn closest_point_on_segment(p1: (i64, i64), p2: (i64, i64), p: (i64, i64)) -> (i
         t_num
     };
 
-    (
-        p1.0 + (dx * t) / len_sq,
-        p1.1 + (dy * t) / len_sq,
-    )
+    (p1.0 + (dx * t) / len_sq, p1.1 + (dy * t) / len_sq)
 }
 
 /// Compute squared distance between closest points on two line segments.
 fn segment_distance_sq(
-    a1: (i64, i64), a2: (i64, i64),
-    b1: (i64, i64), b2: (i64, i64),
-) -> i64 {
-    // Find closest point on segment A to segment B's closest point to A
-    let closest_on_b_to_a1 = closest_point_on_segment(b1, b2, a1);
-    let closest_on_a = closest_point_on_segment(a1, a2, closest_on_b_to_a1);
-    let closest_on_b = closest_point_on_segment(b1, b2, closest_on_a);
-
-    let dx = closest_on_a.0 - closest_on_b.0;
-    let dy = closest_on_a.1 - closest_on_b.1;
-    dx * dx + dy * dy
+    a1: (i128, i128),
+    a2: (i128, i128),
+    b1: (i128, i128),
+    b2: (i128, i128),
+) -> i128 {
+    let cross = |p: (i128, i128), q: (i128, i128), r: (i128, i128)| {
+        (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0)
+    };
+    let straddles = |x: i128, y: i128| (x <= 0 && y >= 0) || (x >= 0 && y <= 0);
+    if a1.0.min(a2.0) <= b1.0.max(b2.0)
+        && b1.0.min(b2.0) <= a1.0.max(a2.0)
+        && a1.1.min(a2.1) <= b1.1.max(b2.1)
+        && b1.1.min(b2.1) <= a1.1.max(a2.1)
+        && straddles(cross(a1, a2, b1), cross(a1, a2, b2))
+        && straddles(cross(b1, b2, a1), cross(b1, b2, a2))
+    {
+        return 0;
+    }
+    // ponytail: non-crossing projections use integer pixels; use engine geometry
+    // from the typed payload when subpixel contact policy matters.
+    [(a1, b1, b2), (a2, b1, b2), (b1, a1, a2), (b2, a1, a2)]
+        .into_iter()
+        .map(|(point, start, end)| {
+            let closest = closest_point_on_segment(start, end, point);
+            let dx = point.0 - closest.0;
+            let dy = point.1 - closest.1;
+            dx * dx + dy * dy
+        })
+        .min()
+        .unwrap_or(i128::MAX)
 }
 
 /// Check if two capsules overlap.
@@ -154,13 +180,13 @@ fn segment_distance_sq(
 #[must_use]
 #[inline]
 pub fn capsule_overlap(a: &Capsule, b: &Capsule) -> bool {
-    let a1 = (a.x1 as i64, a.y1 as i64);
-    let a2 = (a.x2 as i64, a.y2 as i64);
-    let b1 = (b.x1 as i64, b.y1 as i64);
-    let b2 = (b.x2 as i64, b.y2 as i64);
+    let a1 = (a.x1 as i128, a.y1 as i128);
+    let a2 = (a.x2 as i128, a.y2 as i128);
+    let b1 = (b.x1 as i128, b.y1 as i128);
+    let b2 = (b.x2 as i128, b.y2 as i128);
 
     let dist_sq = segment_distance_sq(a1, a2, b1, b2);
-    let radii_sum = (a.r as i64) + (b.r as i64);
+    let radii_sum = (a.r as i128) + (b.r as i128);
 
     dist_sq < radii_sum * radii_sum
 }
@@ -206,6 +232,53 @@ pub fn shapes_overlap(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extreme_coordinates_and_crossing_capsules_are_safe() {
+        let wide = Aabb {
+            x: i32::MIN,
+            y: 0,
+            w: u32::MAX,
+            h: 10,
+        };
+        let inside = Aabb {
+            x: 0,
+            y: 1,
+            w: 2,
+            h: 2,
+        };
+        assert!(aabb_overlap(&wide, &inside));
+        assert!(aabb_circle_overlap(&wide, &Circle { x: 0, y: 1, r: 1 }));
+        assert!(!aabb_overlap(&Aabb { w: 0, ..inside }, &wide));
+        assert!(!circle_overlap(
+            &Circle {
+                x: i32::MIN,
+                y: i32::MIN,
+                r: 1
+            },
+            &Circle {
+                x: i32::MAX,
+                y: i32::MAX,
+                r: 1
+            }
+        ));
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 100,
+            y2: 0,
+            r: 1,
+        };
+        let b = Capsule {
+            x1: 0,
+            y1: 10,
+            x2: 100,
+            y2: -20,
+            r: 1,
+        };
+        assert!(capsule_overlap(&a, &b), "center lines cross");
+        assert_eq!(capsule_overlap(&a, &b), capsule_overlap(&b, &a));
+    }
 
     #[test]
     fn aabb_overlap_detects_intersection() {
@@ -284,14 +357,28 @@ mod tests {
 
     #[test]
     fn aabb_circle_overlap_detects_intersection() {
-        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
-        let circle = Circle { x: 25, y: 10, r: 10 };
+        let aabb = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 20,
+        };
+        let circle = Circle {
+            x: 25,
+            y: 10,
+            r: 10,
+        };
         assert!(aabb_circle_overlap(&aabb, &circle)); // circle touches right edge
     }
 
     #[test]
     fn aabb_circle_overlap_detects_no_intersection() {
-        let aabb = Aabb { x: 0, y: 0, w: 20, h: 20 };
+        let aabb = Aabb {
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 20,
+        };
         let circle = Circle { x: 35, y: 10, r: 5 };
         assert!(!aabb_circle_overlap(&aabb, &circle)); // too far right
     }
@@ -299,24 +386,60 @@ mod tests {
     #[test]
     fn capsule_overlap_detects_intersection() {
         // Two overlapping horizontal capsules
-        let a = Capsule { x1: 0, y1: 0, x2: 20, y2: 0, r: 5 };
-        let b = Capsule { x1: 15, y1: 0, x2: 35, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 20,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 15,
+            y1: 0,
+            x2: 35,
+            y2: 0,
+            r: 5,
+        };
         assert!(capsule_overlap(&a, &b));
     }
 
     #[test]
     fn capsule_overlap_detects_no_intersection() {
         // Two non-overlapping capsules
-        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
-        let b = Capsule { x1: 30, y1: 0, x2: 40, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 10,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 30,
+            y1: 0,
+            x2: 40,
+            y2: 0,
+            r: 5,
+        };
         assert!(!capsule_overlap(&a, &b));
     }
 
     #[test]
     fn capsule_overlap_edge_touching_is_not_overlap() {
         // Two capsules exactly touching (distance == sum of radii)
-        let a = Capsule { x1: 0, y1: 0, x2: 10, y2: 0, r: 5 };
-        let b = Capsule { x1: 20, y1: 0, x2: 30, y2: 0, r: 5 };
+        let a = Capsule {
+            x1: 0,
+            y1: 0,
+            x2: 10,
+            y2: 0,
+            r: 5,
+        };
+        let b = Capsule {
+            x1: 20,
+            y1: 0,
+            x2: 30,
+            y2: 0,
+            r: 5,
+        };
         assert!(!capsule_overlap(&a, &b)); // distance 10 == 5+5
     }
 }

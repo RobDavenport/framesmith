@@ -19,7 +19,7 @@ pub struct PackedMoveData {
     pub moves: Vec<u8>,
     /// SHAPES section: array of Shape12 (12 bytes each)
     pub shapes: Vec<u8>,
-    /// HIT_WINDOWS section: array of HitWindow24 (24 bytes each)
+    /// HIT_WINDOWS section: array of HitWindow28 (28 bytes each)
     pub hit_windows: Vec<u8>,
     /// HURT_WINDOWS section: array of HurtWindow12 (12 bytes each)
     pub hurt_windows: Vec<u8>,

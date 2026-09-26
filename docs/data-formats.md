@@ -1,7 +1,7 @@
 # Framesmith Data Formats
 
 **Status:** Active
-**Last reviewed:** 2026-02-02
+**Last reviewed:** 2026-05-22
 
 Framesmith stores character data as a directory of JSON files. The Rust types in `src-tauri/src/schema/mod.rs` are the canonical definitions.
 
@@ -148,11 +148,24 @@ Inheritance rules:
 - Single-level only (no chaining)
 - Variant fields override base fields (shallow merge)
 - `null` removes inherited fields
-- Resolved `id` field is set during loading
+- Resolved `id` field is set during loading and export. The resolved variant
+  keeps the base gameplay `input`, so `id` is the unique authoring/editor key
+  for variants such as `5H~level1`.
+
+Current editing rule:
+
+- The State Editor can inspect resolved variants by `id`.
+- Saving a resolved variant through the UI or `save_move` is blocked because the
+  loaded data is a resolved snapshot, not the original overlay patch.
+- To change a variant today, edit its overlay file, such as
+  `characters/test_char/states/5H~level1.json`, then reload/export.
+- Overlay-aware editing is explicitly deferred for the first production target;
+  see [`variant-editing-decision.md`](variant-editing-decision.md). If reopened,
+  it must write only the overlay diff, not the resolved state.
 
 ### Minimal (Core) State
 
-These “core” fields are what the current UI surfaces and what the current exporters primarily use.
+These core fields are what the current UI surfaces and what the current exporters primarily use.
 
 ```json
 {
@@ -194,14 +207,14 @@ Moves also support additional optional fields (all are optional unless stated ot
 - `trigger`: `press | release | hold` (default behavior is `press` when omitted)
 - `parent`: string (for follow-ups / strings)
 - `total`: number (override total duration)
-- `hits[]`: multi-hit model with shaped hitboxes (currently not exported by `zx-fspack` v1)
+- `hits[]`: multi-hit model with shaped hitboxes (currently not exported by `fspk` v1)
 - `preconditions[]`: requirements to use the move (meter/charge/state/etc.)
 - `costs[]`: meter/health/resource costs
 - `movement`: distance/velocity-based movement data
 - `super_freeze`: cinematic freeze parameters
 - `on_use`, `on_hit`, `on_block`: gameplay effects + notification events
 - `notifies[]`: timeline-triggered notification events
-- `advanced_hurtboxes[]`: shaped hurtboxes with flags (currently not exported by `zx-fspack` v1)
+- `advanced_hurtboxes[]`: shaped hurtboxes with flags (currently not exported by `fspk` v1)
 - `pushboxes[]`: body collision boxes for character-to-character push separation (same format as hurtboxes)
 
 ## Events (Notification)
@@ -249,15 +262,22 @@ Central cancel relationship table:
 
 ```json
 {
-  "chains": {
-    "5L": ["5L", "5M"],
-    "5M": ["5H"]
-  },
-  "special_cancels": ["5L", "5M", "5H"],
-  "super_cancels": ["5H"],
-  "jump_cancels": ["5H"]
+  "tag_rules": [
+    { "from": "system", "to": "any", "on": "always" },
+    { "from": "normal", "to": "special", "on": ["hit", "block"] },
+    { "from": "normal", "to": "super", "on": ["hit", "block"] },
+    { "from": "5l", "to": "5m", "on": ["hit", "block"] }
+  ],
+  "deny": {
+    "5L": ["236P"]
+  }
 }
 ```
+
+`tag_rules[]` describe selector-based cancel routes. `from` and `to` match state
+tags, state `type`, exact state `input`, resolved state `id`, or `any`. `deny`
+maps source input/id notation to target input/id notations that must be blocked
+even when a tag rule would otherwise allow the route.
 
 ## Rules Files
 
@@ -269,4 +289,4 @@ Rules semantics, matching, and built-in validations are specified in `docs/rules
 ## Export Outputs
 
 - `json-blob`: a single JSON blob containing the resolved character + moves (after rule defaults are applied). It includes optional/advanced fields when present.
-- `zx-fspack`: a compact binary pack documented in `docs/zx-fspack.md`
+- `fspk`: a compact binary pack documented in `docs/zx-fspack.md`

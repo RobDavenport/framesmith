@@ -1,6 +1,9 @@
 use crate::state::CharacterState;
 use framesmith_fspack::PackView;
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 /// Action cancel IDs (offset from move_count).
 /// These map to CancelFlags on the current move.
 pub const ACTION_CHAIN: u16 = 0;
@@ -13,9 +16,12 @@ pub const ACTION_JUMP: u16 = 3;
 /// Searches the state's tag list for the given tag string.
 /// Returns false if the pack has no tag data or the state has no tags.
 fn state_has_tag(pack: &PackView, state_idx: u16, tag: &str) -> bool {
-    pack.state_tags(state_idx as usize)
-        .map(|mut tags| tags.any(|t| t == tag))
-        .unwrap_or(false)
+    pack.state_input(state_idx as usize) == Some(tag)
+        || pack.state_id(state_idx as usize) == Some(tag)
+        || pack
+            .state_tags(state_idx as usize)
+            .map(|mut tags| tags.any(|t| t == tag))
+            .unwrap_or(false)
 }
 
 /// Check if a cancel from current state to target move is valid.
@@ -29,7 +35,7 @@ fn state_has_tag(pack: &PackView, state_idx: u16, tag: &str) -> bool {
 /// # Arguments
 /// * `state` - Current character state
 /// * `pack` - Character data pack
-/// * `target` - Target move ID (or action ID if >= move_count)
+/// * `target` - Target state index; actions use `can_cancel_action` separately.
 ///
 /// # Returns
 /// `true` if the cancel is valid right now.
@@ -40,13 +46,8 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
         None => return false,
     };
 
-    let move_count = moves.len() as u16;
-
-    // Check if target is a game-defined action (>= move_count)
-    // The runtime allows these; game decides if the action is valid
-    if target >= move_count {
-        // Check if current move allows this action via cancel flags
-        return check_action_cancel(state, pack, target - move_count);
+    if moves.get(state.current_state as usize).is_none() || moves.get(target as usize).is_none() {
+        return false;
     }
 
     // 1. Explicit deny always wins - block this cancel entirely
@@ -60,7 +61,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
             // Check from_tag matches (None means "any")
             let from_matches = match rule.from_tag() {
                 Some(tag) => state_has_tag(pack, state.current_state, tag),
-                None => true, // "any" matches all moves
+                None => rule.from_is_any(),
             };
             if !from_matches {
                 continue;
@@ -69,7 +70,7 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
             // Check to_tag matches
             let to_matches = match rule.to_tag() {
                 Some(tag) => state_has_tag(pack, target, tag),
-                None => true, // "any" matches all moves
+                None => rule.to_is_any(),
             };
             if !to_matches {
                 continue;
@@ -78,22 +79,18 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
             // Check condition bitfield
             // bit 0 = hit, bit 1 = block, bit 2 = whiff
             let condition = rule.condition();
-            let condition_met = if state.hit_confirmed {
-                condition & 0b001 != 0  // HIT bit
-            } else if state.block_confirmed {
-                condition & 0b010 != 0  // BLOCK bit
-            } else {
-                condition & 0b100 != 0  // WHIFF bit
-            };
+            let condition_met = (state.hit_confirmed && condition & 0b001 != 0)
+                || (state.block_confirmed && condition & 0b010 != 0)
+                || (!state.hit_confirmed && !state.block_confirmed && condition & 0b100 != 0);
             if !condition_met {
                 continue;
             }
 
             // Check frame range
-            if state.frame < rule.min_frame() {
+            if state.frame < u16::from(rule.min_frame()) {
                 continue;
             }
-            if state.frame > rule.max_frame() {
+            if rule.max_frame() != u8::MAX && state.frame > u16::from(rule.max_frame()) {
                 continue;
             }
 
@@ -103,19 +100,63 @@ pub fn can_cancel_to(state: &CharacterState, pack: &PackView, target: u16) -> bo
             }
 
             // Cancel allowed by this tag rule
-            return true;
+            let mut candidate = *state;
+            return crate::resource::apply_resource_costs(&mut candidate, pack, target);
         }
     }
 
     false
 }
 
-/// Check if an action cancel is allowed based on current move's cancel flags.
-fn check_action_cancel(
-    state: &CharacterState,
-    pack: &PackView,
-    action_id: u16,
-) -> bool {
+/// Return every move state that can currently be cancelled into.
+///
+/// This enumerates regular move/state targets only. Game-defined action cancels
+/// use IDs above the move count and remain delegated to the engine.
+#[cfg(feature = "alloc")]
+#[must_use]
+pub fn available_cancels(state: &CharacterState, pack: &PackView) -> Vec<u16> {
+    let Some(states) = pack.states() else {
+        return Vec::new();
+    };
+
+    let mut cancels = Vec::new();
+    for target in 0..states.len().min(u16::MAX as usize + 1) {
+        let target = target as u16;
+        if can_cancel_to(state, pack, target) {
+            cancels.push(target);
+        }
+    }
+    cancels
+}
+
+/// Write every currently valid move-state cancel target into a caller buffer.
+///
+/// Returns the number of targets written. If the buffer is too small, remaining
+/// valid targets are skipped. Game-defined action cancels are not enumerated.
+#[must_use]
+pub fn available_cancels_buf(state: &CharacterState, pack: &PackView, buf: &mut [u16]) -> usize {
+    let Some(states) = pack.states() else {
+        return 0;
+    };
+
+    let mut written = 0;
+    for target in 0..states.len().min(u16::MAX as usize + 1) {
+        let target = target as u16;
+        if can_cancel_to(state, pack, target) {
+            if let Some(slot) = buf.get_mut(written) {
+                *slot = target;
+                written += 1;
+            } else {
+                break;
+            }
+        }
+    }
+    written
+}
+
+/// Query legacy action flags without treating an action as a state index.
+/// Unknown actions return false; the engine defines any additional action policy.
+pub fn can_cancel_action(state: &CharacterState, pack: &PackView, action_id: u16) -> bool {
     let moves = match pack.states() {
         Some(m) => m,
         None => return false,
@@ -132,7 +173,7 @@ fn check_action_cancel(
         ACTION_SPECIAL => flags.special,
         ACTION_SUPER => flags.super_cancel,
         ACTION_JUMP => flags.jump,
-        _ => true, // Unknown actions delegated to game
+        _ => false,
     }
 }
 
@@ -181,5 +222,16 @@ mod tests {
             assert!(!can_cancel_to(&state, &pack, 0));
         }
         // Parsing empty data fails, which is expected
+    }
+
+    #[test]
+    fn available_cancels_buf_returns_zero_for_empty_pack() {
+        let state = CharacterState::default();
+        let empty_data: [u8; 0] = [];
+        if let Ok(pack) = PackView::parse(&empty_data) {
+            let mut buf = [0u16; 4];
+            assert_eq!(available_cancels_buf(&state, &pack, &mut buf), 0);
+        }
+        // Parsing empty data fails, which is expected.
     }
 }

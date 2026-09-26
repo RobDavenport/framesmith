@@ -1,0 +1,347 @@
+{
+  "version": 2,
+  "status_values": [
+    "preserved",
+    "derived",
+    "omitted",
+    "engine-owned"
+  ],
+  "adapters": {
+    "json-blob": {
+      "character": {
+        "id": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "name": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "properties": {
+          "status": "preserved",
+          "notes": "Serialized directly, including nested values."
+        },
+        "resources": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        }
+      },
+      "state": {
+        "input": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "name": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "tags": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "startup": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "active": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "recovery": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "damage": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "hitstun": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "blockstun": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "hitstop": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "guard": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "hitboxes": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "hurtboxes": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "pushback": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "meter_gain": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "animation": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "type": {
+          "status": "preserved",
+          "notes": "Serialized as the state type field."
+        },
+        "trigger": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "parent": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "total": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "hits": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "preconditions": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "costs": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "movement": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "super_freeze": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "on_use": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "on_hit": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "on_block": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "notifies": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "advanced_hurtboxes": {
+          "status": "preserved",
+          "notes": "Serialized directly when present."
+        },
+        "pushboxes": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "properties": {
+          "status": "preserved",
+          "notes": "Serialized directly, including nested values."
+        },
+        "base": {
+          "status": "preserved",
+          "notes": "Serialized when present. Loaded resolved variants normally omit this authoring-only field."
+        },
+        "id": {
+          "status": "preserved",
+          "notes": "Serialized when present and required to distinguish resolved variants."
+        }
+      },
+      "cancel_table": {
+        "tag_rules": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        },
+        "deny": {
+          "status": "preserved",
+          "notes": "Serialized directly."
+        }
+      }
+    },
+    "fspk": {
+      "character": {
+        "id": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved character.id; engine ownership of behavior does not remove its data."
+        },
+        "name": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved character.name; engine ownership of behavior does not remove its data."
+        },
+        "properties": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved character.properties; engine ownership of behavior does not remove its data."
+        },
+        "resources": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved character.resources; engine ownership of behavior does not remove its data."
+        }
+      },
+      "state": {
+        "input": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.input; engine ownership of behavior does not remove its data."
+        },
+        "name": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.name; engine ownership of behavior does not remove its data."
+        },
+        "tags": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.tags; engine ownership of behavior does not remove its data."
+        },
+        "startup": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.startup; engine ownership of behavior does not remove its data."
+        },
+        "active": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.active; engine ownership of behavior does not remove its data."
+        },
+        "recovery": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.recovery; engine ownership of behavior does not remove its data."
+        },
+        "damage": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.damage; engine ownership of behavior does not remove its data."
+        },
+        "hitstun": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.hitstun; engine ownership of behavior does not remove its data."
+        },
+        "blockstun": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.blockstun; engine ownership of behavior does not remove its data."
+        },
+        "hitstop": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.hitstop; engine ownership of behavior does not remove its data."
+        },
+        "guard": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.guard; engine ownership of behavior does not remove its data."
+        },
+        "hitboxes": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.hitboxes; engine ownership of behavior does not remove its data."
+        },
+        "hurtboxes": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.hurtboxes; engine ownership of behavior does not remove its data."
+        },
+        "pushback": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.pushback; engine ownership of behavior does not remove its data."
+        },
+        "meter_gain": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.meter_gain; engine ownership of behavior does not remove its data."
+        },
+        "animation": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.animation; engine ownership of behavior does not remove its data."
+        },
+        "type": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.type; engine ownership of behavior does not remove its data."
+        },
+        "trigger": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.trigger; engine ownership of behavior does not remove its data."
+        },
+        "parent": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.parent; engine ownership of behavior does not remove its data."
+        },
+        "total": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.total; engine ownership of behavior does not remove its data."
+        },
+        "hits": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.hits; engine ownership of behavior does not remove its data."
+        },
+        "preconditions": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.preconditions; engine ownership of behavior does not remove its data."
+        },
+        "costs": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.costs; engine ownership of behavior does not remove its data."
+        },
+        "movement": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.movement; engine ownership of behavior does not remove its data."
+        },
+        "super_freeze": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.super_freeze; engine ownership of behavior does not remove its data."
+        },
+        "on_use": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.on_use; engine ownership of behavior does not remove its data."
+        },
+        "on_hit": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.on_hit; engine ownership of behavior does not remove its data."
+        },
+        "on_block": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.on_block; engine ownership of behavior does not remove its data."
+        },
+        "notifies": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.notifies; engine ownership of behavior does not remove its data."
+        },
+        "advanced_hurtboxes": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.advanced_hurtboxes; engine ownership of behavior does not remove its data."
+        },
+        "pushboxes": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.pushboxes; engine ownership of behavior does not remove its data."
+        },
+        "properties": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.properties; engine ownership of behavior does not remove its data."
+        },
+        "base": {
+          "status": "preserved",
+          "notes": "The resolved authoring loader strips inheritance links; the typed payload preserves the provided resolved data rather than inventing an overlay."
+        },
+        "id": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved state.id; engine ownership of behavior does not remove its data."
+        }
+      },
+      "cancel_table": {
+        "tag_rules": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved cancel_table.tag_rules; engine ownership of behavior does not remove its data."
+        },
+        "deny": {
+          "status": "preserved",
+          "notes": "FSPK v2 typed payload preserves resolved cancel_table.deny; engine ownership of behavior does not remove its data."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "id": "special",
+  "name": "Plasma Wave",
+  "type": "normal",
+  "input": "special",
+  "tags": [
+    "attack",
+    "special"
+  ],
+  "startup": 12,
+  "active": 2,
+  "recovery": 24,
+  "damage": 52,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        12,
+        13
+      ],
+      "box": {
+        "x": 38,
+        "y": -62,
+        "w": 28,
+        "h": 26
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        37
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        37
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "special",
+  "properties": {
+    "projectile": 1,
+    "projectile_speed": 4.5,
+    "chip": 3
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 12,
+      "events": [
+        {
+          "id": "projectile",
+          "args": {
+            "move": "special"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 # Movement Reference
 
+Status: active
+Last reviewed: 2026-05-23
+
 Technical reference for defining and applying movement in Framesmith states.
 
 ## Movement Field Schema
@@ -179,6 +182,26 @@ This is useful for:
 - Dashes with startup and recovery that don't move
 - Air dashes with brief momentum windows
 
+## Export And Runtime Ownership
+
+Movement is currently an authoring contract, not a built-in runtime simulation
+contract:
+
+- `json-blob` preserves the full `movement` object.
+- `fspk` v1 marks movement states by type but does not serialize movement
+  values.
+- `framesmith-runtime` does not apply movement curves, velocity, gravity, floor
+  collision, wall collision, or stage bounds.
+- The game engine owns deterministic movement application and must include any
+  velocity or movement accumulator state in its rollback state.
+
+Use this reference when consuming `json-blob` data or when planning a future
+FSPK movement section.
+
+The production handoff decision formally accepts `json-blob` as the movement
+handoff for FSPK v1. See
+[`production-handoff-decision.md`](production-handoff-decision.md).
+
 ## Applying Movement in Your Engine
 
 ### Per-Frame Processing
@@ -247,7 +270,7 @@ For rollback netcode:
 
 2. **UI Preview**: The State Editor shows movement fields but does not visualize the motion path.
 
-3. **Runtime Simulation**: Framesmith exports movement data; your engine is responsible for applying it.
+3. **Runtime Simulation**: Framesmith preserves movement data in `json-blob`; your engine is responsible for applying it. `fspk` v1 does not include movement values.
 
 4. **Easing Curves**: Only standard easing functions are supported. Custom curves require engine-side implementation.
 
@@ -255,4 +278,6 @@ For rollback netcode:
 
 - `docs/data-formats.md` - Full state schema
 - `docs/character-authoring-guide.md` - Creating movement states
-- `docs/runtime-guide.md` - Integrating with game engines
+- `docs/runtime-guide.md` - Integrating with game engines and ownership boundaries
+- `docs/export-fidelity-contract.md` - Adapter field coverage and FSPK limits
+- `docs/production-handoff-decision.md` - Canonical production handoff and FSPK v1 movement policy

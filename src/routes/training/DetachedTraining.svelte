@@ -6,7 +6,7 @@
    * Used by the training page when in detached window mode.
    */
 
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import TrainingViewport from '$lib/components/training/TrainingViewport.svelte';
   import TrainingHUD from '$lib/components/training/TrainingHUD.svelte';
   import InputHistory from '$lib/components/training/InputHistory.svelte';
@@ -17,6 +17,7 @@
     NO_INPUT,
     type CharacterState,
     type FrameResult,
+    type TrainingSnapshot,
   } from '$lib/training/TrainingSession';
   import {
     InputManager,
@@ -26,6 +27,7 @@
     calculateSimpleFrameAdvantage,
     type TrainingInputConfig,
     type InputSnapshot,
+    type InputBufferSnapshot,
   } from '$lib/training';
   import { pickAnimationKey } from '$lib/training/pickAnimationKey';
   import { buildMoveList } from '$lib/training/buildMoveList';
@@ -98,11 +100,105 @@
   // Input history
   let inputHistory = $state<InputSnapshot[]>([]);
   const INPUT_HISTORY_MAX = 30;
+  const HISTORY_MAX = 300;
 
   // Playback controls
   let isPlaying = $state(true);
   let playbackSpeed = $state<PlaybackSpeed>(1);
   let frameAccumulator = $state(0);
+
+  interface DetachedTrainingState {
+    frameCount: number;
+    playerState: CharacterState | null;
+    dummyState: CharacterState | null;
+    playerX: number;
+    playerY: number;
+    dummyX: number;
+    dummyY: number;
+    playerHealth: number;
+    dummyHealth: number;
+    comboHits: number;
+    comboDamage: number;
+    comboResetTimer: number;
+    inputHistory: InputSnapshot[];
+    frameAccumulator: number;
+  }
+
+  interface DetachedHistoryEntry {
+    state: DetachedTrainingState;
+    session: TrainingSnapshot;
+    inputBuffer: InputBufferSnapshot;
+  }
+
+  let history: DetachedHistoryEntry[] = [];
+
+  function cloneInputSnapshot(snapshot: InputSnapshot): InputSnapshot {
+    return {
+      direction: snapshot.direction,
+      buttons: [...snapshot.buttons],
+    };
+  }
+
+  function cloneCharacterState(state: CharacterState | null): CharacterState | null {
+    if (!state) return null;
+    return {
+      ...state,
+      resources: [...state.resources],
+    };
+  }
+
+  function captureTrainingState(): DetachedTrainingState {
+    return {
+      frameCount,
+      playerState: cloneCharacterState(playerState),
+      dummyState: cloneCharacterState(dummyState),
+      playerX,
+      playerY,
+      dummyX,
+      dummyY,
+      playerHealth,
+      dummyHealth,
+      comboHits,
+      comboDamage,
+      comboResetTimer,
+      inputHistory: inputHistory.map(cloneInputSnapshot),
+      frameAccumulator,
+    };
+  }
+
+  function restoreTrainingState(state: DetachedTrainingState) {
+    frameCount = state.frameCount;
+    playerState = cloneCharacterState(state.playerState);
+    dummyState = cloneCharacterState(state.dummyState);
+    playerX = state.playerX;
+    playerY = state.playerY;
+    dummyX = state.dummyX;
+    dummyY = state.dummyY;
+    playerHealth = state.playerHealth;
+    dummyHealth = state.dummyHealth;
+    comboHits = state.comboHits;
+    comboDamage = state.comboDamage;
+    comboResetTimer = state.comboResetTimer;
+    inputHistory = state.inputHistory.map(cloneInputSnapshot);
+    frameAccumulator = state.frameAccumulator;
+  }
+
+  function captureHistory(): DetachedHistoryEntry | null {
+    if (!session || !inputBuffer) return null;
+    return {
+      state: captureTrainingState(),
+      session: session.snapshot(),
+      inputBuffer: inputBuffer.snapshot(),
+    };
+  }
+
+  function pushHistory(entry: DetachedHistoryEntry | null) {
+    if (!entry) return;
+    history.push(entry);
+    if (history.length > HISTORY_MAX) {
+      history.shift();
+    }
+  }
 
   // Developer overlay toggles
   let showHitboxes = $state(false);
@@ -123,13 +219,13 @@
       P: 'KeyJ',
       K: 'KeyK',
       S: 'KeyL',
+      T: 'KeyP',
     },
   };
 
   // Initialize or reinitialize the training session
-  async function reinitializeSession() {
+  async function reinitializeSession(nextFspkBytes: Uint8Array, character: CharacterData) {
     const seq = ++sessionSeq;
-    if (!fspkBytes || !currentCharacter) return;
 
     try {
       // Stop current game loop
@@ -140,7 +236,7 @@
       session = null;
 
       // Create new session
-      const nextSession = await TrainingSession.create(fspkBytes, fspkBytes);
+      const nextSession = await TrainingSession.create(nextFspkBytes, nextFspkBytes);
 
       if (destroyed || seq !== sessionSeq) {
         nextSession.free();
@@ -150,12 +246,24 @@
       session = nextSession;
 
       // Update move resolver
-      moveResolver = new MoveResolver(buildMoveList(currentCharacter?.moves));
+      moveResolver = new MoveResolver(buildMoveList(character.moves));
+      history = [];
+      inputBuffer?.clear();
 
       // Reset health
-      maxHealth = getCharProp(currentCharacter.character, 'health', 1000);
+      maxHealth = getCharProp(character.character, 'health', 1000);
       playerHealth = maxHealth;
       dummyHealth = maxHealth;
+      comboHits = 0;
+      comboDamage = 0;
+      comboResetTimer = 0;
+      frameCount = 0;
+      inputHistory = [];
+      frameAccumulator = 0;
+      playerX = 200;
+      playerY = 0;
+      dummyX = 600;
+      dummyY = 0;
 
       // Get initial state
       playerState = session.playerState();
@@ -174,8 +282,12 @@
 
   // Watch for fspkBytes changes
   $effect(() => {
-    if (fspkBytes) {
-      void reinitializeSession();
+    const nextFspkBytes = fspkBytes;
+    const character = currentCharacter;
+    if (nextFspkBytes && character) {
+      untrack(() => {
+        void reinitializeSession(nextFspkBytes, character);
+      });
     }
   });
 
@@ -234,6 +346,9 @@
       return;
     }
 
+    session.setPositions(playerX, playerY, dummyX, dummyY);
+    const historyEntry = captureHistory();
+
     const snapshot = inputManager.getSnapshot();
     inputBuffer.push(snapshot);
     inputHistory = [...inputHistory.slice(-(INPUT_HISTORY_MAX - 1)), snapshot];
@@ -280,6 +395,7 @@
     }
 
     frameCount++;
+    pushHistory(historyEntry);
   }
 
   // Keyboard handlers
@@ -297,6 +413,10 @@
     }
     if (event.code === 'Period') {
       stepForward();
+      return;
+    }
+    if (event.code === 'Comma') {
+      stepBack();
       return;
     }
     if (event.code === 'KeyH') {
@@ -325,7 +445,13 @@
   }
 
   function stepBack() {
-    // Not implemented - requires state history
+    isPlaying = false;
+    const previous = history.pop();
+    if (!previous || !session || !inputBuffer) return;
+
+    session.restore(previous.session);
+    inputBuffer.restore(previous.inputBuffer);
+    restoreTrainingState(previous.state);
   }
 
   function setPlaybackSpeed(speed: PlaybackSpeed) {
@@ -335,7 +461,21 @@
   function resetHealth() {
     playerHealth = maxHealth;
     dummyHealth = maxHealth;
+    comboHits = 0;
+    comboDamage = 0;
+    comboResetTimer = 0;
+    frameCount = 0;
+    inputHistory = [];
+    frameAccumulator = 0;
+    playerX = 200;
+    playerY = 0;
+    dummyX = 600;
+    dummyY = 0;
+    history = [];
+    inputBuffer?.clear();
     session?.reset();
+    playerState = session?.playerState() ?? null;
+    dummyState = session?.dummyState() ?? null;
   }
 
   // Cleanup
@@ -347,6 +487,7 @@
     inputBuffer = null;
     moveResolver = null;
     dummyController = null;
+    history = [];
     session?.free();
     session = null;
   }
@@ -570,10 +711,10 @@
         <span class="control-label">Movement:</span>
         <span class="control-keys">WASD</span>
       </div>
-      <div class="control-group">
-        <span class="control-label">Attacks:</span>
-        <span class="control-keys">U I O / J K L</span>
-      </div>
+        <div class="control-group">
+          <span class="control-label">Attacks:</span>
+          <span class="control-keys">U I O / J K L / P</span>
+        </div>
       <div class="control-group">
         <span class="control-label">Hitboxes:</span>
         <span class="control-keys">H</span>

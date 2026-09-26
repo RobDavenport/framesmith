@@ -1,0 +1,108 @@
+{
+  "input": "2L",
+  "name": "2L · Ryu 2LK-inspired toe kick",
+  "type": "normal",
+  "tags": [
+    "normal",
+    "attack",
+    "action",
+    "chainable",
+    "light",
+    "crouching"
+  ],
+  "startup": 4,
+  "active": 2,
+  "recovery": 10,
+  "damage": 20,
+  "hitstun": 14,
+  "blockstun": 10,
+  "hitstop": 8,
+  "guard": "low",
+  "animation": "low_light",
+  "hitboxes": [
+    {
+      "frames": [
+        4,
+        5
+      ],
+      "box": {
+        "x": 18,
+        "y": -17,
+        "w": 25,
+        "h": 17
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        15
+      ],
+      "box": {
+        "x": -12,
+        "y": -66,
+        "w": 24,
+        "h": 66
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        15
+      ],
+      "box": {
+        "x": -18,
+        "y": -66,
+        "w": 36,
+        "h": 66
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "Crouching Light Kick",
+    "reference_input": "2LK"
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 4,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "id": "burst",
+  "name": "Redline Breaker",
+  "type": "normal",
+  "input": "burst",
+  "tags": [
+    "attack",
+    "super"
+  ],
+  "startup": 8,
+  "active": 10,
+  "recovery": 32,
+  "damage": 205,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        17
+      ],
+      "box": {
+        "x": 8,
+        "y": -85,
+        "w": 125,
+        "h": 85
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        8,
+        49
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        49
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "burst",
+  "properties": {
+    "invuln": 8,
+    "launch": -9,
+    "knockdown": 1,
+    "travel": 9
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 0
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 0
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "burst"
+          }
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "amount": 50
+    }
+  ],
+  "preconditions": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "min": 50
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "id": "burst",
+  "name": "Seismic Driver",
+  "type": "normal",
+  "input": "burst",
+  "tags": [
+    "attack",
+    "super"
+  ],
+  "startup": 3,
+  "active": 10,
+  "recovery": 32,
+  "damage": 230,
+  "hitstun": 32,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "unblockable",
+  "hitboxes": [
+    {
+      "frames": [
+        3,
+        12
+      ],
+      "box": {
+        "x": 8,
+        "y": -100,
+        "w": 65,
+        "h": 100
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        8,
+        44
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        44
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "burst",
+  "properties": {
+    "invuln": 8,
+    "launch": -9,
+    "knockdown": 1,
+    "grab": 1
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 0
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 0
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 3,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "burst"
+          }
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "amount": 50
+    }
+  ],
+  "preconditions": [
+    {
+      "type": "resource",
+      "name": "meter",
+      "min": 50
+    }
+  ]
+}

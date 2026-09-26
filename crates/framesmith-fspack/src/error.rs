@@ -9,4 +9,22 @@ pub enum Error {
     InvalidMagic,
     /// An offset or length field points outside the data.
     OutOfBounds,
+    /// Unsupported version/flags; re-export with a compatible writer.
+    UnsupportedVersion,
+    /// Invalid section layout, record size or data reference.
+    InvalidFormat,
 }
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::TooShort => "FSPK header is truncated",
+            Self::InvalidMagic => "invalid FSPK magic",
+            Self::OutOfBounds => "FSPK reference is out of bounds",
+            Self::UnsupportedVersion => "unsupported FSPK version/flags",
+            Self::InvalidFormat => "invalid FSPK record layout or reference",
+        })
+    }
+}
+
+impl core::error::Error for Error {}

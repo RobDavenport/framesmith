@@ -1,6 +1,6 @@
 [package]
 name = "framesmith-fspack"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "no_std reader for Framesmith FSPK binary packs"
 
@@ -9,6 +9,14 @@ default = []
 alloc = []
 std = ["alloc", "float"]
 float = []  # f32 conversion methods for fixed-point types
+builder = ["std", "dep:serde_json"]
+
+[dependencies]
+serde_json = { version = "1", optional = true, features = ["float_roundtrip"] }
 
 [dev-dependencies]
 # For tests only
+
+[[example]]
+name = "engine_payloads"
+required-features = ["builder"]

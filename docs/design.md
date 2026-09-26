@@ -1,7 +1,7 @@
 # Framesmith Design Notes
 
 **Status:** Active
-**Last reviewed:** 2026-01-30
+**Last reviewed:** 2026-05-22
 
 This document describes Framesmith’s intended shape and the current implementation boundaries. For the on-disk JSON formats, use `docs/data-formats.md` (canonical for file layout) and `docs/rules-spec.md` (canonical for rules semantics).
 
@@ -29,7 +29,7 @@ Implemented (today):
 - Rules system: apply defaults + validate moves; optional registry for resources/events
 - Export adapters:
   - `json-blob` (single JSON blob)
-  - `zx-fspack` (compact binary pack)
+  - `fspk` (compact binary pack)
 - MCP server for programmatic workflows and LLM integration
 
 Not implemented (yet):
@@ -82,7 +82,7 @@ Exports are run through the same validation/defaulting pipeline used by saving:
 Adapters:
 
 - `json-blob`: emits a single JSON blob containing resolved character + moves.
-- `zx-fspack`: emits a `.fspk` binary pack for constrained runtimes (see `docs/zx-fspack.md`).
+- `fspk`: emits a `.fspk` binary pack for constrained runtimes (see `docs/zx-fspack.md`).
 
 ## MCP Server
 

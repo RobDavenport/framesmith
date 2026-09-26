@@ -1,0 +1,57 @@
+{
+  "id": "guard",
+  "name": "Guard",
+  "type": "system",
+  "input": "guard",
+  "tags": [
+    "neutral"
+  ],
+  "startup": 1,
+  "active": 1,
+  "recovery": 0,
+  "damage": 0,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        1
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        1
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "guard",
+  "properties": {}
+}

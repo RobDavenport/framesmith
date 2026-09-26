@@ -105,7 +105,10 @@ mod tests {
         let mut table = StringTable::new();
         let loc1 = table.intern("hello").unwrap();
         let loc2 = table.intern("world").unwrap();
-        assert_ne!(loc1.0, loc2.0, "Different strings should have different offsets");
+        assert_ne!(
+            loc1.0, loc2.0,
+            "Different strings should have different offsets"
+        );
         assert_eq!(loc1.0, 0, "First string should start at offset 0");
         assert_eq!(loc1.1, 5, "\"hello\" has length 5");
         assert_eq!(loc2.0, 5, "Second string should start after first");

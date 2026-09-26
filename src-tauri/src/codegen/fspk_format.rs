@@ -55,7 +55,7 @@ pub const SECTION_KEYFRAMES_KEYS: u32 = 3;
 /// Array of StateRecord structs
 pub const SECTION_STATES: u32 = 4;
 
-/// Array of HitWindow24 structs
+/// Array of HitWindow28 structs
 pub const SECTION_HIT_WINDOWS: u32 = 5;
 
 /// Array of HurtWindow12 structs
@@ -215,8 +215,8 @@ pub const STRREF_SIZE: usize = 8;
 /// Shape encoding size: kind(1) + flags(1) + a(2) + b(2) + c(2) + d(2) + e(2)
 pub const SHAPE12_SIZE: usize = 12;
 
-/// Hit window size (see HitWindow24 struct in module docs)
-pub const HIT_WINDOW24_SIZE: usize = 24;
+/// Hit window size (see HitWindow28 struct in module docs)
+pub const HIT_WINDOW24_SIZE: usize = 28;
 
 /// Hurt window size (see HurtWindow12 struct in module docs)
 pub const HURT_WINDOW12_SIZE: usize = 12;
@@ -385,7 +385,7 @@ mod tests {
         );
         assert_eq!(STRREF_SIZE, 8, "StrRef size must be 8 bytes");
         assert_eq!(SHAPE12_SIZE, 12, "Shape12 size must be 12 bytes");
-        assert_eq!(HIT_WINDOW24_SIZE, 24, "HitWindow24 size must be 24 bytes");
+        assert_eq!(HIT_WINDOW24_SIZE, 28, "HitWindow28 size must be 28 bytes");
         assert_eq!(HURT_WINDOW12_SIZE, 12, "HurtWindow12 size must be 12 bytes");
         assert_eq!(STATE_RECORD_SIZE, 36, "StateRecord size must be 36 bytes");
     }

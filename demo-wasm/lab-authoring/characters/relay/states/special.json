@@ -1,0 +1,112 @@
+{
+  "input": "special",
+  "name": "5S · Light Hashogeki-inspired palm strike",
+  "type": "special",
+  "tags": [
+    "special",
+    "attack",
+    "action"
+  ],
+  "startup": 11,
+  "active": 6,
+  "recovery": 18,
+  "damage": 70,
+  "hitstun": 25,
+  "blockstun": 20,
+  "hitstop": 10,
+  "guard": "mid",
+  "animation": "special",
+  "hitboxes": [
+    {
+      "frames": [
+        11,
+        16
+      ],
+      "box": {
+        "x": 18,
+        "y": -73,
+        "w": 27,
+        "h": 25
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        34
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        34
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "L Hashogeki",
+    "reference_input": "214LP"
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 11,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "type": "resource",
+      "name": "ammo",
+      "amount": 1
+    }
+  ]
+}

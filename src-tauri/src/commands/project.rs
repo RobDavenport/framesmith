@@ -206,9 +206,9 @@ pub async fn open_training_window(
     app: tauri::AppHandle,
     character_id: String,
 ) -> Result<(), String> {
+    use tauri::Manager;
     use tauri::WebviewUrl;
     use tauri::WebviewWindowBuilder;
-    use tauri::Manager;
 
     const WINDOW_LABEL: &str = "training-detached";
 
@@ -224,17 +224,13 @@ pub async fn open_training_window(
     // Build the URL with query params for the training route
     let url = format!("/training?character={}&detached=true", character_id);
 
-    let window = WebviewWindowBuilder::new(
-        &app,
-        WINDOW_LABEL,
-        WebviewUrl::App(url.into()),
-    )
-    .title("Framesmith - Training Mode")
-    .inner_size(1024.0, 768.0)
-    .min_inner_size(800.0, 600.0)
-    .resizable(true)
-    .build()
-    .map_err(|e| format!("Failed to create training window: {}", e))?;
+    let window = WebviewWindowBuilder::new(&app, WINDOW_LABEL, WebviewUrl::App(url.into()))
+        .title("Framesmith - Training Mode")
+        .inner_size(1024.0, 768.0)
+        .min_inner_size(800.0, 600.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| format!("Failed to create training window: {}", e))?;
 
     // Focus the new window
     window

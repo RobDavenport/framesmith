@@ -1,0 +1,107 @@
+{
+  "input": "jab",
+  "name": "5L · Ryu 5LP-inspired jab",
+  "type": "normal",
+  "tags": [
+    "normal",
+    "attack",
+    "chainable",
+    "action",
+    "light"
+  ],
+  "startup": 3,
+  "active": 3,
+  "recovery": 7,
+  "damage": 30,
+  "hitstun": 13,
+  "blockstun": 8,
+  "hitstop": 8,
+  "guard": "mid",
+  "animation": "jab",
+  "hitboxes": [
+    {
+      "frames": [
+        3,
+        5
+      ],
+      "box": {
+        "x": 10,
+        "y": -75,
+        "w": 28,
+        "h": 14
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        12
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        12
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "Standing Light Punch",
+    "reference_input": "5LP"
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 3,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ]
+}

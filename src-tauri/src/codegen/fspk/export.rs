@@ -1,26 +1,28 @@
 //! Main FSPK export function.
 
-use std::collections::HashMap;
+use framesmith_fspack::payload::{
+    builder::encode_parts, SECTION_PAYLOAD_NODES, SECTION_PAYLOAD_STRINGS, VERSION_2,
+};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::codegen::fspk_format::{
-    write_u16_le, write_u32_le, write_u8, FLAGS_RESERVED, HEADER_SIZE, MAGIC,
-    SCHEMA_HEADER_SIZE, SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS,
-    SECTION_EVENT_ARGS, SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS,
-    SECTION_HURT_WINDOWS, SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES,
-    SECTION_MOVE_RESOURCE_COSTS, SECTION_MOVE_RESOURCE_DELTAS,
-    SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_PUSH_WINDOWS, SECTION_RESOURCE_DEFS,
-    SECTION_SCHEMA, SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS, SECTION_STATE_PROPS,
-    SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE, STATE_EXTRAS72_SIZE,
-    STRREF_SIZE,
+    write_u16_le, write_u32_le, write_u8, HEADER_SIZE, MAGIC, SCHEMA_HEADER_SIZE,
+    SECTION_CANCEL_DENIES, SECTION_CANCEL_TAG_RULES, SECTION_CHARACTER_PROPS, SECTION_EVENT_ARGS,
+    SECTION_EVENT_EMITS, SECTION_HEADER_SIZE, SECTION_HIT_WINDOWS, SECTION_HURT_WINDOWS,
+    SECTION_KEYFRAMES_KEYS, SECTION_MESH_KEYS, SECTION_MOVE_NOTIFIES, SECTION_MOVE_RESOURCE_COSTS,
+    SECTION_MOVE_RESOURCE_DELTAS, SECTION_MOVE_RESOURCE_PRECONDITIONS, SECTION_PUSH_WINDOWS,
+    SECTION_RESOURCE_DEFS, SECTION_SCHEMA, SECTION_SHAPES, SECTION_STATES, SECTION_STATE_EXTRAS,
+    SECTION_STATE_PROPS, SECTION_STATE_TAGS, SECTION_STATE_TAG_RANGES, SECTION_STRING_TABLE,
+    STATE_EXTRAS72_SIZE, STRREF_SIZE,
 };
-use crate::commands::CharacterData;
+use crate::schema::CharacterData;
 use crate::rules::MergedRules;
 
 use super::builders::{align_up, SectionData, SectionHeader, StringTable};
 use super::moves::{build_asset_keys, pack_moves};
 use super::properties::{
-    find_similar, pack_character_props, pack_character_props_with_schema, pack_state_props,
-    pack_state_props_with_schema,
+    find_similar, flatten_properties, pack_character_props, pack_character_props_with_schema,
+    pack_state_props, pack_state_props_with_schema,
 };
 use super::sections::{
     pack_event_emits, pack_resource_defs, OPT_U16_NONE, RESOURCE_DELTA_TRIGGER_ON_BLOCK,
@@ -47,7 +49,14 @@ pub fn export_fspk(
     // Canonicalize move ordering so move indices are deterministic.
     // (Do this here as a backstop even if callers already sorted.)
     let mut char_data = char_data.clone();
-    char_data.moves.sort_by(|a, b| a.input.cmp(&b.input));
+    char_data
+        .moves
+        .sort_by(|a, b| (&a.input, &a.id).cmp(&(&b.input, &b.id)));
+
+    // Canonical full-fidelity binary data; compact sections are convenience views.
+    let payload = serde_json::to_value(&char_data).map_err(|error| error.to_string())?;
+    let (payload_nodes, payload_strings) =
+        encode_parts(&payload).map_err(|error| error.to_string())?;
 
     // Step 1: Build string table and asset keys
     let mut strings = StringTable::new();
@@ -71,12 +80,17 @@ pub fn export_fspk(
     }
 
     // Build input-to-index map for resolving chain targets
-    let input_to_index: HashMap<&str, u16> = char_data
-        .moves
-        .iter()
-        .enumerate()
-        .map(|(i, m)| (m.input.as_str(), i as u16))
-        .collect();
+    let mut input_to_index = HashMap::new();
+    for (i, state) in char_data.moves.iter().enumerate() {
+        input_to_index
+            .entry(state.input.as_str())
+            .or_insert(checked_u16(i, "state index")?);
+    }
+    for (i, state) in char_data.moves.iter().enumerate() {
+        if let Some(id) = state.id.as_deref().filter(|id| !id.is_empty()) {
+            input_to_index.insert(id, checked_u16(i, "state index")?);
+        }
+    }
 
     // Build cancel lookup for resolving deny entries
     let cancel_lookup = CancelLookup { input_to_index };
@@ -121,21 +135,37 @@ pub fn export_fspk(
             .map(|x| x.events.as_slice())
             .unwrap_or(&[]);
 
-        let (on_use_emits_off, on_use_emits_len) =
-            pack_event_emits(on_use_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
+        let (on_use_emits_off, on_use_emits_len) = pack_event_emits(
+            on_use_events,
+            &mut event_emits_data,
+            &mut event_args_data,
+            &mut strings,
+        )?;
 
-        let (on_hit_emits_off, on_hit_emits_len) =
-            pack_event_emits(on_hit_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
+        let (on_hit_emits_off, on_hit_emits_len) = pack_event_emits(
+            on_hit_events,
+            &mut event_emits_data,
+            &mut event_args_data,
+            &mut strings,
+        )?;
 
-        let (on_block_emits_off, on_block_emits_len) =
-            pack_event_emits(on_block_events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
+        let (on_block_emits_off, on_block_emits_len) = pack_event_emits(
+            on_block_events,
+            &mut event_emits_data,
+            &mut event_args_data,
+            &mut strings,
+        )?;
 
         // Move notifies
         let notifies_off = checked_u32(move_notifies_data.len(), "notifies_off")?;
         let notifies_len = checked_u16(mv.notifies.len(), "notifies_len")?;
         for notify in &mv.notifies {
-            let (notify_emits_off, notify_emits_len) =
-                pack_event_emits(&notify.events, &mut event_emits_data, &mut event_args_data, &mut strings)?;
+            let (notify_emits_off, notify_emits_len) = pack_event_emits(
+                &notify.events,
+                &mut event_emits_data,
+                &mut event_args_data,
+                &mut strings,
+            )?;
 
             // MoveNotify12: frame(u16) + pad(u16) + emits_off(u32) + emits_len(u16) + pad(u16)
             write_u16_le(&mut move_notifies_data, notify.frame);
@@ -201,11 +231,51 @@ pub fn export_fspk(
                     .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
             }
         }
+        if mv.meter_gain.whiff != 0 {
+            let already_declared_meter_gain = mv
+                .on_use
+                .as_ref()
+                .map(|on_use| on_use.resource_deltas.iter().any(|d| d.name == "meter"))
+                .unwrap_or(false);
+            if !already_declared_meter_gain {
+                let rname = strings.intern("meter")?;
+                write_strref(&mut move_resource_deltas_data, rname);
+                write_i32_le(&mut move_resource_deltas_data, mv.meter_gain.whiff as i32);
+                write_u8(
+                    &mut move_resource_deltas_data,
+                    RESOURCE_DELTA_TRIGGER_ON_USE,
+                );
+                move_resource_deltas_data.extend_from_slice(&[0, 0, 0]);
+                deltas_len = deltas_len
+                    .checked_add(1)
+                    .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
+            }
+        }
         if let Some(on_hit) = &mv.on_hit {
             for d in &on_hit.resource_deltas {
                 let rname = strings.intern(&d.name)?;
                 write_strref(&mut move_resource_deltas_data, rname);
                 write_i32_le(&mut move_resource_deltas_data, d.delta);
+                write_u8(
+                    &mut move_resource_deltas_data,
+                    RESOURCE_DELTA_TRIGGER_ON_HIT,
+                );
+                move_resource_deltas_data.extend_from_slice(&[0, 0, 0]);
+                deltas_len = deltas_len
+                    .checked_add(1)
+                    .ok_or_else(|| "move resource deltas count overflows u16".to_string())?;
+            }
+        }
+        if mv.meter_gain.hit != 0 {
+            let already_declared_meter_gain = mv
+                .on_hit
+                .as_ref()
+                .map(|on_hit| on_hit.resource_deltas.iter().any(|d| d.name == "meter"))
+                .unwrap_or(false);
+            if !already_declared_meter_gain {
+                let rname = strings.intern("meter")?;
+                write_strref(&mut move_resource_deltas_data, rname);
+                write_i32_le(&mut move_resource_deltas_data, mv.meter_gain.hit as i32);
                 write_u8(
                     &mut move_resource_deltas_data,
                     RESOURCE_DELTA_TRIGGER_ON_HIT,
@@ -357,15 +427,20 @@ pub fn export_fspk(
     // Encode cancel denies
     // CancelDeny4: from_idx (u16) + to_idx (u16) = 4 bytes
     let mut cancel_denies_data: Vec<u8> = Vec::new();
+    let mut deny_pairs = BTreeSet::new();
     for (from_input, deny_list) in &char_data.cancel_table.deny {
         if let Some(&from_idx) = cancel_lookup.input_to_index.get(from_input.as_str()) {
             for to_input in deny_list {
                 if let Some(&to_idx) = cancel_lookup.input_to_index.get(to_input.as_str()) {
-                    write_u16_le(&mut cancel_denies_data, from_idx);
-                    write_u16_le(&mut cancel_denies_data, to_idx);
+                    deny_pairs.insert((from_idx, to_idx));
                 }
             }
         }
+    }
+
+    for (from_idx, to_idx) in deny_pairs {
+        write_u16_le(&mut cancel_denies_data, from_idx);
+        write_u16_le(&mut cancel_denies_data, to_idx);
     }
 
     // Build schema lookups if rules with property/tag schema are provided
@@ -409,6 +484,29 @@ pub fn export_fspk(
                 let id = checked_u16(i, "tag schema ID")?;
                 tag_schema.insert(name.clone(), id);
                 tag_names.push(name.clone());
+            }
+        }
+
+        // A schema marker selects schema records for both property groups.
+        // Derive undeclared groups rather than mislabel string-reference records.
+        if char_prop_names.is_empty() {
+            char_prop_names = flatten_properties(&char_data.character.properties)
+                .into_keys()
+                .collect();
+            for (i, name) in char_prop_names.iter().enumerate() {
+                char_prop_schema.insert(name.clone(), checked_u16(i, "character property id")?);
+            }
+        }
+        if state_prop_names.is_empty() {
+            state_prop_names = char_data
+                .moves
+                .iter()
+                .flat_map(|state| flatten_properties(&state.properties).into_keys())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            for (i, name) in state_prop_names.iter().enumerate() {
+                state_prop_schema.insert(name.clone(), checked_u16(i, "state property id")?);
             }
         }
 
@@ -478,7 +576,9 @@ pub fn export_fspk(
                     };
                     return Err(format!(
                         "Tag '{}' for state '{}' is not defined in the tag schema{}",
-                        tag.as_str(), mv.input, suggestion_text
+                        tag.as_str(),
+                        mv.input,
+                        suggestion_text
                     ));
                 }
             }
@@ -722,11 +822,18 @@ pub fn export_fspk(
         });
     }
 
-    if sections.len() > 24 {
-        return Err(format!(
-            "Too many sections ({}), MAX_SECTIONS is 24",
-            sections.len()
-        ));
+    sections.push(SectionData {
+        kind: SECTION_PAYLOAD_NODES,
+        align: 4,
+        bytes: payload_nodes,
+    });
+    sections.push(SectionData {
+        kind: SECTION_PAYLOAD_STRINGS,
+        align: 1,
+        bytes: payload_strings,
+    });
+    if sections.len() > framesmith_fspack::MAX_SECTIONS {
+        return Err(format!("Too many sections ({})", sections.len()));
     }
 
     // Step 5: Calculate section offsets (honor per-section alignment)
@@ -755,7 +862,7 @@ pub fn export_fspk(
     // Step 6: Build the final binary
     let mut output = Vec::with_capacity(current_offset);
     output.extend_from_slice(&MAGIC);
-    write_u32_le(&mut output, FLAGS_RESERVED);
+    write_u32_le(&mut output, VERSION_2);
     write_u32_le(&mut output, total_len);
     write_u32_le(&mut output, section_count);
 
@@ -806,7 +913,10 @@ mod tests {
         use std::collections::BTreeMap;
 
         let mut properties = BTreeMap::new();
-        properties.insert("archetype".to_string(), PropertyValue::String("rushdown".to_string()));
+        properties.insert(
+            "archetype".to_string(),
+            PropertyValue::String("rushdown".to_string()),
+        );
         properties.insert("health".to_string(), PropertyValue::Number(1000.0));
         properties.insert("walk_speed".to_string(), PropertyValue::Number(3.5));
         properties.insert("back_walk_speed".to_string(), PropertyValue::Number(2.5));
@@ -943,7 +1053,11 @@ mod tests {
 
         // Verify flags
         let flags = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-        assert_eq!(flags, 0, "Flags should be 0");
+        assert_eq!(
+            flags,
+            framesmith_fspack::payload::VERSION_2,
+            "versioned typed payload"
+        );
 
         // Verify total length matches actual output
         let total_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
@@ -953,9 +1067,9 @@ mod tests {
             "Total length should match actual output size"
         );
 
-        // Verify section count: 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
+        // Verify section count: 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 10, "Section count should be 10");
+        assert_eq!(section_count, 13, "includes both v2 payload sections");
     }
 
     #[test]
@@ -968,10 +1082,7 @@ mod tests {
         };
 
         let result = export_fspk(&char_data, None);
-        assert!(
-            result.is_ok(),
-            "export_fspk should succeed with no moves"
-        );
+        assert!(result.is_ok(), "export_fspk should succeed with no moves");
 
         let bytes = result.unwrap();
 
@@ -980,7 +1091,7 @@ mod tests {
 
         // Section count should be 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
         let section_count = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
-        assert_eq!(section_count, 9);
+        assert_eq!(section_count, 11);
     }
 
     #[test]
@@ -1047,10 +1158,10 @@ mod tests {
         }
 
         // MOVE_EXTRAS and CHARACTER_PROPS are expected when there are moves.
-        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10
+        // 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11
         assert_eq!(
-            section_count, 10,
-            "Expected STATE_EXTRAS and CHARACTER_PROPS sections to be present"
+            section_count, 13,
+            "Expected v2 payload, STATE_EXTRAS, MOVE_RESOURCE_DELTAS, and CHARACTER_PROPS sections to be present"
         );
         let extras_kind_off = HEADER_SIZE + 8 * SECTION_HEADER_SIZE;
         let extras_kind = u32::from_le_bytes([
@@ -1207,8 +1318,8 @@ mod tests {
         // Parse with framesmith_fspack reader
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
-        // 8 base + STATE_EXTRAS + CHARACTER_PROPS = 10 sections
-        assert_eq!(pack.section_count(), 10);
+        // 8 base + STATE_EXTRAS + MOVE_RESOURCE_DELTAS + CHARACTER_PROPS = 11 sections
+        assert_eq!(pack.section_count(), 13);
 
         // Verify move count matches
         let moves = pack.states().expect("should have MOVES section");
@@ -1321,7 +1432,7 @@ mod tests {
         let pack = framesmith_fspack::PackView::parse(&bytes).expect("parse should succeed");
 
         // 8 base + CHARACTER_PROPS = 9 (no moves = no STATE_EXTRAS)
-        assert_eq!(pack.section_count(), 9);
+        assert_eq!(pack.section_count(), 11);
 
         // Verify moves section is empty
         let moves = pack.states().expect("should have MOVES section");
@@ -1482,7 +1593,10 @@ mod tests {
         };
 
         let result = export_fspk(&char_data, Some(&rules));
-        assert!(result.is_err(), "export should fail with missing properties");
+        assert!(
+            result.is_err(),
+            "export should fail with missing properties"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("not defined in the schema"),

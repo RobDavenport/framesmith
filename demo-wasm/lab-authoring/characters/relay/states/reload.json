@@ -1,0 +1,79 @@
+{
+  "input": "reload",
+  "name": "2S · Denjin-timed demo reload",
+  "type": "system",
+  "tags": [
+    "utility",
+    "action",
+    "refill",
+    "crouching"
+  ],
+  "startup": 1,
+  "active": 1,
+  "recovery": 50,
+  "damage": 0,
+  "hitstun": 0,
+  "blockstun": 0,
+  "hitstop": 0,
+  "guard": "mid",
+  "animation": "reload",
+  "hitboxes": [],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        51
+      ],
+      "box": {
+        "x": -12,
+        "y": -66,
+        "w": 24,
+        "h": 66
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        51
+      ],
+      "box": {
+        "x": -18,
+        "y": -66,
+        "w": 36,
+        "h": 66
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "Denjin Charge",
+    "reference_limit": "52f total copied; instant ammo refill is a demo rule, not SF6 Denjin stock."
+  },
+  "on_use": {
+    "resource_deltas": [
+      {
+        "name": "ammo",
+        "delta": 3
+      }
+    ],
+    "events": [
+      {
+        "id": "charge",
+        "args": {
+          "size": 20.0,
+          "tone": "violet"
+        }
+      }
+    ]
+  }
+}

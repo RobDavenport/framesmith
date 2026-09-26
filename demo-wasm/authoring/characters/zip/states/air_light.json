@@ -1,0 +1,101 @@
+{
+  "id": "air_light",
+  "name": "Air Jab",
+  "type": "normal",
+  "input": "air_light",
+  "tags": [
+    "attack",
+    "air_attack",
+    "air_0"
+  ],
+  "startup": 4,
+  "active": 5,
+  "recovery": 12,
+  "damage": 28,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "high",
+  "hitboxes": [
+    {
+      "frames": [
+        4,
+        8
+      ],
+      "box": {
+        "x": 8,
+        "y": -64,
+        "w": 58,
+        "h": 72
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        20
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        20
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "air_light",
+  "properties": {},
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 4,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "air_light"
+          }
+        }
+      ]
+    }
+  ]
+}

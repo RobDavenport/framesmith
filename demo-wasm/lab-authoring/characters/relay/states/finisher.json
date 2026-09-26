@@ -1,0 +1,215 @@
+{
+  "input": "finisher",
+  "name": "6S · Demo-only Overdrive barrage",
+  "type": "super",
+  "tags": [
+    "super",
+    "attack",
+    "action"
+  ],
+  "startup": 7,
+  "active": 21,
+  "recovery": 30,
+  "damage": 130,
+  "hitstun": 32,
+  "blockstun": 13,
+  "hitstop": 3,
+  "guard": "mid",
+  "animation": "finisher",
+  "hitboxes": [
+    {
+      "frames": [
+        7,
+        9
+      ],
+      "box": {
+        "x": 14,
+        "y": -67,
+        "w": 27,
+        "h": 20
+      }
+    },
+    {
+      "frames": [
+        16,
+        18
+      ],
+      "box": {
+        "x": 16,
+        "y": -62,
+        "w": 27,
+        "h": 25
+      }
+    },
+    {
+      "frames": [
+        25,
+        27
+      ],
+      "box": {
+        "x": 16,
+        "y": -82,
+        "w": 29,
+        "h": 36
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        57
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        57
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 0,
+    "block": 0
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_limit": "FrameSmith extension; not a copied Ryu move."
+  },
+  "on_hit": {
+    "resource_deltas": [],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 7,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "type": "resource",
+      "name": "energy",
+      "amount": 50
+    },
+    {
+      "type": "resource",
+      "name": "ammo",
+      "amount": 1
+    }
+  ],
+  "preconditions": [
+    {
+      "type": "resource",
+      "name": "energy",
+      "min": 50
+    }
+  ],
+  "super_freeze": {
+    "frames": 6,
+    "darken": 0.3,
+    "zoom": 1.0,
+    "flash": false
+  },
+  "hits": [
+    {
+      "frames": [
+        7,
+        9
+      ],
+      "damage": 30,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 14,
+          "y": -67,
+          "w": 27,
+          "h": 20
+        }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [
+        16,
+        18
+      ],
+      "damage": 40,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 16,
+          "y": -62,
+          "w": 27,
+          "h": 25
+        }
+      ],
+      "cancels": []
+    },
+    {
+      "frames": [
+        25,
+        27
+      ],
+      "damage": 60,
+      "chip_damage": 3,
+      "hitstun": 32,
+      "blockstun": 13,
+      "hitstop": 12,
+      "guard": "mid",
+      "hitboxes": [
+        {
+          "type": "aabb",
+          "x": 16,
+          "y": -82,
+          "w": 29,
+          "h": 36
+        }
+      ],
+      "cancels": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[package]
+name = "framesmith-authoring"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "../../src-tauri/src/portable.rs"
+
+[dependencies]
+framesmith-fspack = { path = "../framesmith-fspack", features = ["builder"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "=1.0.149", features = ["float_roundtrip"] }
+schemars = "=1.2.0"
+
+[dev-dependencies]
+tempfile = "3.24.0"

@@ -1,0 +1,105 @@
+{
+  "id": "anti_air",
+  "name": "Cyclone Lariat",
+  "type": "normal",
+  "input": "anti_air",
+  "tags": [
+    "attack",
+    "special"
+  ],
+  "startup": 5,
+  "active": 12,
+  "recovery": 26,
+  "damage": 86,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [
+    {
+      "frames": [
+        5,
+        16
+      ],
+      "box": {
+        "x": -40,
+        "y": -145,
+        "w": 100,
+        "h": 135
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        42
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        42
+      ],
+      "box": {
+        "x": -24,
+        "y": -100,
+        "w": 48,
+        "h": 100
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "anti_air",
+  "properties": {
+    "projectile_invuln": 1,
+    "launch": -10,
+    "knockdown": 1,
+    "lift": 13
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 5,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "anti_air"
+          }
+        }
+      ]
+    }
+  ]
+}

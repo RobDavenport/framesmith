@@ -1,0 +1,75 @@
+{
+  "input": "special",
+  "base": "special",
+  "name": "Medium Hashogeki-inspired variant",
+  "damage": 80,
+  "startup": 18,
+  "active": 6,
+  "recovery": 17,
+  "hitboxes": [
+    {
+      "frames": [
+        18,
+        23
+      ],
+      "box": {
+        "x": 18,
+        "y": -73,
+        "w": 28,
+        "h": 25
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        40
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        40
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "notifies": [
+    {
+      "frame": 18,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 28.0,
+            "tone": "violet"
+          }
+        }
+      ]
+    }
+  ],
+  "properties": {
+    "charged": true,
+    "reference_game": "Street Fighter 6",
+    "reference_move": "M Hashogeki",
+    "reference_input": "214MP"
+  },
+  "animation": "charged",
+  "hitstop": 12,
+  "blockstun": 16,
+  "hitstun": 24
+}

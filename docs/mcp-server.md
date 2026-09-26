@@ -1,7 +1,7 @@
 # Framesmith MCP Server
 
 **Status:** Active
-**Last reviewed:** 2026-02-01
+**Last reviewed:** 2026-05-22
 
 Framesmith ships an MCP server binary at `src-tauri/src/bin/mcp.rs`. It exposes tools for inspecting and editing character data on disk, with the same validation pipeline used by the app/exporters.
 
@@ -91,7 +91,7 @@ Implemented tools (see `src-tauri/src/bin/mcp.rs`):
 | `list_characters` | List all characters with IDs, names, and state counts |
 | `get_character` | Get complete character data (properties, states, cancel table) |
 | `list_states` | List states with basic stats |
-| `get_state` | Get a single state's complete JSON |
+| `get_state` | Get a single state's complete JSON by input or resolved ID (for example, `5H~level1`) |
 | `create_state` | Create a state by writing a full state object (validates before save) |
 | `update_state` | Update a state by overwriting with a full state object (validates before save) |
 | `delete_state` | Delete a state file |
@@ -125,7 +125,9 @@ Example usage (conceptual):
 ```text
 export_character({
   "character_id": "test_char",
-  "adapter": "zx-fspack",
+  "adapter": "fspk",
   "output_path": "exports/test_char.fspk"
 })
 ```
+
+`zx-fspack` is accepted as a legacy alias for `fspk`.

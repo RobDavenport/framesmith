@@ -85,8 +85,8 @@ impl<'a> StateTagRangesView<'a> {
     ///
     /// Returns `None` if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<(u32, u16)> {
-        let offset = index * STATE_TAG_RANGE_SIZE;
-        if offset + STATE_TAG_RANGE_SIZE > self.data.len() {
+        let offset = index.checked_mul(STATE_TAG_RANGE_SIZE)?;
+        if offset.checked_add(STATE_TAG_RANGE_SIZE)? > self.data.len() {
             return None;
         }
         let slice = &self.data[offset..offset + STATE_TAG_RANGE_SIZE];
@@ -122,6 +122,14 @@ pub struct CancelTagRuleView<'a> {
 }
 
 impl<'a> CancelTagRuleView<'a> {
+    pub fn from_is_any(&self) -> bool {
+        read_u32_le(self.data, 0) == Some(u32::MAX)
+    }
+
+    pub fn to_is_any(&self) -> bool {
+        read_u32_le(self.data, 8) == Some(u32::MAX)
+    }
+
     /// Get the source tag. Returns None if "any" (sentinel 0xFFFFFFFF).
     pub fn from_tag(&self) -> Option<&'a str> {
         let off = read_u32_le(self.data, 0)?;
@@ -181,8 +189,8 @@ impl<'a> CancelTagRulesView<'a> {
 
     /// Get a cancel tag rule by index.
     pub fn get(&self, index: usize) -> Option<CancelTagRuleView<'a>> {
-        let offset = index * CANCEL_TAG_RULE_SIZE;
-        if offset + CANCEL_TAG_RULE_SIZE > self.data.len() {
+        let offset = index.checked_mul(CANCEL_TAG_RULE_SIZE)?;
+        if offset.checked_add(CANCEL_TAG_RULE_SIZE)? > self.data.len() {
             return None;
         }
         Some(CancelTagRuleView {

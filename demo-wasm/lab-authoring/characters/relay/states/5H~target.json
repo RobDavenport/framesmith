@@ -1,0 +1,85 @@
+{
+  "input": "5H",
+  "base": "5H",
+  "name": "5M→5H · High Double Strike-inspired kick",
+  "tags": [
+    "attack",
+    "target_follow",
+    "chainable"
+  ],
+  "startup": 8,
+  "active": 4,
+  "recovery": 20,
+  "damage": 100,
+  "hitstun": 29,
+  "hitstop": 12,
+  "guard": "mid",
+  "animation": "target",
+  "pushback": {
+    "hit": 2,
+    "block": 2
+  },
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        11
+      ],
+      "box": {
+        "x": 34,
+        "y": -87,
+        "w": 24,
+        "h": 24
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        31
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        31
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 16.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ],
+  "blockstun": 15,
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "High Double Strike",
+    "reference_input": "5HP~HK",
+    "reference_limit": "Timing/block advantage copied; route remapped, standing stun replaces knockdown."
+  }
+}

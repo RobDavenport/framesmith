@@ -1,0 +1,23 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "Windows Checks"
+    ],
+    "checks": [
+      {
+        "context": "Windows Checks",
+        "app_id": 15368
+      }
+    ]
+  },
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "allow_force_pushes": {
+    "enabled": false
+  },
+  "allow_deletions": {
+    "enabled": false
+  }
+}

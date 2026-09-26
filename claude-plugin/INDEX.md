@@ -1,5 +1,7 @@
 # framesmith — Skills & Agents Index
 
+Start with [AGENTS.md](../AGENTS.md); select only the skill/reference needed for the task. Reference files link to the maintained repository docs.
+
 ## Skills
 
 | Name | Trigger Keywords | References |
@@ -10,7 +12,9 @@
 
 ## Agents
 
+Opt-in roles only: explicit user request and host delegation permission required. No automatic model routing.
+
 | Name | Model | Purpose |
 |------|-------|---------|
-| [character-designer](agents/character-designer.md) | sonnet | Design complete fighting game characters with states, cancels, and hitboxes |
-| [state-debugger](agents/state-debugger.md) | sonnet | Diagnose validation errors, export failures, and runtime issues |
+| [character-designer](agents/character-designer.md) | inherit | Author the requested character/move data |
+| [state-debugger](agents/state-debugger.md) | inherit | Diagnose validation errors, export failures, and runtime issues |

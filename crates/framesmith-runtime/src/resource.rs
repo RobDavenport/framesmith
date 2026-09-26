@@ -18,53 +18,58 @@ pub fn set_resource(state: &mut CharacterState, index: u8, value: u16) {
     }
 }
 
-/// Apply resource costs for a move transition.
-///
-/// Deducts costs from state. Returns true if all costs were paid,
-/// false if any resource was insufficient (costs still deducted).
+fn resource_index(pack: &framesmith_fspack::PackView, off: u32, len: u16) -> Option<usize> {
+    let name = pack.string(off, len)?;
+    let defs = pack.resource_defs()?;
+    (0..defs.len().min(MAX_RESOURCES)).find(|&i| {
+        defs.get(i)
+            .and_then(|def| pack.string(def.name_off(), def.name_len()))
+            == Some(name)
+    })
+}
+
+/// Pay all costs atomically. Unknown resources, malformed records and insufficient
+/// balances return false without changing state; repeated costs accumulate.
 pub fn apply_resource_costs(
     state: &mut CharacterState,
     pack: &framesmith_fspack::PackView,
     move_index: u16,
 ) -> bool {
-    let extras = match pack.state_extras() {
-        Some(e) => e,
-        None => return true,
-    };
-    let extra = match extras.get(move_index as usize) {
-        Some(e) => e,
-        None => return true,
-    };
-    let costs_view = match pack.move_resource_costs() {
-        Some(c) => c,
-        None => return true,
-    };
-    let resource_defs = pack.resource_defs();
-
-    let (off, len) = extra.resource_costs();
-    let mut all_paid = true;
-
-    for i in 0..len as usize {
-        if let Some(cost) = costs_view.get_at(off, i) {
-            // Find resource index by name
-            if let Some(defs) = &resource_defs {
-                for res_idx in 0..defs.len().min(MAX_RESOURCES) {
-                    if let Some(def) = defs.get(res_idx) {
-                        if def.name_off() == cost.name_off() && def.name_len() == cost.name_len() {
-                            let current = resource(state, res_idx as u8);
-                            if current < cost.amount() {
-                                all_paid = false;
-                            }
-                            set_resource(state, res_idx as u8, current.saturating_sub(cost.amount()));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+    if pack
+        .states()
+        .and_then(|states| states.get(move_index as usize))
+        .is_none()
+    {
+        return false;
     }
-
-    all_paid
+    let Some(extras) = pack.state_extras() else {
+        return true;
+    };
+    let Some(extra) = extras.get(move_index as usize) else {
+        return false;
+    };
+    let (off, len) = extra.resource_costs();
+    if len == 0 {
+        return true;
+    }
+    let Some(costs) = pack.move_resource_costs() else {
+        return false;
+    };
+    let mut balances = state.resources;
+    for i in 0..usize::from(len) {
+        let Some(cost) = costs.get_at(off, i) else {
+            return false;
+        };
+        let Some(index) = resource_index(pack, cost.name_off(), cost.name_len()) else {
+            return false;
+        };
+        let Some(value) = balances[index].checked_sub(cost.amount()) else {
+            return false;
+        };
+        balances[index] = value;
+    }
+    state.resources = balances;
+    true
 }
 
 /// Check if a resource value satisfies a precondition.
@@ -91,57 +96,60 @@ pub fn check_resource_preconditions(
     pack: &framesmith_fspack::PackView,
     move_index: u16,
 ) -> bool {
-    let extras = match pack.state_extras() {
-        Some(e) => e,
-        None => return true,
+    if pack
+        .states()
+        .and_then(|states| states.get(move_index as usize))
+        .is_none()
+    {
+        return false;
+    }
+    let Some(extras) = pack.state_extras() else {
+        return true;
     };
-    let extra = match extras.get(move_index as usize) {
-        Some(e) => e,
-        None => return true,
+    let Some(extra) = extras.get(move_index as usize) else {
+        return false;
     };
-    let preconditions_view = match pack.move_resource_preconditions() {
-        Some(p) => p,
-        None => return true,
-    };
-    let resource_defs = match pack.resource_defs() {
-        Some(d) => d,
-        None => return true,
-    };
-
     let (off, len) = extra.resource_preconditions();
-
-    for i in 0..len as usize {
-        if let Some(precond) = preconditions_view.get_at(off, i) {
-            // Find resource index by name
-            for res_idx in 0..resource_defs.len().min(MAX_RESOURCES) {
-                if let Some(def) = resource_defs.get(res_idx) {
-                    if def.name_off() == precond.name_off() && def.name_len() == precond.name_len() {
-                        let current = resource(state, res_idx as u8);
-                        if !check_precondition_value(current, precond.min(), precond.max()) {
-                            return false;
-                        }
-                        break;
-                    }
-                }
-            }
+    if len == 0 {
+        return true;
+    }
+    let Some(preconditions) = pack.move_resource_preconditions() else {
+        return false;
+    };
+    for i in 0..usize::from(len) {
+        let Some(pre) = preconditions.get_at(off, i) else {
+            return false;
+        };
+        let Some(index) = resource_index(pack, pre.name_off(), pre.name_len()) else {
+            return false;
+        };
+        if !check_precondition_value(state.resources[index], pre.min(), pre.max()) {
+            return false;
         }
     }
-
     true
 }
 
-/// Initialize resources from pack's resource definitions.
-pub fn init_resources(state: &mut CharacterState, pack: &framesmith_fspack::PackView) {
-    // Reset all to zero first
-    state.resources = [0; MAX_RESOURCES];
-
+/// Initialize resources atomically. False means the pack exceeds this optional
+/// helper's capacity or contains a start value above its maximum.
+pub fn init_resources(state: &mut CharacterState, pack: &framesmith_fspack::PackView) -> bool {
+    let mut resources = [0; MAX_RESOURCES];
     if let Some(defs) = pack.resource_defs() {
-        for i in 0..defs.len().min(MAX_RESOURCES) {
-            if let Some(def) = defs.get(i) {
-                state.resources[i] = def.start();
+        if defs.len() > MAX_RESOURCES {
+            return false;
+        }
+        for (i, slot) in resources.iter_mut().enumerate().take(defs.len()) {
+            let Some(def) = defs.get(i) else {
+                return false;
+            };
+            if def.start() > def.max() {
+                return false;
             }
+            *slot = def.start();
         }
     }
+    state.resources = resources;
+    true
 }
 
 #[cfg(test)]
@@ -198,7 +206,7 @@ mod tests {
     fn resource_primitives_support_deduction() {
         let mut state = CharacterState::default();
         set_resource(&mut state, 0, 100); // meter
-        set_resource(&mut state, 1, 50);  // heat
+        set_resource(&mut state, 1, 50); // heat
 
         // Simulate deducting 30 from resource 0, 10 from resource 1
         let costs = [(0u8, 30u16), (1u8, 10u16)];

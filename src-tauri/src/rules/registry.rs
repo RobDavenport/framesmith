@@ -468,11 +468,12 @@ mod tests {
     }
 
     fn make_valid_move() -> crate::schema::State {
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.startup = 1;
-        mv.active = 1;
-        mv
+        crate::schema::State {
+            input: "5L".to_string(),
+            startup: 1,
+            active: 1,
+            ..Default::default()
+        }
     }
 
     #[test]

@@ -158,7 +158,7 @@ impl<'a> EventArgView<'a> {
         if self.tag() != EVENT_ARG_TAG_I64 {
             return None;
         }
-        Some(read_i64_le(self.data, 12)?)
+        read_i64_le(self.data, 12)
     }
 
     pub fn value_f32(&self) -> Option<f32> {

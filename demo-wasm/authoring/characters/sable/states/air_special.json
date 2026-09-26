@@ -1,0 +1,104 @@
+{
+  "id": "air_special",
+  "name": "Dive Break",
+  "type": "normal",
+  "input": "air_special",
+  "tags": [
+    "attack",
+    "air_attack",
+    "air_finisher"
+  ],
+  "startup": 8,
+  "active": 5,
+  "recovery": 18,
+  "damage": 62,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "high",
+  "hitboxes": [
+    {
+      "frames": [
+        8,
+        12
+      ],
+      "box": {
+        "x": 8,
+        "y": -64,
+        "w": 94,
+        "h": 72
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        30
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        30
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "air_special",
+  "properties": {
+    "travel": 4,
+    "launch": -3
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 12
+      }
+    ]
+  },
+  "on_block": {
+    "resource_deltas": [
+      {
+        "name": "meter",
+        "delta": 6
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 8,
+      "events": [
+        {
+          "id": "strike",
+          "args": {
+            "move": "air_special"
+          }
+        }
+      ]
+    }
+  ]
+}

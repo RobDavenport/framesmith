@@ -11,8 +11,8 @@ pub use character::{
 };
 
 pub use export::{
-    delete_global_state, export_character, get_global_state, list_global_states,
-    save_global_state, GlobalStateSummary,
+    delete_global_state, export_adapter_default_ext, export_character, get_global_state,
+    list_global_states, normalize_export_adapter, save_global_state, GlobalStateSummary,
 };
 
 pub use project::{
@@ -82,7 +82,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let characters_dir = setup_test_character(&temp_dir);
 
-        let file_path = Path::new(&characters_dir).join("test-char").join("hello.bin");
+        let file_path = Path::new(&characters_dir)
+            .join("test-char")
+            .join("hello.bin");
         fs::write(&file_path, b"hello").unwrap();
 
         let b64 = read_character_asset_base64(
@@ -205,7 +207,8 @@ mod tests {
             "test-char".to_string(),
             "5L".to_string(),
             "Light Punch".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Try to create duplicate
         let result = create_move(

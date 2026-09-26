@@ -4,3 +4,6 @@ mod json_blob;
 
 pub use fspk::export_fspk;
 pub use json_blob::{export_json_blob, export_json_blob_pretty};
+
+mod prepare;
+pub use prepare::prepare_character;

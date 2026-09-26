@@ -1,0 +1,57 @@
+{
+  "id": "landing",
+  "name": "Landing",
+  "type": "system",
+  "input": "landing",
+  "tags": [
+    "landing"
+  ],
+  "startup": 1,
+  "active": 1,
+  "recovery": 2,
+  "damage": 0,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        3
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        3
+      ],
+      "box": {
+        "x": -16,
+        "y": -92,
+        "w": 32,
+        "h": 92
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "landing",
+  "properties": {}
+}

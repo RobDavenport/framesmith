@@ -1,0 +1,108 @@
+{
+  "input": "follow",
+  "name": "5M · Ryu 5MP-inspired body punch",
+  "type": "normal",
+  "tags": [
+    "normal",
+    "attack",
+    "chainable",
+    "action",
+    "medium"
+  ],
+  "startup": 5,
+  "active": 4,
+  "recovery": 13,
+  "damage": 60,
+  "hitstun": 21,
+  "blockstun": 13,
+  "hitstop": 10,
+  "guard": "mid",
+  "animation": "follow",
+  "hitboxes": [
+    {
+      "frames": [
+        5,
+        8
+      ],
+      "box": {
+        "x": 14,
+        "y": -66,
+        "w": 26,
+        "h": 19
+      }
+    }
+  ],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        21
+      ],
+      "box": {
+        "x": -12,
+        "y": -88,
+        "w": 24,
+        "h": 88
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        21
+      ],
+      "box": {
+        "x": -18,
+        "y": -88,
+        "w": 36,
+        "h": 88
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 1,
+    "block": 1
+  },
+  "meter_gain": {
+    "hit": 0,
+    "whiff": 0
+  },
+  "properties": {
+    "reference_game": "Street Fighter 6",
+    "reference_move": "Standing Medium Punch",
+    "reference_input": "5MP",
+    "whiff_recovery": 2
+  },
+  "on_hit": {
+    "resource_deltas": [
+      {
+        "name": "energy",
+        "delta": 20
+      }
+    ],
+    "events": [
+      {
+        "id": "spark",
+        "args": {
+          "size": 18.0,
+          "tone": "mint"
+        }
+      }
+    ]
+  },
+  "notifies": [
+    {
+      "frame": 5,
+      "events": [
+        {
+          "id": "swoosh",
+          "args": {
+            "size": 12.0,
+            "tone": "mint"
+          }
+        }
+      ]
+    }
+  ]
+}

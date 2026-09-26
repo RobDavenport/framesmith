@@ -1,0 +1,501 @@
+const PRODUCTION_PLAN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/production-readiness-plan.md"
+));
+const DOCS_INDEX: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/README.md"));
+const DATA_FORMATS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/data-formats.md"
+));
+const ARCHITECTURE_DOC: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/architecture.md"
+));
+const VARIANT_DECISION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/variant-editing-decision.md"
+));
+const IMPLEMENTATION_HISTORY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/implementation-history.md"
+));
+const SCHEMA_MIGRATION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/schema-migration.md"
+));
+const TRAINING_SCENARIO_CONTRACT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/training-scenario-contract.md"
+));
+const WINDOWS_INSTALLER_SMOKE_TEST: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/windows-installer-smoke-test.md"
+));
+const PRODUCTION_GAP_BACKLOG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/production-gap-backlog.md"
+));
+const RELEASE_RUNBOOK: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/release-runbook.md"
+));
+const BRANCH_PROTECTION_SETUP: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/branch-protection-setup.md"
+));
+const RELEASE_EVIDENCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/release-evidence-2026-05-23.md"
+));
+const CI_WORKFLOW: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../.github/workflows/ci.yml"
+));
+const CHECK_BRANCH_PROTECTION_SCRIPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../scripts/check-branch-protection.ps1"
+));
+const VERIFY_INSTALLER_ARTIFACTS_SCRIPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../scripts/verify-windows-installer-artifacts.ps1"
+));
+const BRANCH_PROTECTION_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../tests/fixtures/github-branch-protection-main.json"
+));
+const CHARACTER_COMMANDS: &str = include_str!("../src/commands/character.rs");
+
+#[test]
+fn variant_editing_deferral_is_documented_and_linked() {
+    for required in [
+        "# Variant Editing Decision",
+        "Overlay-aware variant editing is explicitly deferred for the first production",
+        "Variant overlays remain JSON-authored files",
+        "Saving a resolved variant through the State Editor, MCP `update_move`, or",
+        "Save only the overlay diff",
+        "Resolved variants cannot overwrite base state files or overlay files through",
+    ] {
+        assert!(
+            VARIANT_DECISION.contains(required),
+            "variant editing decision should document: {required}"
+        );
+    }
+
+    for linked_doc in [PRODUCTION_PLAN, DOCS_INDEX, DATA_FORMATS, ARCHITECTURE_DOC] {
+        assert!(
+            linked_doc.contains("variant-editing-decision.md"),
+            "permanent docs should link variant-editing-decision.md"
+        );
+    }
+
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Overlay-aware variant editing is implemented or explicitly deferred for"));
+}
+
+#[test]
+fn save_move_guard_stays_aligned_with_variant_editing_policy() {
+    assert!(CHARACTER_COMMANDS.contains("if let Some(id) = mv.id.as_deref()"));
+    assert!(CHARACTER_COMMANDS.contains("if id != mv.input"));
+    assert!(CHARACTER_COMMANDS.contains("Resolved variant states are read-only via save_move"));
+}
+
+#[test]
+fn temporary_plan_docs_are_migrated_or_removed() {
+    let plans_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/plans");
+    if plans_dir.exists() {
+        let remaining_plans: Vec<_> = std::fs::read_dir(&plans_dir)
+            .expect("docs/plans should be readable")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "md"))
+            .map(|entry| entry.path())
+            .collect();
+
+        assert!(
+            remaining_plans.is_empty(),
+            "completed temporary plans should be migrated or removed: {remaining_plans:?}"
+        );
+    }
+
+    for required in [
+        "# Implementation History",
+        "This document replaces completed temporary plans",
+        "Variant overlay system",
+        "FSPK module refactor and adapter rename",
+        "Do not keep completed implementation plans under `docs/plans/`.",
+    ] {
+        assert!(
+            IMPLEMENTATION_HISTORY.contains(required),
+            "implementation history should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("implementation-history.md"));
+    assert!(PRODUCTION_PLAN.contains("[x] Stale temporary plans are migrated or removed."));
+}
+
+#[test]
+fn schema_migration_notes_are_documented_and_linked() {
+    for required in [
+        "# Schema Migration Notes",
+        "Move them into",
+        "`character.properties`",
+        "`tag_rules[]` plus `deny`",
+        "Resolved variants are read-only editor snapshots.",
+        "The `zx-fspack` adapter name remains as a compatibility alias",
+        "cargo test --manifest-path src-tauri/Cargo.toml --test export_fidelity_contract",
+    ] {
+        assert!(
+            SCHEMA_MIGRATION.contains(required),
+            "schema migration notes should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("schema-migration.md"));
+    assert!(PRODUCTION_PLAN.contains("Added [`schema-migration.md`](schema-migration.md)"));
+}
+
+#[test]
+fn training_scenario_contract_is_documented_and_linked() {
+    for required in [
+        "# Training Scenario Contract",
+        "Authored hitstun",
+        "Authored blockstun",
+        "Resource policy",
+        "Throw input policy",
+        "Detached training smoke",
+        "target_training_fixture_resolves_authored_reaction_states",
+        "loads detached training mode through BroadcastChannel sync",
+    ] {
+        assert!(
+            TRAINING_SCENARIO_CONTRACT.contains(required),
+            "training scenario contract should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("training-scenario-contract.md"));
+    assert!(PRODUCTION_PLAN
+        .contains("Added [`training-scenario-contract.md`](training-scenario-contract.md)"));
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Target-game training scenarios cover hitstun/blockstun/resource/throw"));
+}
+
+#[test]
+fn windows_installer_smoke_test_is_documented_and_linked() {
+    for required in [
+        "# Windows Installer Smoke Test",
+        "Framesmith_<version>_x64_en-US.msi",
+        "Framesmith_<version>_x64-setup.exe",
+        ".\\scripts\\verify-windows-installer-artifacts.ps1",
+        "Training starts from the packaged WASM and FSPK path.",
+        "Evidence To Record",
+    ] {
+        assert!(
+            WINDOWS_INSTALLER_SMOKE_TEST.contains(required),
+            "installer smoke test should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("windows-installer-smoke-test.md"));
+    assert!(PRODUCTION_PLAN.contains("windows-installer-smoke-test.md"));
+}
+
+#[test]
+fn production_gap_backlog_covers_external_and_target_game_gaps() {
+    for required in [
+        "# Production Gap Backlog",
+        "PROD-CI-001",
+        "PROD-CI-002",
+        "PROD-WIN-001",
+        "FSPK-MOVE-001",
+        "FSPK-HIT-001",
+        "RUNTIME-THROW-001",
+        "RUNTIME-FREEZE-001",
+        "RUNTIME-RESOURCE-001",
+        "RUNTIME-STAGE-001",
+        "RUNTIME-EVENT-001",
+        "PLATFORM-LINUX-001",
+        "PLATFORM-MAC-001",
+    ] {
+        assert!(
+            PRODUCTION_GAP_BACKLOG.contains(required),
+            "production gap backlog should document: {required}"
+        );
+    }
+
+    for linked_doc in [DOCS_INDEX, PRODUCTION_PLAN, TRAINING_SCENARIO_CONTRACT] {
+        assert!(
+            linked_doc.contains("production-gap-backlog.md"),
+            "permanent docs should link production-gap-backlog.md"
+        );
+    }
+}
+
+#[test]
+fn release_runbook_covers_candidate_evidence() {
+    for required in [
+        "# Release Runbook",
+        "package.json",
+        "src-tauri/Cargo.toml",
+        "src-tauri/tauri.conf.json",
+        "npm ci",
+        "npm audit",
+        "npm ls @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-opener",
+        "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.js'",
+        "Test-Path 'src/lib/wasm/framesmith_runtime_wasm.d.ts'",
+        "cargo run --manifest-path src-tauri/Cargo.toml --bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk",
+        ".\\scripts\\verify-windows-installer-artifacts.ps1 -Path src-tauri\\target\\release\\bundle -Version 0.1.0",
+        "git diff --exit-code -- schemas/rules.schema.json",
+        "GitHub Actions URL",
+        "Protected branch/ruleset",
+        "Strict up-to-date requirement",
+        "Bypass policy",
+        "windows-installer-smoke-test.md",
+        "Final Evidence Template",
+    ] {
+        assert!(
+            RELEASE_RUNBOOK.contains(required),
+            "release runbook should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("release-runbook.md"));
+    assert!(PRODUCTION_PLAN.contains("release-runbook.md"));
+    assert!(PRODUCTION_PLAN.contains("[x] Release runbook exists for clean-checkout"));
+}
+
+#[test]
+fn branch_protection_setup_covers_required_ci_gate() {
+    for required in [
+        "# Branch Protection Setup",
+        "RobDavenport/framesmith",
+        "Branch name pattern:",
+        "main",
+        "Required status check:",
+        "Windows Checks",
+        "CI / Windows Checks",
+        "Require status checks to pass before merging.",
+        "Require branches to be up to date before merging.",
+        "Do not allow bypassing the above settings",
+        "Blocked merge evidence:",
+        "branch-protection endpoint",
+        ".\\scripts\\check-branch-protection.ps1",
+        "tests\\fixtures\\github-branch-protection-main.json",
+    ] {
+        assert!(
+            BRANCH_PROTECTION_SETUP.contains(required),
+            "branch protection setup should document: {required}"
+        );
+    }
+
+    for linked_doc in [
+        DOCS_INDEX,
+        PRODUCTION_PLAN,
+        PRODUCTION_GAP_BACKLOG,
+        RELEASE_RUNBOOK,
+        RELEASE_EVIDENCE,
+    ] {
+        assert!(
+            linked_doc.contains("branch-protection-setup.md"),
+            "permanent docs should link branch-protection-setup.md"
+        );
+    }
+
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Branch protection setup is documented with the exact required CI check."));
+    assert!(PRODUCTION_PLAN.contains(
+        "Follow `branch-protection-setup.md`; no branch/ruleset evidence has been recorded yet."
+    ));
+}
+
+#[test]
+fn release_evidence_helper_scripts_are_documented_and_auditable() {
+    for required in [
+        "GITHUB_TOKEN is required unless -ProtectionJsonPath",
+        "https://api.github.com/repos/$Owner/$Repo/branches/$Branch/protection",
+        "Required status check '$RequiredCheck' was not found",
+        "Branch protection does not require branches to be up to date",
+        "Branch protection verified.",
+    ] {
+        assert!(
+            CHECK_BRANCH_PROTECTION_SCRIPT.contains(required),
+            "branch protection helper should contain: {required}"
+        );
+    }
+
+    for required in [
+        "No MSI installer was found",
+        "No NSIS setup executable was found",
+        "Installer output is smaller than",
+        "Windows installer artifacts verified.",
+    ] {
+        assert!(
+            VERIFY_INSTALLER_ARTIFACTS_SCRIPT.contains(required),
+            "installer artifact helper should contain: {required}"
+        );
+    }
+
+    for required in [
+        "\"strict\": true",
+        "\"Windows Checks\"",
+        "\"required_pull_request_reviews\"",
+        "\"allow_force_pushes\"",
+        "\"enabled\": false",
+    ] {
+        assert!(
+            BRANCH_PROTECTION_FIXTURE.contains(required),
+            "branch protection fixture should contain: {required}"
+        );
+    }
+
+    for linked_doc in [
+        PRODUCTION_PLAN,
+        RELEASE_RUNBOOK,
+        RELEASE_EVIDENCE,
+        BRANCH_PROTECTION_SETUP,
+        WINDOWS_INSTALLER_SMOKE_TEST,
+    ] {
+        assert!(
+            linked_doc.contains("scripts\\check-branch-protection.ps1")
+                || linked_doc.contains("scripts/check-branch-protection.ps1")
+                || linked_doc.contains(".\\scripts\\check-branch-protection.ps1")
+                || linked_doc.contains("scripts/verify-windows-installer-artifacts.ps1")
+                || linked_doc.contains(".\\scripts\\verify-windows-installer-artifacts.ps1"),
+            "release docs should reference at least one helper script"
+        );
+    }
+
+    assert!(PRODUCTION_PLAN
+        .contains("[x] Branch protection and installer artifact evidence helpers exist and are"));
+}
+
+#[test]
+fn current_release_evidence_records_external_blockers() {
+    for required in [
+        "# Release Evidence 2026-05-23",
+        "codex-production-readiness-plan",
+        "Local validation baseline SHA: 51c3be4c5b5e4d67b093f0f7aaafc96ed244e26d",
+        "https://github.com/RobDavenport/framesmith/pull/1",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26327908309",
+        "CI status: failed",
+        "workflow ran `npm run check` before `npm run wasm:build`",
+        "workflow now rebuilds the WASM package before frontend type",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328098854",
+        "Failing step: Test runtime WASM crate",
+        "workflow now exports `characters/test_char` with",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328384684",
+        "ignored legacy fixture `exports/glitch.fspk`",
+        "integration tests now use the generated `test_char.fspk`",
+        "Latest observed passing CI SHA before this evidence update: ef14779e718a5ffd22666f9533f6b9023db42355",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26328577057",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26329160394",
+        "browser smoke tests now wait on stable frame-table and training",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26329764725",
+        "Artifact ID: 7176181990",
+        "the CI workflow now verifies that at least",
+        "attempts to download and inspect artifact `7176298714`",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26330825628",
+        "verifier now wraps both installer query results",
+        "https://github.com/RobDavenport/framesmith/actions/runs/26332001870",
+        "Artifact ID: 7176775382",
+        "passed the repaired `Verify Windows installer outputs` step",
+        "branch-protection-setup.md",
+        "`Windows Checks` job from the CI workflow",
+        "scripts/check-branch-protection.ps1",
+        "scripts/verify-windows-installer-artifacts.ps1",
+        "Automation note: repository connector reports admin permission",
+        "MSI result: not manually smoke tested",
+        "Decision: not ready",
+    ] {
+        assert!(
+            RELEASE_EVIDENCE.contains(required),
+            "release evidence should document: {required}"
+        );
+    }
+
+    assert!(DOCS_INDEX.contains("release-evidence-2026-05-23.md"));
+    assert!(PRODUCTION_PLAN.contains("release-evidence-2026-05-23.md"));
+    assert!(PRODUCTION_PLAN.contains("[x] Current candidate release evidence is recorded."));
+    assert!(PRODUCTION_PLAN.contains("[x] Clean-checkout CI run has passed."));
+}
+
+#[test]
+fn ci_builds_wasm_before_frontend_typecheck() {
+    let rebuild_wasm = CI_WORKFLOW
+        .find("name: Rebuild WASM package")
+        .expect("CI should rebuild the WASM package");
+    let verify_wasm = CI_WORKFLOW
+        .find("name: Verify WASM package exists")
+        .expect("CI should verify generated WASM bindings exist");
+    let typecheck = CI_WORKFLOW
+        .find("name: TypeScript and Svelte check")
+        .expect("CI should run frontend type checks");
+
+    assert!(
+        rebuild_wasm < verify_wasm && verify_wasm < typecheck,
+        "clean CI must build ignored WASM bindings before type checking imports"
+    );
+    assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.js"));
+    assert!(CI_WORKFLOW.contains("Test-Path src/lib/wasm/framesmith_runtime_wasm.d.ts"));
+}
+
+#[test]
+fn ci_generates_runtime_wasm_fixture_before_crate_test() {
+    let build_fixture = CI_WORKFLOW
+        .find("name: Build runtime WASM test fixture")
+        .expect("CI should build the runtime WASM FSPK test fixture");
+    let wasm_tests = CI_WORKFLOW
+        .find("name: Test runtime WASM crate")
+        .expect("CI should run runtime WASM crate tests");
+
+    assert!(
+        build_fixture < wasm_tests,
+        "clean CI must generate ignored exports/test_char.fspk before WASM crate tests"
+    );
+    assert!(CI_WORKFLOW.contains("--bin framesmith-cli -- export --project . --character test_char --adapter fspk --out exports/test_char.fspk"));
+}
+
+#[test]
+fn ci_verifies_windows_installers_before_upload() {
+    let build_tauri = CI_WORKFLOW
+        .find("name: Build Tauri app")
+        .expect("CI should build the Tauri app");
+    let verify_installers = CI_WORKFLOW
+        .find("name: Verify Windows installer outputs")
+        .expect("CI should verify Windows installer outputs");
+    let upload = CI_WORKFLOW
+        .find("name: Upload Windows installers")
+        .expect("CI should upload Windows installers");
+
+    assert!(
+        build_tauri < verify_installers && verify_installers < upload,
+        "CI must verify installer outputs before artifact upload"
+    );
+    assert!(CI_WORKFLOW.contains(".\\scripts\\verify-windows-installer-artifacts.ps1 -Path"));
+}
+
+#[test]
+fn ci_exercises_release_gate_helpers() {
+    let branch_helper = CI_WORKFLOW
+        .find("name: Verify branch protection helper fixture")
+        .expect("CI should verify the branch protection helper fixture");
+    let build_tauri = CI_WORKFLOW
+        .find("name: Build Tauri app")
+        .expect("CI should build the Tauri app after helper validation");
+    let installer_helper = CI_WORKFLOW
+        .find("name: Verify Windows installer outputs")
+        .expect("CI should verify installer outputs with the release helper");
+    let upload = CI_WORKFLOW
+        .find("name: Upload Windows installers")
+        .expect("CI should upload verified installer outputs");
+
+    assert!(
+        branch_helper < build_tauri && build_tauri < installer_helper && installer_helper < upload,
+        "CI should validate release helpers before relying on uploaded installers"
+    );
+    assert!(CI_WORKFLOW.contains(
+        ".\\scripts\\check-branch-protection.ps1 -ProtectionJsonPath tests\\fixtures\\github-branch-protection-main.json -RequirePullRequest"
+    ));
+    assert!(CI_WORKFLOW.contains(
+        ".\\scripts\\verify-windows-installer-artifacts.ps1 -Path src-tauri\\target\\release\\bundle"
+    ));
+}

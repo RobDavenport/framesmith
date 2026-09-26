@@ -10,12 +10,19 @@
    */
 
   import type { DummyConfig, DummyState, DummyRecovery } from '$lib/training';
+  import type { CharacterSummary } from '$lib/types';
 
   interface Props {
     /** Current dummy configuration. */
     config: DummyConfig;
     /** Available moves for reversal selection. */
     availableMoves?: string[];
+    /** Available characters for dummy pack selection. */
+    availableCharacters?: CharacterSummary[];
+    /** Currently selected dummy character ID. */
+    selectedCharacterId?: string;
+    /** Callback when dummy character changes. */
+    onCharacterChange?: (characterId: string) => void;
     /** Callback when state changes. */
     onStateChange?: (state: DummyState) => void;
     /** Callback when recovery changes. */
@@ -33,6 +40,9 @@
   let {
     config,
     availableMoves = [],
+    availableCharacters = [],
+    selectedCharacterId = '',
+    onCharacterChange,
     onStateChange,
     onRecoveryChange,
     onReversalMoveChange,
@@ -62,6 +72,11 @@
     onStateChange?.(target.value as DummyState);
   }
 
+  function handleCharacterChange(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    onCharacterChange?.(target.value);
+  }
+
   function handleRecoveryChange(event: Event) {
     const target = event.target as HTMLSelectElement;
     onRecoveryChange?.(target.value as DummyRecovery);
@@ -87,6 +102,18 @@
 
   {#if !collapsed}
     <div class="settings-content">
+      <!-- Character selection -->
+      {#if availableCharacters.length > 0}
+        <div class="setting">
+          <label for="dummy-character">Character</label>
+          <select id="dummy-character" value={selectedCharacterId} onchange={handleCharacterChange}>
+            {#each availableCharacters as character}
+              <option value={character.id}>{character.name}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
       <!-- State selection -->
       <div class="setting">
         <label for="dummy-state">State</label>

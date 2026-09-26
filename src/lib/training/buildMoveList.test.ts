@@ -47,6 +47,17 @@ describe('buildMoveList', () => {
     expect(resolver.resolve(buffer, ['L'])).toBeNull();
   });
 
+  it('supports authored throw inputs that use the T button', () => {
+    const resolver = new MoveResolver(buildMoveList([{ input: '5T', type: 'throw' }]));
+    const buffer = new InputBuffer();
+    buffer.push({ direction: 5, buttons: ['T'] });
+
+    const result = resolver.resolve(buffer, ['T']);
+
+    expect(result?.name).toBe('5T');
+    expect(result?.index).toBe(0);
+  });
+
   it('treats motion inputs containing 0 as unparseable (index preserved)', () => {
     const moves = [{ input: '2360P', type: 'special' }];
     const list = buildMoveList(moves);
@@ -54,5 +65,18 @@ describe('buildMoveList', () => {
     expect(list.moveNameToIndex.get('2360P')).toBe(0);
     expect(list.moves[0]?.name).toBe('2360P');
     expect(list.moves[0]?.input.type).not.toBe('motion');
+  });
+
+  it('preserves indices for malformed move entries without registering them as inputs', () => {
+    const list = buildMoveList([
+      { input: '5L', type: 'normal' },
+      { name: 'Variant Overlay', type: 'normal' },
+      { input: '5M', type: 'normal' },
+    ]);
+
+    expect(list.moves.map(m => m.name)).toEqual(['5L', 'Variant Overlay', '5M']);
+    expect(list.moveNameToIndex.get('5L')).toBe(0);
+    expect(list.moveNameToIndex.get('Variant Overlay')).toBeUndefined();
+    expect(list.moveNameToIndex.get('5M')).toBe(2);
   });
 });

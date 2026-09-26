@@ -155,8 +155,8 @@ pub fn apply_rules_to_move(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::matchers::StringOrVec;
+    use super::*;
 
     const RULES_VERSION: u32 = 1;
 
@@ -169,14 +169,6 @@ mod tests {
             properties: None,
             tags: None,
         }
-    }
-
-    fn make_valid_move() -> crate::schema::State {
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.startup = 1;
-        mv.active = 1;
-        mv
     }
 
     #[test]
@@ -219,10 +211,12 @@ mod tests {
             },
         ]);
 
-        let mut mv = crate::schema::State::default();
-        mv.input = "236P".to_string();
-        mv.move_type = Some("special".to_string());
-        mv.hitstop = 0;
+        let mv = crate::schema::State {
+            input: "236P".to_string(),
+            move_type: Some("special".to_string()),
+            hitstop: 0,
+            ..Default::default()
+        };
 
         let resolved = apply_rules_to_move(Some(&project), None, &mv).unwrap();
         assert_eq!(resolved.hitstop, 10);
@@ -241,9 +235,11 @@ mod tests {
             set: serde_json::json!({ "hitstop": 8 }),
         }]);
 
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.hitstop = 6;
+        let mv = crate::schema::State {
+            input: "5L".to_string(),
+            hitstop: 6,
+            ..Default::default()
+        };
 
         let resolved = apply_rules_to_move(Some(&project), None, &mv).unwrap();
         assert_eq!(resolved.hitstop, 6);
@@ -268,10 +264,12 @@ mod tests {
             set: serde_json::json!({ "hitstop": 9 }),
         }]);
 
-        let mut mv = crate::schema::State::default();
-        mv.input = "5L".to_string();
-        mv.move_type = Some("normal".to_string());
-        mv.hitstop = 0;
+        let mv = crate::schema::State {
+            input: "5L".to_string(),
+            move_type: Some("normal".to_string()),
+            hitstop: 0,
+            ..Default::default()
+        };
 
         let resolved = apply_rules_to_move(Some(&project), Some(&character), &mv).unwrap();
         assert_eq!(resolved.hitstop, 9);

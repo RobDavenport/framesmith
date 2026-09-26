@@ -41,6 +41,7 @@ function toWasmDummyState(state: DummyState): number {
 export interface CharacterState {
   current_state: number;
   frame: number;
+  instance_duration: number;
   hit_confirmed: boolean;
   block_confirmed: boolean;
   resources: number[];
@@ -52,6 +53,7 @@ export interface CharacterState {
 export interface HitResult {
   attacker_move: number;
   window_index: number;
+  blocked: boolean;
   damage: number;
   chip_damage: number;
   hitstun: number;
@@ -78,6 +80,18 @@ export interface FrameResult {
   dummy: CharacterState;
   hits: HitResult[];
   push_separation?: PushSeparation;
+}
+
+/**
+ * Deterministic session snapshot for frame step-back.
+ */
+export interface TrainingSnapshot {
+  player: CharacterState;
+  dummy: CharacterState;
+  player_x: number;
+  player_y: number;
+  dummy_x: number;
+  dummy_y: number;
 }
 
 /**
@@ -191,6 +205,20 @@ export class TrainingSession {
    */
   hitResults(): HitResult[] {
     return this.session.hit_results();
+  }
+
+  /**
+   * Capture the current deterministic session state.
+   */
+  snapshot(): TrainingSnapshot {
+    return this.session.snapshot();
+  }
+
+  /**
+   * Restore a snapshot previously returned by snapshot().
+   */
+  restore(snapshot: TrainingSnapshot): void {
+    this.session.restore(snapshot);
   }
 
   /**

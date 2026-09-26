@@ -1,0 +1,58 @@
+{
+  "id": "jump",
+  "name": "Jump",
+  "type": "system",
+  "input": "jump",
+  "tags": [
+    "air_ready",
+    "jump"
+  ],
+  "startup": 1,
+  "active": 254,
+  "recovery": 0,
+  "damage": 0,
+  "hitstun": 24,
+  "blockstun": 18,
+  "hitstop": 8,
+  "guard": "mid",
+  "hitboxes": [],
+  "hurtboxes": [
+    {
+      "frames": [
+        0,
+        254
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushboxes": [
+    {
+      "frames": [
+        0,
+        254
+      ],
+      "box": {
+        "x": -15,
+        "y": -82,
+        "w": 30,
+        "h": 82
+      }
+    }
+  ],
+  "pushback": {
+    "hit": 12,
+    "block": 10
+  },
+  "frame_advantage": {
+    "block": 0,
+    "hit": 0,
+    "whiff": 0
+  },
+  "animation": "jump",
+  "properties": {}
+}
